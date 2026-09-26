@@ -146,7 +146,9 @@ def clean(b, i, warn):
 
 
 def key(b):
+    # Before any colon, plus every number in the title, so "Series: Volume 2" isn't a double of Volume 1.
     t = re.sub(r'[^a-z0-9]+', '', re.sub(r'^(the|a|an)\s+', '', b['title'].lower().split(':')[0]))
+    t += '#' + '.'.join(re.findall(r'\d+', b['title']))
     a = (b.get('authors') or [''])[0].lower().split()
     return t + '|' + (a[-1] if a else '')
 

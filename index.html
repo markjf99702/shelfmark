@@ -419,7 +419,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var i = w.length - 1; while (i > 1 && PARTICLES.test(w[i - 1])) i--;
     return w.slice(i).join(' ');
   }
-  function titleKey(t) { return fold(t).split(':')[0].replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, ''); }
+  // The part before any colon, without a leading article, plus every number in the whole title: "The Hobbit: or There
+  // and Back Again" matches "The Hobbit", but "Heartstopper: Volume 2" doesn't match Volume 1.
+  function titleKey(t) { var f = fold(t); return f.split(':')[0].replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, '') + '#' + (f.match(/\d+/g) || []).join('.'); }
   function dupKeys(b) {
     var k = [], i = isbn13(b.isbn);
     if (i) k.push('i:' + i);
