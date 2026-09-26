@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="How Shelfmark handles your data: your catalog stays in your browser and, if you turn on sync, in one file in your own Google Drive.">
+<meta name="theme-color" content="#F5EFE3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15120E" media="(prefers-color-scheme: dark)">
+<title>Privacy · Shelfmark</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--ground:#F5EFE3;--surface:#FFFCF6;--ink:#241E18;--ink2:#5C5247;--ink3:#877C6F;--line:#E3D9C7;--accent:#8C2F24;--rule:#D9A79B;
+  --serif:"Iowan Old Style","Palatino Linotype",Georgia,serif;--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#15120E;--surface:#1F1A15;--ink:#F2EADD;--ink2:#BFB3A2;--ink3:#8F8576;--line:#30291F;--accent:#E8907A;--rule:#6A3A30;color-scheme:dark}}
+:root[data-theme="dark"]{--ground:#15120E;--surface:#1F1A15;--ink:#F2EADD;--ink2:#BFB3A2;--ink3:#8F8576;--line:#30291F;--accent:#E8907A;--rule:#6A3A30;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.6 var(--sans)}
+main{max-width:720px;margin:0 auto;padding:40px 16px 64px}
+a{color:var(--accent)}
+.back{font:500 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);text-decoration:none}
+.back:hover{color:var(--accent)}
+h1{font:italic 500 38px/1.1 var(--serif);margin:18px 0 6px}
+.date{color:var(--ink3);font:500 13px var(--mono);margin:0 0 22px;padding-bottom:18px;border-bottom:3px double var(--rule)}
+.lede{font-size:18px;color:var(--ink)}
+h2{font:500 22px/1.25 var(--serif);margin:32px 0 8px}
+p,li{color:var(--ink2)}
+li{margin:4px 0}
+b{color:var(--ink);font-weight:600}
+code{font:14px var(--mono);background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:1px 5px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="./">‹ Back to Shelfmark</a>
+<h1>Privacy</h1>
+<p class="date">Last updated September 26, 2026</p>
+
+<p class="lede">Shelfmark is a catalog for the books in your house. Your catalog stays in your browser and, if you turn on sync, in one file in your own Google Drive. Shelfmark has no server, no accounts, no analytics and no cookies, so there is nowhere else for it to go.</p>
+
+<h2>Where your catalog is kept</h2>
+<ul>
+<li><b>In your browser.</b> Shelfmark saves your books in this browser's local storage on your device. Nobody else can read it, including the people who make Shelfmark.</li>
+<li><b>In your Google Drive, if you turn on sync.</b> Shelfmark keeps one folder, <code>Shelfmark</code>, with one file in it, <code>Shelfmark library.json</code>. Your browser talks to Google Drive directly; nothing passes through any other server.</li>
+<li><b>In files you download.</b> Backups and spreadsheets you download are saved wherever you save them.</li>
+</ul>
+
+<h2>What Shelfmark does with your Google account</h2>
+<p>Drive sync asks Google for one permission: <code>drive.file</code>, “see, edit, create, and delete only the specific Google Drive files you use with this app”. With it, Shelfmark can reach only the folder and file it made itself. It can't see, open or list anything else in your Drive, and it doesn't ask for your name, email address or contacts.</p>
+<p>Shelfmark uses this access only to read your library file, merge it with the copy on your device, and write it back. The sign-in token Google gives your browser lasts about an hour and is kept in your browser so a reload doesn't sign you out. It is never sent anywhere except to Google.</p>
+<p>Shelfmark's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Your Drive data is used only to show you your own library. It isn't transferred to anyone, used for advertising, or read by any person.</p>
+
+<h2>Other services the page talks to</h2>
+<ul>
+<li><b>GitHub Pages</b> serves the page itself, like any website host. GitHub's own logs may record that your browser loaded it.</li>
+<li><b>Google Fonts</b> supplies the typefaces, so Google sees your browser load them.</li>
+<li><b>Open Library</b>, only if you turn on “Covers and details” in Settings. When on, it sends a book's ISBN to openlibrary.org to fetch its cover or details. That setting is off unless you turn it on, on each device.</li>
+<li><b>Links from Claude.</b> Books added from a Shelfmark link travel in the part of the address after <code>#</code>, which browsers don't send to any server. The photos you send to Claude are part of your conversation with Claude and are covered by Anthropic's terms, not by Shelfmark.</li>
+</ul>
+
+<h2>Removing your data</h2>
+<ul>
+<li>To remove your catalog from a device, use <b>Settings › Erase this device's copy</b>.</li>
+<li>To remove the synced copy, delete the <code>Shelfmark</code> folder from your Google Drive.</li>
+<li>To take back Shelfmark's access to your Drive, use <b>Settings › Disconnect this device</b>. You can also remove Shelfmark under <a href="https://myaccount.google.com/connections">Third-party apps &amp; services</a> in your Google Account.</li>
+</ul>
+
+<h2>Questions</h2>
+<p>Shelfmark's code is open at <a href="https://github.com/markjf99702/shelfmark">github.com/markjf99702/shelfmark</a>, so you can check all of this. Questions or problems can go to the <a href="https://github.com/markjf99702/shelfmark/issues">issue tracker</a>.</p>
+</main>
+</body>
+</html>

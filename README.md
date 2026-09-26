@@ -26,7 +26,7 @@ It is one HTML file with no build step and no server. Open `index.html` in a bro
 
 ## Your data
 
-Your catalog is kept in this browser's local storage and, if you turn on sync, in one file in your own Google Drive. Nothing else stores it: this site is static files, and links from Claude carry their books in the part of the address after `#`, which browsers never send to a server.
+The [privacy page](https://junkdrawer.works/shelfmark/privacy.html) (`privacy.html`) says this for anyone using it. Your catalog is kept in this browser's local storage and, if you turn on sync, in one file in your own Google Drive. Nothing else stores it: this site is static files, and links from Claude carry their books in the part of the address after `#`, which browsers never send to a server.
 
 Shelfmark asks Google for the narrowest Drive permission there is (`drive.file`). It can see and change only files it made itself, which is one folder, `Shelfmark`, holding `Shelfmark library.json`. It can't see anything else in your Drive.
 
@@ -59,11 +59,17 @@ Sync needs an OAuth client ID from a Google Cloud project, tied to the address S
    - audience: **External**
    - contact email: your address
 4. In **Data Access**, choose **Add or remove scopes**. Add `https://www.googleapis.com/auth/drive.file` ("See, edit, create, and delete only the specific Google Drive files you use with this app"), then save.
-5. In **Audience**, choose **Publish app**. `drive.file` is a non-sensitive scope, so publishing needs no review. An app left in Testing works only for the test users you list there.
-6. In **Clients**, create a client of type **Web application**. Under **Authorized JavaScript origins**, add `https://junkdrawer.works`, then create it and copy the **Client ID**. It ends in `.apps.googleusercontent.com`. A client ID isn't a secret; it only works from the origins you listed.
-7. Put the ID in `GOOGLE_CLIENT_ID` near the top of the script in `index.html`. Until then, you can paste it into **Settings › Sync with Google Drive** on each device.
+5. In **Branding**, fill in:
+   - **Application home page:** `https://junkdrawer.works/shelfmark/`
+   - **Application privacy policy link:** `https://junkdrawer.works/shelfmark/privacy.html`
+   - **Authorized domains:** `junkdrawer.works`
 
-Then open **Settings › Connect Google Drive** on each device you use.
+   Save. Google won't publish the app without these, even though the form doesn't mark them required.
+6. In **Audience**, choose **Publish app**. `drive.file` is a non-sensitive scope, so publishing needs no review. Or skip publishing: an app left in **Testing** works for the Google accounts you add under **Test users**, but Google may ask them to approve it again from time to time.
+7. In **Clients**, create a client of type **Web application**. Under **Authorized JavaScript origins**, add `https://junkdrawer.works`, then create it and copy the **Client ID**. It ends in `.apps.googleusercontent.com`. A client ID isn't a secret; it only works from the origins you listed.
+8. Put the ID in `GOOGLE_CLIENT_ID` near the top of the script in `index.html`. Until then, you can paste it into **Settings › Sync with Google Drive** on each device.
+
+Then open **Settings › Connect Google Drive** on each device you use. The copy at junkdrawer.works already has its client ID.
 
 ## Adding books with Claude
 

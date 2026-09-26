@@ -236,6 +236,11 @@ details.more .fs{padding:2px 12px 12px}
 .err{color:var(--bad);font-weight:600}
 .drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
 
+/* footer */
+.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink3)}
+.foot a{color:var(--ink3);text-decoration:none}
+.foot a:hover{color:var(--accent);text-decoration:underline}
+
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;max-width:calc(100vw - 32px)}
 .toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
@@ -295,6 +300,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   </div>
   <p class="count" id="count" aria-live="polite"></p>
   <div class="list" id="list"></div>
+  <footer class="foot"><a href="privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a><span aria-hidden="true">·</span><a href="/">junkdrawer.works</a></footer>
 </main>
 <div id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button></div>
@@ -306,7 +312,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- setup ----------
   // Drive sync needs an OAuth client ID from a Google Cloud project whose authorized JavaScript
   // origins include this page's origin (see README › Drive sync). A client ID isn't a secret.
-  var GOOGLE_CLIENT_ID = '';
+  var GOOGLE_CLIENT_ID = '897653851078-p5jrh2bto6h3bj0lc4jist3k1vsc1pj4.apps.googleusercontent.com';
   var SCOPE = 'https://www.googleapis.com/auth/drive.file';
   var LS = 'shelfmark.library', LSP = 'shelfmark.prefs', LSD = 'shelfmark.drive';
   var STATUSES = [['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
@@ -1029,10 +1035,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var s = $('driveSect'); if (!s) return;
     var html = '<h3>Sync with Google Drive</h3>';
     if (!clientId()) {
-      html += '<p>Drive sync isn’t set up on this copy of Shelfmark yet. It needs a Google Cloud OAuth client ID for this address (see the README). If you have one, paste it here.</p>' +
+      html += '<p>Drive sync isn’t set up on this copy of Shelfmark yet. It needs a Google Cloud OAuth client ID for this address (see the <a href="https://github.com/markjf99702/shelfmark#one-time-setup">README</a>). If you have one, paste it here.</p>' +
         '<div class="isbnrow"><input id="dvCid" class="mono" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="dvCidGo">Save</button></div>';
     } else if (!D.on) {
-      html += '<p>Keep your library in your own Google Drive and the same on every device you use. Shelfmark can see only the files it makes: one folder, <span class="drivepath">Shelfmark</span>, with your library file in it.</p>' +
+      html += '<p>Keep your library in your own Google Drive and the same on every device you use. Shelfmark can see only the files it makes: one folder, <span class="drivepath">Shelfmark</span>, with your library file in it. <a href="privacy.html">More on privacy</a></p>' +
         (D.err ? '<p class="err">' + esc(D.err) + '</p>' : '') + '<div class="row"><button class="btn primary" type="button" id="dvGo">Connect Google Drive</button></div>';
     } else {
       html += '<p>' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Shelfmark out after an hour. Tap <b>Sync now</b> to sign back in; your changes are safe here meanwhile.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
