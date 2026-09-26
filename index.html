@@ -1,0 +1,1102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and your own Google Drive.">
+<meta name="theme-color" content="#F5EFE3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15120E" media="(prefers-color-scheme: dark)">
+<title>Shelfmark</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F5EFE3;--surface:#FFFCF6;--surface2:#F0E8DA;--sunk:#EAE1D1;
+  --ink:#241E18;--ink2:#5C5247;--ink3:#877C6F;--line:#E3D9C7;--line2:#CDBFA9;
+  --accent:#8C2F24;--accent-ink:#FFF8EE;--accent-soft:#F4DDD5;
+  --green:#2E5E48;--green-soft:#DDEBE2;
+  --brass:#8F6420;--brass-soft:#F4E6C6;
+  --bad:#A8321C;--bad-soft:#F7DCD4;
+  --rule:#D9A79B;
+  --serif:"Newsreader","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --r:12px;
+  --shadow:0 1px 0 rgba(36,30,24,.04),0 8px 22px -16px rgba(36,30,24,.4);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --ground:#15120E;--surface:#1F1A15;--surface2:#28221B;--sunk:#110E0B;
+  --ink:#F2EADD;--ink2:#BFB3A2;--ink3:#8F8576;--line:#30291F;--line2:#463C30;
+  --accent:#E8907A;--accent-ink:#1A100C;--accent-soft:#3F2019;
+  --green:#8ACBA9;--green-soft:#17291F;
+  --brass:#DDB56B;--brass-soft:#352A14;
+  --bad:#F28E74;--bad-soft:#401D15;
+  --rule:#6A3A30;
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 26px -16px rgba(0,0,0,.85);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#15120E;--surface:#1F1A15;--surface2:#28221B;--sunk:#110E0B;
+  --ink:#F2EADD;--ink2:#BFB3A2;--ink3:#8F8576;--line:#30291F;--line2:#463C30;
+  --accent:#E8907A;--accent-ink:#1A100C;--accent-soft:#3F2019;
+  --green:#8ACBA9;--green-soft:#17291F;
+  --brass:#DDB56B;--brass-soft:#352A14;
+  --bad:#F28E74;--bad-soft:#401D15;
+  --rule:#6A3A30;
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 26px -16px rgba(0,0,0,.85);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.45 var(--sans);min-height:100vh}
+body.locked{overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:default;opacity:.5}
+input,select,textarea{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;min-width:0;font-size:16px;width:100%}
+textarea{resize:vertical;min-height:84px;line-height:1.45}
+select{appearance:none;-webkit-appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:0;flex:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0}
+a{color:var(--accent)}
+.mono{font-family:var(--mono)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.note{color:var(--ink3);font-size:13.5px;margin:6px 0 0}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 56px}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 10px}
+.top-in{display:flex;align-items:center;gap:8px;max-width:1240px;margin:0 auto}
+.brand{flex:none;display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink);margin-right:auto}
+.brand svg{width:30px;height:30px;flex:none}
+.brand b{font:italic 500 26px/1 var(--serif);letter-spacing:-.01em}
+.tbtn{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:7px 13px;font:600 13.5px var(--sans);color:var(--ink2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.tbtn:hover{color:var(--ink);border-color:var(--ink3)}
+.tbtn svg{width:16px;height:16px;flex:none}
+.tbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tbtn.primary:hover{filter:brightness(1.06);color:var(--accent-ink)}
+.sync{border-style:dashed}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
+.sync[data-s="ok"] i{background:var(--green)}
+.sync[data-s="busy"] i{background:var(--brass);animation:pulse 1s ease-in-out infinite}
+.sync[data-s="tap"]{border-style:solid;border-color:var(--brass);color:var(--brass)}
+.sync[data-s="tap"] i{background:var(--brass)}
+.sync[data-s="err"]{border-style:solid;border-color:var(--bad);color:var(--bad)}
+.sync[data-s="err"] i{background:var(--bad)}
+@keyframes pulse{50%{opacity:.35}}
+
+/* search and filters */
+.tools{padding:16px 0 6px}
+.search{position:relative}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--ink3);pointer-events:none}
+.search input{padding:11px 12px 11px 40px;border-radius:11px;font-size:16px;background:var(--surface);box-shadow:var(--shadow)}
+.frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 13px var(--sans);color:var(--ink2);white-space:nowrap}
+.chip:hover{color:var(--ink);border-color:var(--ink3)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+.chip .n{font:500 11.5px var(--mono);opacity:.7;margin-left:3px}
+.selects{display:flex;gap:6px;flex:0 1 auto;min-width:0}
+.selects select{width:auto;max-width:190px;padding:6px 28px 6px 10px;font-size:14px;border-radius:999px}
+.count{margin:14px 2px 10px;font:500 12.5px var(--mono);color:var(--ink3);letter-spacing:.02em}
+
+/* book list */
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.grp{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;margin:14px 2px 0;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.grp:first-child{margin-top:0}
+.grp::after{content:"";flex:1;border-top:1px solid var(--line2);transform:translateY(-3px)}
+.grp .n{color:var(--ink3)}
+.bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
+.bk:hover{border-color:var(--line2)}
+.bk-tx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;padding-top:1px}
+.bk-t{font:500 17px/1.22 var(--serif);color:var(--ink);overflow-wrap:anywhere}
+.bk-t .s{color:var(--ink2);font-weight:400}
+.bk-a{color:var(--ink2);font-size:13.5px;overflow-wrap:anywhere}
+.bk-m{display:flex;flex-wrap:wrap;gap:5px 8px;align-items:center;margin-top:5px}
+.loc{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.bdg{display:inline-flex;align-items:center;gap:4px;border-radius:5px;padding:1px 6px;font:600 11.5px var(--sans);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.bdg.reading{background:var(--brass-soft);color:var(--brass)}
+.bdg.read{background:var(--green-soft);color:var(--green)}
+.bdg.lent{background:var(--accent-soft);color:var(--accent)}
+.bdg.check{border:1px dashed var(--accent);color:var(--accent)}
+.bdg.stars{color:var(--brass);padding:0;font-size:12px;letter-spacing:.5px}
+
+/* covers: a cloth-bound stand-in, with the real cover on top when lookups are on */
+.cv{--cloth:#7A2E26;position:relative;flex:none;width:46px;height:68px;border-radius:2px 5px 5px 2px;background:linear-gradient(90deg,rgba(0,0,0,.22) 0 3px,rgba(255,255,255,.08) 3px 5px,transparent 5px),var(--cloth);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),0 2px 4px -1px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#F4E9D2}
+.cv::after{content:"";position:absolute;left:9px;right:6px;top:10px;height:1px;background:rgba(244,233,210,.45);box-shadow:0 3px 0 rgba(244,233,210,.25)}
+.cv-t{font:500 17px/1 var(--serif);letter-spacing:.02em;padding-left:3px}
+.cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--surface2)}
+.cv.lg{width:92px;height:136px;border-radius:3px 7px 7px 3px}
+.cv.lg::after{top:18px;left:14px;right:10px}
+.cv.lg .cv-t{font-size:13.5px;line-height:1.15;padding:28px 10px 8px 14px;align-self:stretch;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;text-align:left;width:100%}
+
+/* empty states */
+.empty{grid-column:1/-1;max-width:560px;margin:28px auto 0;text-align:center;padding:10px}
+.empty svg{width:132px;height:auto;margin-bottom:6px}
+.empty h2{font:500 28px/1.15 var(--serif);margin:0 0 10px}
+.empty p{color:var(--ink2);margin:0 0 14px}
+.steps{list-style:none;padding:0;margin:0 auto 20px;text-align:left;display:grid;gap:8px;max-width:440px;counter-reset:s}
+.steps li{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;counter-increment:s}
+.steps li::before{content:counter(s);flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font:600 12px/22px var(--mono);text-align:center}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.empty .row{justify-content:center}
+
+/* buttons */
+.btn{background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:9px 15px;font:600 14.5px var(--sans);color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--ink3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.quiet{background:none;border-color:transparent;color:var(--ink2)}
+.btn.quiet:hover{border-color:var(--line2);color:var(--ink)}
+.btn.danger{color:var(--bad);border-color:transparent;background:none}
+.btn.danger:hover{border-color:var(--bad)}
+.btn.sm{padding:6px 11px;font-size:13.5px;border-radius:8px}
+
+/* sheets */
+#sheet{position:fixed;inset:0;z-index:50}
+.scrim{position:absolute;inset:0;background:rgba(20,14,8,.45)}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:var(--surface);border-radius:16px;box-shadow:0 30px 80px -20px rgba(0,0,0,.55);overflow:hidden}
+.hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.hd h2{margin:0;font:500 21px/1.2 var(--serif);flex:1;min-width:0}
+.hd .callno{flex:1;min-width:0;font:500 11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bd{padding:16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.ft{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface2)}
+.ft .grow{flex:1}
+@media (max-width:640px){
+  .panel{left:0;right:0;bottom:0;top:auto;transform:none;width:100%;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);border-radius:16px 16px 0 0}
+}
+
+/* the catalog card */
+.card-top{display:flex;gap:14px;align-items:flex-start;padding-bottom:14px;margin-bottom:14px;border-bottom:3px double var(--rule)}
+.card-tt{flex:1;min-width:0;display:grid;gap:8px}
+.card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px}
+.flag{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:9px 11px;margin:0 0 14px;font-size:14px}
+.flag span{flex:1;min-width:12em}
+.fs{display:grid;gap:12px}
+.fl{display:grid;gap:4px;min-width:0}
+.fl>span,.lbl{font:600 11.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--surface)}
+.seg button{background:none;border:0;padding:7px 14px;font:600 13.5px var(--sans);color:var(--ink2)}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.stars{display:inline-flex;gap:0}
+.stars button{background:none;border:0;padding:2px 3px;font-size:23px;line-height:1;color:var(--line2)}
+.stars button.on{color:var(--brass)}
+.loan{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;align-items:end}
+#f-back{justify-self:start}
+.tagpicks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.tagpicks button{background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:500 12.5px var(--sans);color:var(--ink2)}
+.tagpicks button:hover{border-color:var(--ink3);color:var(--ink)}
+.checks{display:flex;flex-wrap:wrap;gap:8px 18px}
+.checks label{display:inline-flex;gap:7px;align-items:center;font-size:14.5px}
+details.more{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+details.more>summary{cursor:pointer;padding:10px 12px;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+details.more[open]>summary::before{transform:rotate(45deg)}
+details.more .fs{padding:2px 12px 12px}
+.isbnrow{display:flex;gap:8px}
+.isbnrow input{flex:1}
+
+/* import review */
+.lede{margin:0 0 12px;color:var(--ink2)}
+.lede b{color:var(--ink);font-weight:600}
+.bulk{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.bulk .two{margin-top:6px}
+.rv{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
+.rv li.off{background:var(--surface2)}
+.rv li.off .rv-main{opacity:.62}
+.rv li>input[type=checkbox]{margin-top:6px}
+.rv-main{flex:1;min-width:0;display:grid;gap:2px}
+.rv-main input{padding:3px 7px;margin-left:-8px;width:calc(100% + 8px);font-size:15px;border-color:transparent;background:transparent}
+.rv-main input:hover{border-color:var(--line2)}
+.rv-main input:focus{border-color:var(--line2);background:var(--surface)}
+.rv-main .rt{font:500 17px var(--serif)}
+.rv-meta{font:500 11.5px var(--mono);color:var(--ink3);letter-spacing:.02em;overflow-wrap:anywhere}
+.rv-flag{font-size:13px;color:var(--accent)}
+.rv-dup{font-size:13px;color:var(--ink2)}
+.rv-dup b{font-weight:600}
+.pastebox{margin-top:14px}
+.pastebox textarea{font:13px/1.4 var(--mono);min-height:90px}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
+.opt input{margin-top:2px}
+.sect{padding:0 0 16px;margin:0 0 16px;border-bottom:1px solid var(--line)}
+.sect:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.sect h3{margin:0 0 6px;font:500 18px var(--serif)}
+.sect p{margin:0 0 10px;color:var(--ink2)}
+.sect .row{margin-top:8px}
+.kv{font:500 12.5px var(--mono);color:var(--ink2)}
+.err{color:var(--bad);font-weight:600}
+.drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;max-width:calc(100vw - 32px)}
+.toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+body.locked .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top,0px));transform:translate(-50%,-24px)}
+body.locked .toast.show{transform:translate(-50%,0)}
+.toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:0;text-decoration:underline}
+
+@media (max-width:720px){
+  .top-in{gap:6px}
+  .tbtn .t{display:none}
+  .tbtn{padding:8px 10px}
+  .sync .t{display:inline}
+  .sync[data-s="ok"] .t,.sync[data-s="busy"] .t{display:none}
+  #addBtn{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;justify-content:center;padding:0;box-shadow:0 12px 26px -8px rgba(0,0,0,.5);z-index:30}
+  #addBtn svg{width:24px;height:24px}
+  .wrap{padding-bottom:100px}
+  .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
+  .list{grid-template-columns:1fr}
+  .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+  .selects select{flex:1 1 0;min-width:0;max-width:none}
+}
+@media (max-width:420px){
+  .brand b{font-size:21px}
+  .brand{gap:7px}
+  .loan{grid-template-columns:minmax(0,1fr) 140px}
+}
+@media (max-width:340px){
+  .two,.loan{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i{animation:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./" aria-label="Shelfmark">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="21" rx="3" fill="#8C2F24"/><rect x="3" y="6" width="26" height="21" rx="3" fill="none" stroke="#5E1C14" stroke-width="1.5"/><rect x="10" y="12" width="12" height="7" rx="1.5" fill="#E7C57C" stroke="#8F6420" stroke-width="1"/><rect x="12" y="14.5" width="8" height="2" rx="1" fill="#FFF8EE"/><circle cx="16" cy="22.5" r="1.6" fill="#E7C57C"/></svg>
+      <b>Shelfmark</b>
+    </a>
+    <button class="tbtn sync" id="syncBtn" type="button" hidden><i></i><span class="t" id="syncTx">Sync</span></button>
+    <button class="tbtn" id="importBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="t">Import</span></button>
+    <button class="tbtn" id="setBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="t">Settings</span></button>
+    <button class="tbtn primary" id="addBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="t">Add a book</span></button>
+  </div>
+</header>
+<main class="wrap">
+  <div class="tools" id="tools">
+    <label class="search"><span class="sr">Search your library</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="q" type="search" placeholder="Search titles, authors, shelves, tags, borrowers…" autocomplete="off" spellcheck="false"></label>
+    <div class="frow">
+      <div class="chips" id="chips" role="group" aria-label="Show"></div>
+      <div class="selects">
+        <label class="sr" for="roomSel">Room</label><select id="roomSel"></select>
+        <label class="sr" for="tagSel">Tag</label><select id="tagSel"></select>
+        <label class="sr" for="sortSel">Sort</label><select id="sortSel"><option value="author">By author</option><option value="title">By title</option><option value="shelf">By shelf</option><option value="added">Newest first</option></select>
+      </div>
+    </div>
+  </div>
+  <p class="count" id="count" aria-live="polite"></p>
+  <div class="list" id="list"></div>
+</main>
+<div id="sheet" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+
+<script>(function () {
+  'use strict';
+
+  // ---------- setup ----------
+  // Drive sync needs an OAuth client ID from a Google Cloud project whose authorized JavaScript
+  // origins include this page's origin (see README › Drive sync). A client ID isn't a secret.
+  var GOOGLE_CLIENT_ID = '';
+  var SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  var LS = 'shelfmark.library', LSP = 'shelfmark.prefs', LSD = 'shelfmark.drive';
+  var STATUSES = [['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
+  var FORMATS = [['hardcover', 'Hardcover'], ['paperback', 'Paperback'], ['mass-market', 'Mass-market paperback'], ['board', 'Board book'], ['leather', 'Leather-bound'], ['other', 'Other']];
+  var CONDITIONS = [['fine', 'Fine'], ['very-good', 'Very good'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor']];
+  var CLOTH = ['#7A2E26', '#2E4A62', '#35573F', '#86662A', '#4F3B63', '#5E584C', '#8A4A2F', '#2F5C5C', '#6B2F4A', '#3F4B2E', '#23364A', '#7B5A3A'];
+  var NOROOM = ' none';  // room names are trimmed, so none can start with a space
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function str(v, n) { return typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim().slice(0, n) : ''; }
+  function para(v, n) { return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, n) : ''; }
+  function int(v, lo, hi) { var x = typeof v === 'number' ? v : parseInt(String(v == null ? '' : v).replace(/[^\d-]/g, ''), 10); return isFinite(x) ? Math.max(lo, Math.min(hi, Math.round(x))) : 0; }
+  function day(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function pick(v, list) { v = str(v, 40).toLowerCase(); for (var i = 0; i < list.length; i++) if (list[i][0] === v || list[i][1].toLowerCase() === v) return list[i][0]; return ''; }
+  function label(v, list) { for (var i = 0; i < list.length; i++) if (list[i][0] === v) return list[i][1]; return ''; }
+  function uid() {
+    var a = new Uint8Array(9), s = 'b';
+    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function (_, i) { a[i] = Math.random() * 256; });
+    for (var i = 0; i < a.length; i++) s += (a[i] % 36).toString(36);
+    return s;
+  }
+  function hash(s) { var h = 5381; s = String(s); for (var i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h; }
+  function fold(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function plural(n, w, ws) { return n + ' ' + (n === 1 ? w : ws || w + 's'); }
+
+  // ---------- books ----------
+  // ISBN-10 or ISBN-13 (any hyphens or spaces) → ISBN-13 digits, or '' when the check digit is wrong.
+  function isbn13(s) {
+    s = String(s || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+    var i, sum = 0;
+    if (s.length === 10) {
+      for (i = 0; i < 10; i++) { var d = s[i] === 'X' ? (i === 9 ? 10 : NaN) : +s[i]; sum += d * (10 - i); }
+      if (!(sum % 11 === 0)) return '';
+      s = '978' + s.slice(0, 9); sum = 0;
+      for (i = 0; i < 12; i++) sum += +s[i] * (i % 2 ? 3 : 1);
+      return s + (10 - sum % 10) % 10;
+    }
+    if (s.length === 13 && /^97[89]\d{10}$/.test(s)) {
+      for (i = 0; i < 13; i++) sum += +s[i] * (i % 2 ? 3 : 1);
+      return sum % 10 === 0 ? s : '';
+    }
+    return '';
+  }
+  function list(v, n, each) {
+    var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/\s*[,;]\s*|\s+&\s+/) : v ? [v] : [], out = [], seen = {};
+    a.forEach(function (x) { x = str(x, each); var k = fold(x); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });
+    return out.slice(0, n);
+  }
+  // Every book that comes in — from storage, Drive, a file or a link — goes through here, so the rest of
+  // the page can trust its shape. Empty fields are dropped to keep the library file small.
+  function cleanBook(o) {
+    if (!o || typeof o !== 'object') return null;
+    var id = str(o.id, 40).replace(/[^\w-]/g, ''), t = +o.t > 0 ? Math.floor(+o.t) : 0;
+    if (/^\d*$/.test(id)) id = id ? 'b' + id : '';
+    if (o.del) return id ? { id: id, t: t, del: 1 } : null;
+    var title = str(o.title, 300); if (!title) return null;
+    var raw = str(o.isbn, 24), isbn = isbn13(raw) || raw.replace(/[^0-9Xx]/g, '').toUpperCase().slice(0, 13);
+    var loan = o.loan && typeof o.loan === 'object' && str(o.loan.to, 80) ? { to: str(o.loan.to, 80), since: day(o.loan.since) } : null;
+    if (loan && !loan.since) delete loan.since;
+    var b = {
+      id: id || uid(), t: t, title: title, sub: str(o.sub, 300), authors: list(o.authors || o.author, 12, 120),
+      isbn: isbn, publisher: str(o.publisher, 120), year: int(o.year, 0, 2200), format: pick(o.format, FORMATS), pages: int(o.pages, 0, 50000),
+      room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5),
+      loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
+      edition: str(o.edition, 120), signed: !!o.signed, first: !!o.first, condition: pick(o.condition, CONDITIONS),
+      added: day(o.added), check: str(o.check, 300)
+    };
+    if (b.status === 'unread') b.status = '';
+    Object.keys(b).forEach(function (k) { var v = b[k]; if (k !== 't' && (v === '' || v === 0 || v === false || v === null || Array.isArray(v) && !v.length)) delete b[k]; });
+    return b;
+  }
+  function sortObj(o) { var r = {}; Object.keys(o).sort().forEach(function (k) { r[k] = o[k]; }); return r; }
+  // A library: {books: {id: book}, seen: {batch id: when it was added}}. Deleted books stay as
+  // {id, t, del: 1} so a delete on one device wins over an older copy on another.
+  function cleanDoc(o) {
+    var src = o && o.library ? o.library : o || {}, books = {}, seen = {};
+    var bs = src.books && typeof src.books === 'object' ? (Array.isArray(src.books) ? src.books : Object.keys(src.books).map(function (k) { return src.books[k]; })) : [];
+    bs.forEach(function (x) { var b = cleanBook(x); if (b && (!books[b.id] || newer(b, books[b.id]))) books[b.id] = b; });
+    if (src.seen && typeof src.seen === 'object') Object.keys(src.seen).forEach(function (k) { var id = str(k, 80), v = +src.seen[k]; if (id && v > 0) seen[id] = Math.floor(v); });
+    return { books: sortObj(books), seen: sortObj(seen) };
+  }
+  function newer(x, y) { return x.t > y.t || x.t === y.t && JSON.stringify(x) > JSON.stringify(y); }
+  // Book by book, the most recently changed copy wins. Merging is order-free and repeatable, so every
+  // device that syncs ends up with the same library.
+  function mergeDocs(a, b) {
+    var books = {}, seen = {};
+    [a, b].forEach(function (d) {
+      Object.keys(d.books).forEach(function (id) { var x = d.books[id], y = books[id]; if (!y || newer(x, y)) books[id] = x; });
+      Object.keys(d.seen).forEach(function (k) { var v = d.seen[k]; if (!seen[k] || v < seen[k]) seen[k] = v; });
+    });
+    return { books: sortObj(books), seen: sortObj(seen) };
+  }
+  function wrapDoc(d) { return { shelfmark: 1, library: d }; }
+  function canon(d) { return JSON.stringify(wrapDoc(d)); }
+  function live(d) { var out = [], bs = d.books; for (var id in bs) if (!bs[id].del) out.push(bs[id]); return out; }
+
+  var PARTICLES = /^(de|da|di|du|del|della|der|den|van|von|le|la|st\.?|al|el|bin|ibn|ten|ter)$/i;
+  function surname(name) {
+    var w = str(name, 120).replace(/,?\s+(jr\.?|sr\.?|ii|iii|iv|phd|md)$/i, '').split(' ');
+    if (w.length < 2) return w[0] || '';
+    var i = w.length - 1; while (i > 1 && PARTICLES.test(w[i - 1])) i--;
+    return w.slice(i).join(' ');
+  }
+  function titleKey(t) { return fold(t).split(':')[0].replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, ''); }
+  function dupKeys(b) {
+    var k = [], i = isbn13(b.isbn);
+    if (i) k.push('i:' + i);
+    k.push('t:' + titleKey(b.title) + '|' + fold(surname((b.authors || [])[0] || '')).replace(/[^a-z]/g, ''));
+    return k;
+  }
+  function dupIndex(d) { var ix = {}; live(d).forEach(function (b) { dupKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
+  function findDup(ix, b) { var k = dupKeys(b); for (var i = 0; i < k.length; i++) if (ix[k[i]]) return ix[k[i]]; return null; }
+
+  // A batch is what Claude hands over: {shelfmark: 1, batch: {id, name, made, room, shelf, books: [...]}}.
+  // A book's "unsure" note becomes its "check" flag, so it can be looked at later.
+  function cleanBatch(o) {
+    var b = o && o.batch ? o.batch : o;
+    if (Array.isArray(b)) b = { books: b };
+    if (!b || typeof b !== 'object' || !Array.isArray(b.books)) return null;
+    var books = b.books.slice(0, 3000).map(function (x) {
+      if (!x || typeof x !== 'object') return null;
+      return cleanBook(Object.assign({}, x, { id: 'n', t: 0, del: 0, check: x.unsure || x.check || '' }));
+    }).filter(Boolean);
+    books.forEach(function (x) { delete x.id; delete x.t; });
+    return {
+      id: str(b.id, 80).replace(/[^\w.-]/g, '') || 'x' + hash(JSON.stringify(books)).toString(36),
+      name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books
+    };
+  }
+
+  function fmtDay(s) {
+    if (!day(s)) return '';
+    var p = s.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]), now = new Date();
+    return d.toLocaleDateString(undefined, d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function ago(ms) {
+    var s = (Date.now() - ms) / 1000;
+    if (s < 45) return 'just now';
+    if (s < 3600) return Math.round(s / 60) + ' min ago';
+    if (s < 86400) return plural(Math.round(s / 3600), 'hour') + ' ago';
+    return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function where(b) { return [b.room, b.shelf].filter(Boolean).join(' › '); }
+  function byLine(b) { return (b.authors || []).join(', '); }
+
+  // ---------- spreadsheet export ----------
+  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check'];
+  function csvCell(v) {
+    v = v == null ? '' : String(v);
+    if (/^[=+@\t\r]/.test(v)) v = "'" + v;
+    return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function toCsv(d) {
+    var rows = live(d).sort(authorOrder).map(function (b) {
+      return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(b.status || 'unread', STATUSES), b.rating,
+        b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check].map(csvCell).join(',');
+    });
+    return '﻿' + [CSV_COLS.join(',')].concat(rows).join('\r\n') + '\r\n';
+  }
+
+  // ---------- sorting and searching ----------
+  var COLL = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  var KEYS = {};
+  function keys(b) {
+    var c = KEYS[b.id];
+    if (c && c.t === b.t) return c;
+    var a = (b.authors || [])[0] || '';
+    c = KEYS[b.id] = {
+      t: b.t,
+      title: fold(b.title).replace(/^(the|a|an)\s+/, ''),
+      author: a ? fold(surname(a) + ' ' + a) : '￿',
+      hay: fold([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to].join(' \u0001 '))
+    };
+    return c;
+  }
+  function authorOrder(x, y) { return COLL.compare(keys(x).author, keys(y).author) || COLL.compare(keys(x).title, keys(y).title); }
+  function titleOrder(x, y) { return COLL.compare(keys(x).title, keys(y).title) || authorOrder(x, y); }
+  function shelfOrder(x, y) { return COLL.compare(x.room || '￿', y.room || '￿') || COLL.compare(x.shelf || '￿', y.shelf || '￿') || authorOrder(x, y); }
+  function addedOrder(x, y) { return (y.added || '').localeCompare(x.added || '') || y.t - x.t; }
+
+  // ---------- state ----------
+  var DOC = { books: {}, seen: {} };
+  try { var raw = localStorage.getItem(LS); if (raw) DOC = cleanDoc(JSON.parse(raw)); } catch (e) { }
+  var PREF = { sort: 'author', lookups: false };
+  try { Object.assign(PREF, JSON.parse(localStorage.getItem(LSP) || '{}')); } catch (e) { }
+  var UI = { q: '', status: '', room: '', tag: '' };
+  var editSeq = 0, persistAsked = false;
+
+  function savePrefs() { try { localStorage.setItem(LSP, JSON.stringify(PREF)); } catch (e) { } }
+  function persist(fromSync) {
+    try { localStorage.setItem(LS, canon(DOC)); }
+    catch (e) { toast('This browser is out of room to save your library. Download a backup from Settings.'); }
+    if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(function () { }); }
+    if (!fromSync) { editSeq++; D.pending = true; saveDrive(); syncSoon(); }
+  }
+  function stamp(b, old) { b.t = Math.max(Date.now(), old && old.t ? old.t + 1 : 0); return b; }
+  function putBook(b) { var c = cleanBook(stamp(b, DOC.books[b.id])); if (!c) return null; DOC.books[c.id] = c; persist(); render(); return c; }
+  function removeBook(id) {
+    var old = DOC.books[id]; if (!old || old.del) return;
+    DOC.books[id] = stamp({ id: id, del: 1 }, old); persist(); render();
+    toast('Removed “' + old.title + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); });
+  }
+
+  // ---------- rendering ----------
+  function cover(b, size) {
+    var c = CLOTH[hash(fold(b.title)) % CLOTH.length], i = isbn13(b.isbn);
+    var words = String(b.title).replace(/^(the|a|an)\s+/i, '').split(/\s+/).map(function (w) { return w.replace(/^[^\p{L}\p{N}]+/u, ''); }).filter(Boolean);
+    var tx = size === 'lg' ? esc(b.title) : esc(words.slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join(''));
+    var img = PREF.lookups && i ? '<img src="https://covers.openlibrary.org/b/isbn/' + i + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg?default=false" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
+    return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t">' + tx + '</span>' + img + '</span>';
+  }
+  function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
+  function row(b) {
+    var m = [];
+    if (where(b)) m.push('<span class="loc">' + esc(where(b)) + '</span>');
+    if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
+    else if (b.status === 'read') m.push('<span class="bdg read">Read</span>');
+    if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
+    if (b.check) m.push('<span class="bdg check">Check</span>');
+    if (b.rating) m.push(stars(b.rating));
+    var by = byLine(b) + (b.year ? (byLine(b) ? ' · ' : '') + b.year : '');
+    return '<button class="bk" type="button" data-id="' + esc(b.id) + '">' + cover(b) + '<span class="bk-tx">' +
+      '<span class="bk-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
+      (by ? '<span class="bk-a">' + esc(by) + '</span>' : '') +
+      (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + '</span></button>';
+  }
+  function visible(all) {
+    var q = fold(UI.q).split(/\s+/).filter(Boolean);
+    return all.filter(function (b) {
+      if (UI.status === 'lent') { if (!b.loan) return false; }
+      else if (UI.status === 'check') { if (!b.check) return false; }
+      else if (UI.status && (b.status || 'unread') !== UI.status) return false;
+      if (UI.room && (UI.room === NOROOM ? !!b.room : b.room !== UI.room)) return false;
+      if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return false;
+      if (q.length) { var h = keys(b).hay; for (var i = 0; i < q.length; i++) if (h.indexOf(q[i]) < 0) return false; }
+      return true;
+    });
+  }
+  var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
+  function render() {
+    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, rooms = {}, tags = {}, noRoom = 0;
+    all.forEach(function (b) {
+      counts[b.status || 'unread']++; if (b.loan) counts.lent++; if (b.check) counts.check++;
+      if (b.room) rooms[b.room] = (rooms[b.room] || 0) + 1; else noRoom++;
+      (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; });
+    });
+    if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check) UI.status = '';
+    if (UI.room && UI.room !== NOROOM && !rooms[UI.room] || UI.room === NOROOM && !noRoom) UI.room = '';
+    if (UI.tag && !tags[UI.tag]) UI.tag = '';
+    var chipDefs = [['', 'All'], ['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
+    if (counts.lent) chipDefs.push(['lent', 'Lent out']);
+    if (counts.check) chipDefs.push(['check', 'To check']);
+    $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
+    var rk = Object.keys(rooms).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
+    $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
+    $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
+    $('tagSel').innerHTML = '<option value="">All tags</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
+    $('tagSel').value = UI.tag; $('tagSel').hidden = !tk.length;
+    $('sortSel').value = PREF.sort;
+    $('tools').hidden = !all.length;
+
+    var L = $('list');
+    if (!all.length) {
+      $('count').textContent = '';
+      L.innerHTML = '<div class="empty">' + EMPTY_ART + '<h2>Your shelves are empty</h2><p>Shelfmark keeps your catalog in this browser' + (D.on ? ' and your Google Drive' : '') + ', nowhere else.</p>' +
+        '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude.</span></li><li><span>Claude reads them and gives you a <b>link</b> or a file.</span></li><li><span>Open it here, check the list, and add them.</span></li></ol>' +
+        '<div class="row"><button class="btn primary" type="button" data-act="add">Add a book by hand</button><button class="btn" type="button" data-act="import">Open a link or file</button></div></div>';
+      return;
+    }
+    var vis = visible(all);
+    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder }[PREF.sort] || authorOrder;
+    vis.sort(order);
+    var filtered = vis.length !== all.length;
+    $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') + (counts.read ? ' · ' + counts.read + ' read' : '');
+    if (!vis.length) {
+      L.innerHTML = '<div class="empty"><h2>Nothing matches</h2><p>' + (UI.q ? 'No book matches “' + esc(UI.q) + '”' : 'No books match these filters') + '.</p><div class="row"><button class="btn" type="button" data-act="clear">Show everything</button></div></div>';
+      return;
+    }
+    var html = '';
+    if (PREF.sort === 'shelf') {
+      var groups = [], g = null;
+      vis.forEach(function (b) { var k = where(b) || 'Not shelved yet'; if (!g || g.k !== k) groups.push(g = { k: k, bs: [] }); g.bs.push(b); });
+      groups.forEach(function (g) { html += '<h3 class="grp">' + esc(g.k) + ' <span class="n">' + g.bs.length + '</span></h3>' + g.bs.map(row).join(''); });
+    } else html = vis.map(row).join('');
+    L.innerHTML = html;
+  }
+
+  // ---------- sheets and toasts ----------
+  var sheetDone = null, sheetFrom = null;
+  function openSheet(html, onClose) {
+    if (!$('sheet').hidden) closeSheet();
+    sheetFrom = document.activeElement; sheetDone = onClose || null;
+    var s = $('sheet');
+    s.innerHTML = '<div class="scrim"></div><div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
+    s.hidden = false; document.body.classList.add('locked');
+    s.querySelector('.scrim').addEventListener('click', closeSheet);
+    var f = s.querySelector('[autofocus]') || s.querySelector('.hd button');
+    if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
+    return s.querySelector('.panel');
+  }
+  function closeSheet() {
+    if ($('sheet').hidden) return;
+    var f = sheetDone; sheetDone = null; if (f) f();
+    $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked');
+    if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
+  }
+  var toastT;
+  function toast(m, act, fn) {
+    var t = $('toast'), b = $('toastBtn');
+    $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
+    b.onclick = act ? function () { t.classList.remove('show'); fn(); } : null;
+    t.classList.add('show'); clearTimeout(toastT);
+    toastT = setTimeout(function () { t.classList.remove('show'); }, act ? 6000 : 3000);
+  }
+  function download(name, text, type) {
+    var url = URL.createObjectURL(new Blob([text], { type: type })), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function opts(list, v, blank) { return (blank != null ? '<option value="">' + blank + '</option>' : '') + list.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
+  function datalist(id, vals) { return '<datalist id="' + id + '">' + vals.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>'; }
+  function distinct(f) { var s = {}; live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
+
+  // ---------- the catalog card: one book, to add or edit ----------
+  function bookSheet(b, isNew) {
+    var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '' };
+    var tagList = distinct(function (x) { return x.tags; });
+    var panel = openSheet(
+      '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
+      '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
+      '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
+      '<label class="fl"><span>Title</span><input class="ti" id="f-title" value="' + esc(b.title) + '" autocomplete="off"' + (isNew ? ' autofocus' : '') + '></label>' +
+      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate several with commas" autocomplete="off"></label></div></div>' +
+      '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
+      '<div class="fs">' +
+      '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">★</button>'; }).join('') + '</div></div>' +
+      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" placeholder="Living room" autocomplete="off"></label>' +
+      '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" placeholder="Tall bookcase, top" autocomplete="off"></label></div>' +
+      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" placeholder="On the shelf" autocomplete="off"></label>' +
+      '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
+      '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back — returned</button>' +
+      '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
+      (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
+      '<label class="fl"><span>Notes</span><textarea id="f-notes" rows="3">' + esc(b.notes) + '</textarea></label>' +
+      '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
+      '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" autocomplete="off"></label>' +
+      '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="numeric" value="' + esc(b.isbn) + '" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
+      '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" autocomplete="off"></label>' +
+      '<div class="two"><label class="fl"><span>Year</span><input id="f-year" inputmode="numeric" value="' + (b.year || '') + '" autocomplete="off"></label><label class="fl"><span>Pages</span><input id="f-pages" inputmode="numeric" value="' + (b.pages || '') + '" autocomplete="off"></label></div></div>' +
+      '<div class="two"><label class="fl"><span>Format</span><select id="f-format">' + opts(FORMATS, b.format || '', '—') + '</select></label>' +
+      '<label class="fl"><span>Condition</span><select id="f-condition">' + opts(CONDITIONS, b.condition || '', '—') + '</select></label></div>' +
+      '<label class="fl"><span>Edition</span><input id="f-edition" value="' + esc(b.edition) + '" placeholder="e.g. 2nd printing, book club edition" autocomplete="off"></label>' +
+      '<div class="checks"><label><input type="checkbox" id="f-signed"' + (b.signed ? ' checked' : '') + '> Signed</label><label><input type="checkbox" id="f-first"' + (b.first ? ' checked' : '') + '> First edition</label></div>' +
+      '<label class="fl"><span>Added to the library</span><input id="f-added" type="date" value="' + esc(b.added || '') + '"></label>' +
+      '</div></details></div></div></div>' +
+      '<div class="ft">' + (isNew ? '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
+        : '<button class="btn danger" type="button" id="f-del">Remove from library</button><span class="grow"></span><button class="btn primary" type="button" id="bkx2">Done</button>') + '</div>' +
+      datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
+      function () { if (!isNew) flush(); });
+
+    function v(id) { return $(id).value; }
+    function read() {
+      var to = v('f-lent').trim();
+      return cleanBook(Object.assign({}, b, {
+        title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
+        format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
+        room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, loan: to ? { to: to, since: v('f-since') } : null,
+        tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check
+      }));
+    }
+    function same(x, y) { var a = Object.assign({}, x), c = Object.assign({}, y); a.t = c.t = 0; return JSON.stringify(a) === JSON.stringify(c); }
+    var saveT;
+    function flush() {
+      clearTimeout(saveT); if (isNew) return;
+      var n = read(), cur = DOC.books[b.id];
+      if (!n || !cur || cur.del) return;
+      if (!same(n, cur)) { b = putBook(n) || b; }
+    }
+    function later() { if (isNew) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
+    function head() {
+      var t = str(v('f-title'), 300) || 'Untitled';
+      $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
+      $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn') }, 'lg');
+    }
+    function drawState() {
+      panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
+      panel.querySelectorAll('#f-rating button').forEach(function (x) { x.classList.toggle('on', +x.dataset.v <= st.rating); x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
+      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim();
+    }
+    panel.addEventListener('input', function (e) {
+      if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
+      if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
+      later();
+    });
+    panel.addEventListener('change', later);
+    panel.querySelectorAll('#f-status button').forEach(function (x) { x.addEventListener('click', function () { st.status = x.dataset.v; drawState(); later(); }); });
+    panel.querySelectorAll('#f-rating button').forEach(function (x) { x.addEventListener('click', function () { st.rating = st.rating === +x.dataset.v ? 0 : +x.dataset.v; drawState(); later(); }); });
+    $('f-ok').addEventListener('click', function () { st.check = ''; drawState(); later(); });
+    $('f-back').addEventListener('click', function () { $('f-lent').value = ''; $('f-since').value = ''; drawState(); later(); if (!isNew) toast('Back on the shelf'); });
+    if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
+      var t = e.target.closest('button'); if (!t) return;
+      var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
+      $('f-tags').value = cur.join(', '); later();
+    });
+    if ($('f-look')) $('f-look').addEventListener('click', function () {
+      var btn = this, i = isbn13(v('f-isbn'));
+      if (!i) { toast('That ISBN doesn’t check out. It’s 10 or 13 digits, usually above the barcode.'); return; }
+      btn.disabled = true; btn.textContent = 'Looking…';
+      lookup(i).then(function (r) {
+        if (!r) { toast('Open Library doesn’t know that ISBN'); return; }
+        [['f-title', r.title], ['f-sub', r.sub], ['f-authors', r.authors.join(', ')], ['f-publisher', r.publisher], ['f-year', r.year || ''], ['f-pages', r.pages || '']].forEach(function (p) { if (!$(p[0]).value.trim() && p[1]) $(p[0]).value = p[1]; });
+        $('f-isbn').value = i; head(); later(); toast('Filled in what was blank');
+      }).catch(function () { toast('Couldn’t reach Open Library'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
+    });
+    $('bkx').addEventListener('click', closeSheet); $('bkx2').addEventListener('click', closeSheet);
+    if (isNew) $('f-add').addEventListener('click', function () {
+      var n = read();
+      if (!n) { $('f-title').focus(); toast('A book needs a title'); return; }
+      if (!n.added) n.added = today();
+      var dup = findDup(dupIndex(DOC), n);
+      n = putBook(n); closeSheet();
+      toast(dup ? 'Added — you already had a copy on ' + (where(dup) || 'your shelves') : 'Added “' + n.title + '”');
+    });
+    else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
+    head(); drawState();
+  }
+
+  // Open Library, only when the person has turned lookups on in Settings.
+  function lookup(i) {
+    return fetch('https://openlibrary.org/api/books?bibkeys=ISBN:' + i + '&format=json&jscmd=data').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+      var x = j && j['ISBN:' + i]; if (!x) return null;
+      var y = /\d{4}/.exec(x.publish_date || '');
+      return { title: str(x.title, 300), sub: str(x.subtitle, 300), authors: (x.authors || []).map(function (a) { return str(a.name, 120); }).filter(Boolean), publisher: str(((x.publishers || [])[0] || {}).name, 120), year: y ? +y[0] : 0, pages: int(x.number_of_pages, 0, 50000) };
+    });
+  }
+
+  // ---------- bringing books in ----------
+  // shelfmark/#s1z… carries a batch as deflated JSON in base64url (#s1j… uncompressed); the Shelfmark
+  // skill for Claude makes these. #batch=<url-encoded JSON> works too, for writing one by hand.
+  function linkText(hash) {
+    var m = /^#s1([zj])([A-Za-z0-9_-]+)$/.exec(hash || '');
+    if (m) {
+      var b = m[2].replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
+      var bin = atob(b), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (m[1] === 'j') return Promise.resolve(new TextDecoder().decode(bytes));
+      if (!window.DecompressionStream) return Promise.reject(new Error('This browser is too old to open Shelfmark links. Ask Claude for the file instead.'));
+      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    }
+    m = /^#batch=(.+)$/.exec(hash || '');
+    return Promise.resolve(m ? decodeURIComponent(m[1]) : null);
+  }
+  // Text from a link, a file or the paste box → {kind: 'batch' | 'library', …}.
+  function parseIncoming(t) {
+    t = String(t || '').trim();
+    var m = /#(s1[zj][A-Za-z0-9_-]+|batch=\S+)\s*$/.exec(t);
+    var c = t.charAt(0);
+    if (m && c !== '{' && c !== '[') return linkText('#' + m[1]).then(parseIncoming);
+    return Promise.resolve().then(function () {
+      var o = JSON.parse(t);
+      if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
+      var b = cleanBatch(o);
+      if (!b || !b.books.length) throw new Error('empty');
+      return { kind: 'batch', batch: b };
+    });
+  }
+  function takeIncoming(p) {
+    return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else reviewSheet(r.batch); })
+      .catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
+  }
+  function checkLink() {
+    var h = location.hash; if (!/^#(s1[zj]|batch=)/.test(h)) return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+    takeIncoming(linkText(h).then(function (t) { if (!t) throw new Error('empty'); return parseIncoming(t); }));
+  }
+
+  function reviewSheet(batch) {
+    var ix = dupIndex(DOC), inBatch = {}, rows = batch.books.map(function (b, i) {
+      var dup = findDup(ix, b), twin = null;
+      dupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
+      dupKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
+      return { b: b, dup: dup, twin: twin, on: !dup };
+    });
+    var seenAt = DOC.seen[batch.id], bulk = { room: batch.room, shelf: batch.shelf, touched: false };
+    var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.b.check; }).length;
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
+      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'book') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
+      (seenAt ? '<p class="flag"><span>You added from this link ' + esc(ago(seenAt)) + '. Books you already have are unticked.</span></p>' : '') +
+      '<div class="bulk"><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
+      '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p></div>' +
+      '<ul class="rv" id="rv">' + rows.map(function (r, i) {
+        var b = r.b, meta = [b.isbn, b.year, b.publisher, where(b)].filter(Boolean).join(' · ');
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '><div class="rv-main">' +
+          '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocomplete="off">' +
+          (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
+          (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
+          (r.dup ? '<span class="rv-dup"><b>Already in your library</b>' + (where(r.dup) ? ' — ' + esc(where(r.dup)) : '') + '. Tick it to add another copy.</span>' : '') +
+          (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
+          '</div></li>';
+      }).join('') + '</ul></div>' +
+      '<div class="ft"><span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
+      datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })));
+    function count() {
+      var n = rows.filter(function (r) { return r.on; }).length;
+      $('rv-add').textContent = n ? 'Add ' + plural(n, 'book') : 'Add'; $('rv-add').disabled = !n;
+      $('rv-n').textContent = n === rows.length ? '' : (rows.length - n) + ' left out';
+    }
+    $('rv').addEventListener('change', function (e) {
+      var li = e.target.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
+      if (e.target.type === 'checkbox') { r.on = e.target.checked; li.classList.toggle('off', !r.on); count(); }
+    });
+    $('rv').addEventListener('input', function (e) {
+      var li = e.target.closest('li'); if (!li || !e.target.dataset.f) return; var r = rows[+li.dataset.i];
+      if (e.target.dataset.f === 'title') r.b.title = e.target.value; else r.b.authors = list(e.target.value, 12, 120);
+    });
+    ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.touched = true; bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
+    $('rvx').addEventListener('click', closeSheet);
+    $('rv-add').addEventListener('click', function () {
+      var now = Date.now(), added = today(), n = 0, first = null;
+      rows.forEach(function (r) {
+        if (!r.on) return;
+        var b = Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added });
+        if (bulk.touched) { if (bulk.room || bulk.shelf) { b.room = bulk.room; b.shelf = bulk.shelf; } }
+        else {
+          if (!b.shelf && (!b.room || fold(b.room) === fold(bulk.room))) b.shelf = bulk.shelf;
+          if (!b.room) b.room = bulk.room;
+        }
+        b = cleanBook(b); if (!b) return;
+        DOC.books[b.id] = b; n++; first = first || b;
+      });
+      if (!n) return;
+      DOC.seen[batch.id] = DOC.seen[batch.id] || now;
+      DOC = cleanDoc(DOC); persist(); closeSheet();
+      UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; PREF.sort = 'added'; savePrefs(); render();
+      window.scrollTo(0, 0);
+      toast('Added ' + plural(n, 'book') + ' — newest first');
+    });
+    count();
+    return panel;
+  }
+
+  function librarySheet(doc) {
+    var mine = DOC.books, theirs = live(doc), fresh = theirs.filter(function (b) { return !mine[b.id]; }).length;
+    var newer_ = theirs.filter(function (b) { return mine[b.id] && newer(b, mine[b.id]); }).length;
+    openSheet('<div class="hd"><h2 id="sheetTitle">Open a Shelfmark library</h2><button class="btn sm quiet" type="button" id="lbx">Not now</button></div><div class="bd">' +
+      '<p class="lede">This file holds <b>' + plural(theirs.length, 'book') + '</b>. ' + (fresh ? plural(fresh, 'is', 'are').replace(/^\d+/, fresh) + ' not on this device' : 'Every one is already on this device') + (newer_ ? ', and ' + plural(newer_, 'book') + ' changed more recently than your copy' : '') + '.</p>' +
+      '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
+      '<div class="ft"><span class="grow"></span><button class="btn quiet" type="button" id="lbx2">Cancel</button><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>');
+    $('lbx').addEventListener('click', closeSheet); $('lbx2').addEventListener('click', closeSheet);
+    $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); persist(); closeSheet(); render(); toast('Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')'); });
+  }
+
+  function importSheet() {
+    openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
+      '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.</span></li><li><span>Claude reads them and gives you a <b>Shelfmark link</b>. Open it and you’ll see the list here to check before anything is added.</span></li><li><span>For a big batch Claude may give you a <b>file</b> instead. Open it below.</span></li></ol>' +
+      '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A batch from Claude or a library backup (.json)</span></div>' +
+      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, or the JSON text" spellcheck="false"></textarea></label>' +
+      '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div></div>');
+    $('imx').addEventListener('click', closeSheet);
+    $('imfile').addEventListener('click', function () { $('fileIn').click(); });
+    $('imgo').addEventListener('click', function () { var t = $('impaste').value; if (!t.trim()) { $('impaste').focus(); return; } takeIncoming(parseIncoming(t)); });
+  }
+  $('fileIn').addEventListener('change', function () {
+    var f = this.files && this.files[0]; this.value = ''; if (!f) return;
+    if (f.size > 20e6) { toast('That file is too big to be a Shelfmark file'); return; }
+    takeIncoming(f.text().then(parseIncoming));
+  });
+
+  // ---------- settings ----------
+  function settingsSheet() {
+    var all = live(DOC);
+    openSheet('<div class="hd"><h2 id="sheetTitle">Settings</h2><button class="btn sm quiet" type="button" id="stx">Done</button></div><div class="bd">' +
+      '<section class="sect" id="driveSect"></section>' +
+      '<section class="sect"><h3>Covers and details from Open Library</h3>' +
+      '<label class="opt"><input type="checkbox" id="stLook"' + (PREF.lookups ? ' checked' : '') + '><span>Show covers and look up books by ISBN. This sends the ISBN to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
+      '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device.</p>' +
+      '<div class="row"><button class="btn" type="button" id="stDl">Download a backup</button><button class="btn" type="button" id="stCsv">Download a spreadsheet (CSV)</button><button class="btn" type="button" id="stOpen">Open a file…</button></div></section>' +
+      '<section class="sect"><h3>This device</h3><p id="stEraseNote"></p>' +
+      '<div class="row"><button class="btn danger" type="button" id="stErase">Erase this device’s copy</button></div></section></div>');
+    renderDrive();
+    $('stx').addEventListener('click', closeSheet);
+    $('stLook').addEventListener('change', function () { PREF.lookups = this.checked; savePrefs(); render(); });
+    $('stDl').addEventListener('click', function () { download('shelfmark-library-' + today() + '.json', canon(DOC), 'application/json'); });
+    $('stCsv').addEventListener('click', function () { download('shelfmark-' + today() + '.csv', toCsv(DOC), 'text/csv'); });
+    $('stOpen').addEventListener('click', function () { $('fileIn').click(); });
+    $('stErase').addEventListener('click', function () {
+      var btn = this;
+      if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = 'Tap again to erase ' + plural(all.length, 'book'); btn.style.borderColor = 'var(--bad)'; return; }
+      try { localStorage.removeItem(LS); localStorage.removeItem(LSD); } catch (e) { }
+      DOC = { books: {}, seen: {} }; D = freshDrive(); saveDrive(); closeSheet(); renderSync(); render(); toast('Erased this device’s copy');
+    });
+  }
+
+  // ---------- Google Drive sync ----------
+  // The library lives in one JSON file, "Shelfmark library.json", in a Shelfmark folder in the
+  // person's Drive. With the drive.file scope Shelfmark can see only files it made, nothing else.
+  // Each sync reads the file, merges it with this device's copy, and writes it back if anything changed.
+  function freshDrive() { return { on: false, fileId: '', version: '', token: '', exp: 0, last: 0, err: '', pending: false, clientId: D && D.clientId || '' }; }
+  var D = null; D = freshDrive();
+  try { Object.assign(D, JSON.parse(localStorage.getItem(LSD) || '{}')); } catch (e) { }
+  function saveDrive() { try { localStorage.setItem(LSD, JSON.stringify(D)); } catch (e) { } }
+  function clientId() { return GOOGLE_CLIENT_ID || D.clientId || ''; }
+  function hasToken() { return !!D.token && Date.now() < D.exp; }
+  var tokenClient = null, gisLoading = false, syncing = false, again = false, syncT, syncState = 'off';
+
+  function loadGis() {
+    if (tokenClient || gisLoading || !clientId()) return;
+    if (window.google && google.accounts && google.accounts.oauth2) { initToken(); return; }
+    gisLoading = true;
+    var s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = function () { gisLoading = false; initToken(); };
+    s.onerror = function () { gisLoading = false; D.err = 'Couldn’t load Google sign-in. Check your connection.'; renderSync(); renderDrive(); };
+    document.head.appendChild(s);
+  }
+  function initToken() {
+    try {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId(), scope: SCOPE,
+        callback: function (r) {
+          if (!r || r.error || !r.access_token) { D.err = 'Google didn’t allow access' + (r && r.error ? ' (' + r.error + ')' : '') + '.'; saveDrive(); renderSync(); renderDrive(); return; }
+          if (google.accounts.oauth2.hasGrantedAllScopes && !google.accounts.oauth2.hasGrantedAllScopes(r, SCOPE)) { D.err = 'Shelfmark needs permission to keep its own file in your Drive. Try again and leave that box ticked.'; saveDrive(); renderSync(); renderDrive(); return; }
+          D.token = r.access_token; D.exp = Date.now() + (Math.max(+r.expires_in || 3600, 120) - 60) * 1000; D.on = true; D.err = ''; saveDrive(); sync();
+        },
+        error_callback: function (e) { if (e && e.type !== 'popup_closed') { D.err = 'Google sign-in didn’t open. If your browser blocks pop-ups, allow them for this page.'; saveDrive(); } renderSync(); renderDrive(); }
+      });
+    } catch (e) { D.err = 'Google sign-in couldn’t start: ' + e.message; }
+    renderSync(); renderDrive();
+  }
+  // Must run inside a tap: Google's sign-in opens a pop-up.
+  function askToken() {
+    if (!tokenClient) { loadGis(); toast('Google sign-in is still loading — try again in a moment'); return; }
+    tokenClient.requestAccessToken({ prompt: D.on ? '' : 'consent' });
+  }
+  function api(method, url, body, type) {
+    var h = { Authorization: 'Bearer ' + D.token }; if (type) h['Content-Type'] = type;
+    return fetch(url, { method: method, headers: h, body: body }).then(function (r) {
+      if (r.status === 401) { var e = new Error('auth'); e.auth = true; throw e; }
+      if (r.status === 404) { var n = new Error('gone'); n.gone = true; throw n; }
+      if (!r.ok) return r.text().then(function (t) { var m = /"message":\s*"([^"]+)"/.exec(t); throw new Error('Drive said: ' + (m ? m[1] : r.status)); });
+      return r;
+    });
+  }
+  var API = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
+  function q(s) { return encodeURIComponent(s); }
+  function findFiles(kind) { return api('GET', API + '?spaces=drive&orderBy=modifiedTime%20desc&fields=files(id,version)&q=' + q("appProperties has { key='shelfmark' and value='" + kind + "' } and trashed = false")).then(function (r) { return r.json(); }).then(function (j) { return j.files || []; }); }
+  function download_(id) {
+    return api('GET', API + '/' + id + '?alt=media').then(function (r) { return r.text(); }).then(function (t) {
+      var o; try { o = JSON.parse(t); } catch (e) { o = null; }
+      if (!o || !o.library) throw new Error('The library file in your Drive isn’t readable, so Shelfmark left it alone. Download a backup here, then remove that file from Drive to start it fresh.');
+      return cleanDoc(o);
+    });
+  }
+  function upload(id, doc) { return api('PATCH', UP + '/' + id + '?uploadType=media&fields=version', canon(doc), 'application/json').then(function (r) { return r.json(); }).then(function (j) { return String(j.version || ''); }); }
+  function create(meta, body) {
+    var bd = 'shelfmark' + Date.now().toString(36);
+    var payload = '--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + bd + '\r\nContent-Type: application/json\r\n\r\n' + (body || '') + '\r\n--' + bd + '--';
+    return api('POST', UP + '?uploadType=multipart&fields=id,version', payload, 'multipart/related; boundary=' + bd).then(function (r) { return r.json(); });
+  }
+  // The library file's id and version, making it (and its folder) the first time. If two devices each
+  // made one, their books are merged here and the extras go to the Drive trash.
+  function ensureFile() {
+    var byId = D.fileId ? api('GET', API + '/' + D.fileId + '?fields=id,version,trashed').then(function (r) { return r.json(); }).then(function (f) { return f.trashed ? null : f; }, function (e) { if (e.gone) return null; throw e; }) : Promise.resolve(null);
+    return byId.then(function (f) {
+      if (f) return { id: f.id, version: String(f.version) };
+      D.version = '';
+      return findFiles('library').then(function (fs) {
+        if (fs.length) {
+          var extra = fs.slice(1);
+          return extra.reduce(function (p, x) {
+            return p.then(function () { return download_(x.id); }).then(function (d) { DOC = mergeDocs(DOC, d); persist(true); render(); D.pending = true; return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json'); });
+          }, Promise.resolve()).then(function () { D.fileId = fs[0].id; return { id: fs[0].id, version: String(fs[0].version) }; });
+        }
+        return findFiles('folder').then(function (fo) {
+          return fo.length ? fo[0].id : api('POST', API + '?fields=id', JSON.stringify({ name: 'Shelfmark', mimeType: 'application/vnd.google-apps.folder', appProperties: { shelfmark: 'folder' } }), 'application/json').then(function (r) { return r.json(); }).then(function (x) { return x.id; });
+        }).then(function (folder) {
+          return create({ name: 'Shelfmark library.json', mimeType: 'application/json', parents: [folder], appProperties: { shelfmark: 'library' } }, canon(DOC));
+        }).then(function (x) { D.fileId = x.id; D.version = String(x.version); D.pending = false; return { id: x.id, version: D.version, made: true }; });
+      });
+    });
+  }
+  function sync() {
+    if (!D.on) return Promise.resolve();
+    if (syncing) { again = true; return Promise.resolve(); }
+    if (!hasToken()) { renderSync(); return Promise.resolve(); }
+    syncing = true; clearTimeout(syncT); var seq = editSeq; setSync('busy');
+    return ensureFile().then(function (f) {
+      if (f.made || f.version === D.version && !D.pending) return;
+      var got = f.version === D.version ? Promise.resolve(null) : download_(f.id);
+      return got.then(function (remote) {
+        var merged = remote ? mergeDocs(DOC, remote) : DOC;
+        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); }
+        if (!remote || canon(merged) !== canon(remote)) return upload(f.id, merged).then(function (v) { D.version = v; });
+        D.version = f.version;
+      });
+    }).then(function () {
+      if (editSeq === seq) D.pending = false;
+      D.last = Date.now(); D.err = ''; saveDrive(); syncing = false; renderSync(); renderDrive();
+      if (again || D.pending) { again = false; syncSoon(); }
+    }, function (e) {
+      syncing = false; again = false;
+      if (e.auth) { D.token = ''; D.exp = 0; } else D.err = e.message || 'Sync failed';
+      saveDrive(); renderSync(); renderDrive();
+    });
+  }
+  function syncSoon() { if (!D.on || !hasToken()) { renderSync(); return; } clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
+  function setSync(s) { syncState = s; var b = $('syncBtn'); b.dataset.s = s; }
+  function renderSync() {
+    var b = $('syncBtn'); b.hidden = !D.on || !clientId();
+    if (b.hidden) return;
+    if (syncing) { setSync('busy'); $('syncTx').textContent = 'Syncing'; b.title = 'Syncing with Google Drive'; return; }
+    if (!hasToken()) { setSync('tap'); $('syncTx').textContent = 'Sync'; b.title = 'Google needs you to sign in again to sync'; return; }
+    if (D.err) { setSync('err'); $('syncTx').textContent = 'Sync failed'; b.title = D.err; return; }
+    setSync('ok'); $('syncTx').textContent = D.pending ? 'Saving' : 'Synced'; b.title = D.last ? 'Synced with Google Drive ' + ago(D.last) : 'Synced with Google Drive';
+  }
+  function renderDrive() {
+    var s = $('driveSect'); if (!s) return;
+    var html = '<h3>Sync with Google Drive</h3>';
+    if (!clientId()) {
+      html += '<p>Drive sync isn’t set up on this copy of Shelfmark yet. It needs a Google Cloud OAuth client ID for this address (see the README). If you have one, paste it here.</p>' +
+        '<div class="isbnrow"><input id="dvCid" class="mono" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="dvCidGo">Save</button></div>';
+    } else if (!D.on) {
+      html += '<p>Keep your library in your own Google Drive and the same on every device you use. Shelfmark can see only the files it makes: one folder, <span class="drivepath">Shelfmark</span>, with your library file in it.</p>' +
+        (D.err ? '<p class="err">' + esc(D.err) + '</p>' : '') + '<div class="row"><button class="btn primary" type="button" id="dvGo">Connect Google Drive</button></div>';
+    } else {
+      html += '<p>' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Shelfmark out after an hour. Tap <b>Sync now</b> to sign back in; your changes are safe here meanwhile.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
+        (D.err ? '<p class="err">' + esc(D.err) + '</p>' : '') +
+        '<p>Your library is in <span class="drivepath">My Drive › Shelfmark › Shelfmark library.json</span>. Drive keeps its earlier versions for 30 days (right-click it › File information › Manage versions).</p>' +
+        '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
+    }
+    s.innerHTML = html;
+    if ($('stEraseNote')) $('stEraseNote').textContent = 'Erasing removes your library from this browser only' + (D.on ? ', and disconnects Drive here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
+    if ($('dvCidGo')) $('dvCidGo').addEventListener('click', function () {
+      var v = str($('dvCid').value, 200);
+      if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(v)) { toast('That doesn’t look like a client ID — it ends in .apps.googleusercontent.com'); return; }
+      D.clientId = v; saveDrive(); loadGis(); renderDrive();
+    });
+    if ($('dvGo')) $('dvGo').addEventListener('click', askToken);
+    if ($('dvSync')) $('dvSync').addEventListener('click', syncNow);
+    if ($('dvOff')) $('dvOff').addEventListener('click', function () {
+      try { if (D.token && window.google) google.accounts.oauth2.revoke(D.token, function () { }); } catch (e) { }
+      var cid = D.clientId; D = freshDrive(); D.clientId = cid; saveDrive(); renderSync(); renderDrive(); render();
+      toast('Drive disconnected on this device. Your library is still here and in Drive.');
+    });
+  }
+  function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
+
+  // ---------- wiring ----------
+  $('addBtn').addEventListener('click', function () { bookSheet({ title: '', room: UI.room && UI.room !== NOROOM ? UI.room : '' }, true); });
+  $('importBtn').addEventListener('click', importSheet);
+  $('setBtn').addEventListener('click', function () { loadGis(); settingsSheet(); });
+  $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err) { D.err = ''; sync(); } else { settingsSheet(); } });
+  $('list').addEventListener('click', function (e) {
+    var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
+    var a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'add') $('addBtn').click();
+    else if (a.dataset.act === 'import') importSheet();
+    else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
+  });
+  $('chips').addEventListener('click', function (e) { var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s; render(); });
+  var qT; $('q').addEventListener('input', function () { clearTimeout(qT); var v = this.value; qT = setTimeout(function () { UI.q = v; render(); }, 90); });
+  $('roomSel').addEventListener('change', function () { UI.room = this.value; render(); });
+  $('tagSel').addEventListener('change', function () { UI.tag = this.value; render(); });
+  $('sortSel').addEventListener('change', function () { PREF.sort = this.value; savePrefs(); render(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('sheet').hidden) { closeSheet(); return; }
+    if (e.key === '/' && $('sheet').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) { e.preventDefault(); $('q').focus(); }
+  });
+  window.addEventListener('hashchange', checkLink);
+  // Another tab on this device changed the library: pick it up.
+  window.addEventListener('storage', function (e) {
+    if (e.key === LS) {
+      try {
+        if (!e.newValue) DOC = { books: {}, seen: {} };
+        else { var theirs = cleanDoc(JSON.parse(e.newValue)), m = mergeDocs(DOC, theirs); DOC = m; if (canon(m) !== canon(theirs)) persist(true); }
+      } catch (x) { }
+      if ($('sheet').hidden) render();
+    }
+    if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }
+  });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && D.on && hasToken()) sync(); renderSync(); });
+  setInterval(function () { if (document.visibilityState === 'visible' && D.on && hasToken() && !syncing) sync(); else renderSync(); }, 60000);
+
+  render();
+  if (D.on && clientId()) { loadGis(); if (hasToken()) sync(); }
+  renderSync();
+  checkLink();
+})();</script>
+</body>
+</html>

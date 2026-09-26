@@ -1,0 +1,9 @@
+{
+  "name": "shelfmark",
+  "private": true,
+  "license": "MIT",
+  "description": "A home library catalog that keeps your books in your browser and your own Google Drive",
+  "scripts": {
+    "test": "node test/library.test.js"
+  }
+}
