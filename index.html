@@ -238,9 +238,9 @@ details.more .fs{padding:2px 12px 12px}
 .drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
 
 /* footer */
-.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink3)}
-.foot a{color:var(--ink3);text-decoration:none}
-.foot a:hover{color:var(--accent);text-decoration:underline}
+.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink2)}
+.foot a{color:var(--ink2);text-decoration:none}
+.foot a:hover,.foot a:focus-visible{color:var(--accent);text-decoration:underline}
 
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;max-width:calc(100vw - 32px)}
@@ -257,7 +257,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   .sync[data-s="ok"] .t,.sync[data-s="busy"] .t{display:none}
   #addBtn{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;justify-content:center;padding:0;box-shadow:0 12px 26px -8px rgba(0,0,0,.5);z-index:30}
   #addBtn svg{width:24px;height:24px}
-  .wrap{padding-bottom:100px}
+  .wrap{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
   .list{grid-template-columns:1fr}
   .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
@@ -301,7 +301,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   </div>
   <p class="count" id="count" aria-live="polite"></p>
   <div class="list" id="list"></div>
-  <footer class="foot"><a href="privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a><span aria-hidden="true">·</span><a href="/">junkdrawer.works</a></footer>
+  <footer class="foot"><a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://junkdrawer.works/shelfmark/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a></footer>
 </main>
 <div id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button></div>
