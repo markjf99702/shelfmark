@@ -983,7 +983,19 @@ body.locked .toast.show{transform:translate(-50%,0)}
   try { Object.assign(D, JSON.parse(localStorage.getItem(LSD) || '{}')); } catch (e) { }
   function saveDrive() { try { localStorage.setItem(LSD, JSON.stringify(D)); } catch (e) { } }
   function clientId() { return GOOGLE_CLIENT_ID || D.clientId || ''; }
-  function hasToken() { return !!D.token && Date.now() < D.exp; }
+  function hasToken() { if (!(D.token && Date.now() < D.exp) && D.on && useShared()) saveDrive(); return !!D.token && Date.now() < D.exp; }
+  // Every junkdrawer.works app shares one Google sign-in (same address, same OAuth client), kept under this key
+  // as { token, exp, scope, email }: signing in to any of them lets the others sync for that hour without asking.
+  // Only with the junkdrawer.works client; a pasted client ID is a different client that sees different files.
+  var LSG = 'junkdrawer.google';
+  function readShared() { if (!GOOGLE_CLIENT_ID || clientId() !== GOOGLE_CLIENT_ID) return null; try { return JSON.parse(localStorage.getItem(LSG) || 'null'); } catch (e) { return null; } }
+  function useShared() {
+    var g = readShared();
+    if (!g || !g.token || !(g.exp - 60000 > Date.now()) || String(g.scope || '').indexOf(SCOPE) < 0) return false;
+    D.token = g.token; D.exp = g.exp - 60000; return true;
+  }
+  function shareToken() { var g = readShared(); if (!GOOGLE_CLIENT_ID || clientId() !== GOOGLE_CLIENT_ID) return; try { localStorage.setItem(LSG, JSON.stringify({ token: D.token, exp: D.exp + 60000, scope: SCOPE, email: g && g.email || '' })); } catch (e) { } }
+  function dropShared(token) { var g = readShared(); if (g && g.token === token) try { localStorage.removeItem(LSG); } catch (e) { } }
   var tokenClient = null, gisLoading = false, syncing = false, again = false, syncT, syncState = 'off';
 
   function loadGis() {
@@ -1002,17 +1014,20 @@ body.locked .toast.show{transform:translate(-50%,0)}
         callback: function (r) {
           if (!r || r.error || !r.access_token) { D.err = 'Google didn’t allow access' + (r && r.error ? ' (' + r.error + ')' : '') + '.'; saveDrive(); renderSync(); renderDrive(); return; }
           if (google.accounts.oauth2.hasGrantedAllScopes && !google.accounts.oauth2.hasGrantedAllScopes(r, SCOPE)) { D.err = 'Shelfmark needs permission to keep its own file in your Drive. Try again and leave that box ticked.'; saveDrive(); renderSync(); renderDrive(); return; }
-          D.token = r.access_token; D.exp = Date.now() + (Math.max(+r.expires_in || 3600, 120) - 60) * 1000; D.on = true; D.err = ''; saveDrive(); sync();
+          D.token = r.access_token; D.exp = Date.now() + (Math.max(+r.expires_in || 3600, 120) - 60) * 1000; D.on = true; D.err = ''; saveDrive(); shareToken(); sync();
         },
         error_callback: function (e) { if (e && e.type !== 'popup_closed') { D.err = 'Google sign-in didn’t open. If your browser blocks pop-ups, allow them for this page.'; saveDrive(); } renderSync(); renderDrive(); }
       });
     } catch (e) { D.err = 'Google sign-in couldn’t start: ' + e.message; }
     renderSync(); renderDrive();
   }
-  // Must run inside a tap: Google's sign-in opens a pop-up.
+  // Must run inside a tap: Google's sign-in opens a pop-up. Signed in to another junkdrawer.works app within
+  // the hour, it isn't needed at all.
   function askToken() {
+    if (useShared()) { D.on = true; D.err = ''; saveDrive(); sync(); renderSync(); renderDrive(); return; }
     if (!tokenClient) { loadGis(); toast('Google sign-in is still loading — try again in a moment'); return; }
-    tokenClient.requestAccessToken({ prompt: D.on ? '' : 'consent' });
+    var g = readShared(), hint = g && g.email;
+    tokenClient.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: D.on ? '' : 'consent' });
   }
   function api(method, url, body, type) {
     var h = { Authorization: 'Bearer ' + D.token }; if (type) h['Content-Type'] = type;
@@ -1081,7 +1096,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       if (again || D.pending) { again = false; syncSoon(); }
     }, function (e) {
       syncing = false; again = false;
-      if (e.auth) { D.token = ''; D.exp = 0; } else D.err = e.message || 'Sync failed';
+      if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; } else D.err = e.message || 'Sync failed';
       saveDrive(); renderSync(); renderDrive();
     });
   }
@@ -1120,7 +1135,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if ($('dvGo')) $('dvGo').addEventListener('click', askToken);
     if ($('dvSync')) $('dvSync').addEventListener('click', syncNow);
     if ($('dvOff')) $('dvOff').addEventListener('click', function () {
-      try { if (D.token && window.google) google.accounts.oauth2.revoke(D.token, function () { }); } catch (e) { }
+      // No revoke: that cancels Google's permission for every app on the junkdrawer.works client, not just this one.
       var cid = D.clientId; D = freshDrive(); D.clientId = cid; saveDrive(); renderSync(); renderDrive(); render();
       toast('Drive disconnected on this device. Your library is still here and in Drive.');
     });
@@ -1158,6 +1173,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       } catch (x) { }
       if ($('sheet').hidden) render();
     }
+    if (e.key === LSG) renderSync(); // another junkdrawer.works app signed in
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && D.on && hasToken()) sync(); renderSync(); });
