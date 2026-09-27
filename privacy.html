@@ -46,7 +46,7 @@ code{font:14px var(--mono);background:var(--surface);border:1px solid var(--line
 
 <h2>What Shelfmark does with your Google account</h2>
 <p>Drive sync asks Google for one permission: <code>drive.file</code>, “see, edit, create, and delete only the specific Google Drive files you use with this app”. With it, Shelfmark can reach only the folder and file it made itself. It can't see, open or list anything else in your Drive, and it doesn't ask for your name, email address or contacts.</p>
-<p>Shelfmark uses this access only to read your library file, merge it with the copy on your device, and write it back. The sign-in token Google gives your browser lasts about an hour and is kept in your browser so a reload doesn't sign you out. It is never sent anywhere except to Google.</p>
+<p>Shelfmark uses this access only to read your library file, merge it with the copy on your device, and write it back. The sign-in token Google gives your browser lasts about an hour and is kept in your browser so a reload doesn't sign you out. It's shared with the other <a href="/privacy.html">junkdrawer.works projects</a> on the same device, so signing in to one lets the others sync during that hour. It is never sent anywhere except to Google.</p>
 <p>Shelfmark's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Your Drive data is used only to show you your own library. It isn't transferred to anyone, used for advertising, or read by any person.</p>
 
 <h2>Other services the page talks to</h2>
@@ -61,7 +61,8 @@ code{font:14px var(--mono);background:var(--surface);border:1px solid var(--line
 <ul>
 <li>To remove your catalog from a device, use <b>Settings › Erase this device's copy</b>.</li>
 <li>To remove the synced copy, delete the <code>Shelfmark</code> folder from your Google Drive.</li>
-<li>To take back Shelfmark's access to your Drive, use <b>Settings › Disconnect this device</b>. You can also remove Shelfmark under <a href="https://myaccount.google.com/connections">Third-party apps &amp; services</a> in your Google Account.</li>
+<li>To stop syncing on one device, use <b>Settings › Disconnect this device</b>. Your library stays there and in Drive.</li>
+<li>To take back access to your Drive, remove junkdrawer.works under <a href="https://myaccount.google.com/connections">Third-party apps &amp; services</a> in your Google Account. That takes it back from every junkdrawer.works project at once, since they share one Google sign-in.</li>
 </ul>
 
 <h2>Questions</h2>

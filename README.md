@@ -45,6 +45,8 @@ Removed books are remembered, so a removal on your phone reaches your laptop ins
 
 Google signs a page like this out after an hour. When that happens the sync button turns amber and says **Sync**, and one tap signs you back in. Your changes wait safely on the device until then.
 
+The sign-in is shared with the other junkdrawer.works projects on the same device (kept under `junkdrawer.google` in localStorage). Signing in to any of them lets Shelfmark sync during that hour without asking, and the other way round. **Disconnect this device** only stops syncing here; it doesn't revoke Google's permission, which would sign every project out. To take the permission back, remove junkdrawer.works under Third-party apps & services in your Google Account.
+
 Drive keeps earlier versions of the library file for 30 days (**File information › Manage versions** in Drive). If the file is ever damaged, Shelfmark leaves it alone rather than overwrite it, and says so.
 
 ### One-time setup
