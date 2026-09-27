@@ -129,7 +129,8 @@ a{color:var(--accent)}
 .cv{--cloth:#7A2E26;position:relative;flex:none;width:46px;height:68px;border-radius:2px 5px 5px 2px;background:linear-gradient(90deg,rgba(0,0,0,.22) 0 3px,rgba(255,255,255,.08) 3px 5px,transparent 5px),var(--cloth);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),0 2px 4px -1px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#F4E9D2}
 .cv::after{content:"";position:absolute;left:9px;right:6px;top:10px;height:1px;background:rgba(244,233,210,.45);box-shadow:0 3px 0 rgba(244,233,210,.25)}
 .cv-t{font:500 17px/1 var(--serif);letter-spacing:.02em;padding-left:3px}
-.cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--surface2)}
+.cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .25s}
+.cv img.on{opacity:1}
 .cv.lg{width:92px;height:136px;border-radius:3px 7px 7px 3px}
 .cv.lg::after{top:18px;left:14px;right:10px}
 .cv.lg .cv-t{font-size:13.5px;line-height:1.15;padding:28px 10px 8px 14px;align-self:stretch;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;text-align:left;width:100%}
@@ -270,7 +271,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 @media (max-width:340px){
   .two,.loan{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i{animation:none}}
+@media (prefers-reduced-motion:reduce){.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i{animation:none}}
 </style>
 </head>
 <body>
@@ -429,6 +430,25 @@ body.locked .toast.show{transform:translate(-50%,0)}
     return k;
   }
   function dupIndex(d) { var ix = {}; live(d).forEach(function (b) { dupKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
+  // Where to look a book's cover up: its ISBN when it has one, otherwise its title (before any colon) and first author.
+  function coverQuery(b) {
+    var i = isbn13(b.isbn);
+    if (i) return { key: 'i' + i, q: 'isbn=' + i, isbn: i };
+    var t = str(b.title, 300).split(':')[0].trim(), a = str((b.authors || [])[0] || '', 120);
+    if (!t) return null;
+    return { key: 't' + fold(t) + '|' + fold(a), q: 'title=' + encodeURIComponent(t) + (a ? '&author=' + encodeURIComponent(a) : ''), tk: titleKey(t) };
+  }
+  // Open Library's cover for a whole work can be any edition's (a German one, say), so pick the cover of an edition
+  // with this book's ISBN, or with a title that matches this book's, which also keeps the language right.
+  function pickCover(work, editions, c) {
+    for (var i = 0; i < (editions || []).length; i++) {
+      var e = editions[i] || {}, cv = (e.covers || []).filter(function (x) { return x > 0; })[0];
+      if (!cv) continue;
+      if (c.isbn ? (e.isbn_13 || []).concat(e.isbn_10 || []).map(isbn13).indexOf(c.isbn) >= 0 : titleKey(e.title || '') === c.tk) return cv;
+    }
+    if (!work || !(work.cover_i > 0)) return 0;
+    return c.isbn || titleKey(work.title || '') === c.tk ? work.cover_i : 0;
+  }
   function findDup(ix, b) { var k = dupKeys(b); for (var i = 0; i < k.length; i++) if (ix[k[i]]) return ix[k[i]]; return null; }
 
   // A batch is what Claude hands over: {shelfmark: 1, batch: {id, name, made, room, shelf, books: [...]}}.
@@ -521,12 +541,54 @@ body.locked .toast.show{transform:translate(-50%,0)}
     toast('Removed “' + old.title + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); });
   }
 
+  // ---------- covers ----------
+  // With lookups on, each book's cover is found once through Open Library's search, by ISBN or by title and
+  // author, and the cover's id is kept in this browser (0: none found). Covers fetched by id aren't rate-limited.
+  var LSC = 'shelfmark.covers', COVERS = {}, coverQ = [], coverQueued = {}, coverBusy = 0, coverPause = 0, coverFails = 0, coverSaveT;
+  try { COVERS = JSON.parse(localStorage.getItem(LSC) || '{}') || {}; } catch (e) { }
+  function coverId(b, noQueue) {
+    var c = coverQuery(b); if (!c) return 0;
+    var v = COVERS[c.key];
+    if (v === undefined && !noQueue && !coverQueued[c.key]) { coverQueued[c.key] = 1; c.tries = 0; coverQ.push(c); pumpCovers(); }
+    return v > 0 ? v : 0;
+  }
+  function pumpCovers() {
+    while (PREF.lookups && coverBusy < 2 && coverQ.length && Date.now() > coverPause) {
+      var c = coverQ.shift(); coverBusy++;
+      fetchCover(c);
+    }
+  }
+  function fetchCover(c) {
+    var ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
+    var opt = ctl ? { signal: ctl.signal } : {}, get = function (u) { return fetch(u, opt).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
+    get('https://openlibrary.org/search.json?' + c.q + '&fields=key,title,cover_i&limit=1').then(function (j) {
+      var w = j && j.docs && j.docs[0];
+      if (!w || !/^\/works\/OL\d+W$/.test(w.key || '')) return 0;
+      return get('https://openlibrary.org' + w.key + '/editions.json?limit=100').then(function (e) { return pickCover(w, e && e.entries, c); });
+    }).then(function (id) {
+      COVERS[c.key] = id > 0 ? id : 0; coverFails = 0; delete coverQueued[c.key];
+      clearTimeout(coverSaveT); coverSaveT = setTimeout(function () { try { localStorage.setItem(LSC, JSON.stringify(COVERS)); } catch (e) { } }, 1000);
+      if (COVERS[c.key]) showCover(c.key);
+    }, function () {
+      // Open Library is slow at times, or the connection dropped: try this one again later (three goes per
+      // visit), and after a run of failures give it half a minute before carrying on.
+      if (++c.tries < 3) coverQ.push(c); else delete coverQueued[c.key];
+      if (++coverFails >= 3) { coverFails = 0; coverPause = Date.now() + 30000; setTimeout(pumpCovers, 30500); }
+    }).then(function () { clearTimeout(stop); coverBusy--; setTimeout(pumpCovers, 150); });
+  }
+  function showCover(key) {
+    document.querySelectorAll('#list .bk[data-id]').forEach(function (el) {
+      var b = DOC.books[el.dataset.id], q = b && !b.del && coverQuery(b), cv = el.querySelector('.cv');
+      if (q && q.key === key && cv) cv.outerHTML = cover(b);
+    });
+  }
+
   // ---------- rendering ----------
-  function cover(b, size) {
-    var c = CLOTH[hash(fold(b.title)) % CLOTH.length], i = isbn13(b.isbn);
+  function cover(b, size, noQueue) {
+    var c = CLOTH[hash(fold(b.title)) % CLOTH.length], id = PREF.lookups ? coverId(b, noQueue) : 0;
     var words = String(b.title).replace(/^(the|a|an)\s+/i, '').split(/\s+/).map(function (w) { return w.replace(/^[^\p{L}\p{N}]+/u, ''); }).filter(Boolean);
     var tx = size === 'lg' ? esc(b.title) : esc(words.slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join(''));
-    var img = PREF.lookups && i ? '<img src="https://covers.openlibrary.org/b/isbn/' + i + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg?default=false" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
+    var img = id ? '<img src="https://covers.openlibrary.org/b/id/' + id + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add(\'on\')" onerror="this.remove()">' : '';
     return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t">' + tx + '</span>' + img + '</span>';
   }
   function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
@@ -701,7 +763,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
       $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
-      $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn') }, 'lg');
+      $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn'), authors: list(v('f-authors'), 12, 120) }, 'lg', true);
     }
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
@@ -893,14 +955,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
     openSheet('<div class="hd"><h2 id="sheetTitle">Settings</h2><button class="btn sm quiet" type="button" id="stx">Done</button></div><div class="bd">' +
       '<section class="sect" id="driveSect"></section>' +
       '<section class="sect"><h3>Covers and details from Open Library</h3>' +
-      '<label class="opt"><input type="checkbox" id="stLook"' + (PREF.lookups ? ' checked' : '') + '><span>Show covers and look up books by ISBN. This sends the ISBN to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
+      '<label class="opt"><input type="checkbox" id="stLook"' + (PREF.lookups ? ' checked' : '') + '><span>Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
       '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device.</p>' +
       '<div class="row"><button class="btn" type="button" id="stDl">Download a backup</button><button class="btn" type="button" id="stCsv">Download a spreadsheet (CSV)</button><button class="btn" type="button" id="stOpen">Open a file…</button></div></section>' +
       '<section class="sect"><h3>This device</h3><p id="stEraseNote"></p>' +
       '<div class="row"><button class="btn danger" type="button" id="stErase">Erase this device’s copy</button></div></section></div>');
     renderDrive();
     $('stx').addEventListener('click', closeSheet);
-    $('stLook').addEventListener('change', function () { PREF.lookups = this.checked; savePrefs(); render(); });
+    $('stLook').addEventListener('change', function () { PREF.lookups = this.checked; savePrefs(); if (!PREF.lookups) { coverQ = []; coverQueued = {}; } render(); });
     $('stDl').addEventListener('click', function () { download('shelfmark-library-' + today() + '.json', canon(DOC), 'application/json'); });
     $('stCsv').addEventListener('click', function () { download('shelfmark-' + today() + '.csv', toCsv(DOC), 'text/csv'); });
     $('stOpen').addEventListener('click', function () { $('fileIn').click(); });

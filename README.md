@@ -21,7 +21,7 @@ It is one HTML file with no build step and no server. Open `index.html` in a bro
   - see books you already own, which are unticked;
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right.
-- **Covers and lookups** from Open Library, only if you turn them on in Settings. They send the ISBN, nothing else.
+- **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
 - **Backups.** Download the whole library as a file, open it on any device (it merges), or download a spreadsheet (CSV).
 
 ## Your data
