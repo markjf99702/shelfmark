@@ -49,7 +49,7 @@ Shelfmark ignores fields it doesn't know, trims text to the limits above, and dr
 A link is Shelfmark's address with the batch in the fragment:
 
 ```
-https://junkdrawer.works/shelfmark/#s1z<data>
+https://shelfmark.junkdrawer.works/#s1z<data>
 ```
 
 `<data>` is the compact batch JSON, compressed with raw DEFLATE, then base64url-encoded without padding. `#s1j<data>` is the same without compression. `#batch=<URL-encoded JSON>` also works and can be written by hand, but it gets long. The part after `#` never reaches a server.

@@ -5,7 +5,7 @@ description: Catalog someone's books into Shelfmark, their home-library app, fro
 
 # Shelfmark cataloger
 
-Shelfmark (https://junkdrawer.works/shelfmark/) is a home-library catalog that keeps its data in the person's browser and, if they turn on sync, in one file in their own Google Drive. Nothing is stored anywhere else. Your job is to turn photos of their books into an accurate list and hand it to Shelfmark as a **link**. Opening the link shows the list in Shelfmark to check, with duplicates already caught, before anything is added.
+Shelfmark (https://shelfmark.junkdrawer.works/) is a home-library catalog that keeps its data in the person's browser and, if they turn on sync, in one file in their own Google Drive. Nothing is stored anywhere else. Your job is to turn photos of their books into an accurate list and hand it to Shelfmark as a **link**. Opening the link shows the list in Shelfmark to check, with duplicates already caught, before anything is added.
 
 Two things make this worth doing, so protect them:
 - **Accuracy over completeness.** A wrong book in someone's catalog is worse than a missing one. Never invent details, and say plainly what you couldn't read.

@@ -25,7 +25,7 @@ and exits 1 (printing why) if the input can't be used.
 import argparse, base64, datetime, hashlib, json, re, sys, zlib
 from pathlib import Path
 
-DEFAULT_BASE = 'https://junkdrawer.works/shelfmark/'
+DEFAULT_BASE = 'https://shelfmark.junkdrawer.works/'
 FORMATS = {
     'hardcover': 'hardcover', 'hardback': 'hardcover', 'hard cover': 'hardcover', 'hc': 'hardcover', 'cloth': 'hardcover', 'library binding': 'hardcover',
     'paperback': 'paperback', 'softcover': 'paperback', 'soft cover': 'paperback', 'trade paperback': 'paperback', 'pb': 'paperback', 'tpb': 'paperback',

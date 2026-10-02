@@ -3,9 +3,9 @@
 // the fonts come from Google, so offline the page falls back to the system's.
 // Network first, so a new version shows up as soon as you're online.
 
-const CACHE = 'shelfmark-v1'; // bump the number when the file list changes
+const CACHE = 'shelfmark-v2'; // bump the number when the file list changes
 const SHELL = [
-  './', 'index.html', 'privacy.html', 'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
+  './', 'index.html', 'carry.js', 'privacy.html', 'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
 ];
 
 self.addEventListener('install', e => {

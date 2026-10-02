@@ -2,7 +2,7 @@
 
 A catalog for the books in your house: what you have, where each one is, what you've read, and who borrowed what. Photograph a shelf, send the photos to Claude, and open the link it gives you to add them.
 
-It is one HTML file with no build step and no server. Open `index.html` in a browser, or host it anywhere static (GitHub Pages works). It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; looking up a book's details needs a signal. `manifest.webmanifest`, the icons (`node tools/make-icons.mjs` redraws the PNGs from `icon.svg`) and `sw.js` make that work, and `og.png` is the link preview. It lives at [junkdrawer.works/shelfmark](https://junkdrawer.works/shelfmark/).
+It is one HTML file with no build step and no server. Open `index.html` in a browser, or host it anywhere static (GitHub Pages works). It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; looking up a book's details needs a signal. `manifest.webmanifest`, the icons (`node tools/make-icons.mjs` redraws the PNGs from `icon.svg`) and `sw.js` make that work, and `og.png` is the link preview. It lives at [shelfmark.junkdrawer.works](https://shelfmark.junkdrawer.works/).
 
 ## What it does
 
@@ -26,7 +26,7 @@ It is one HTML file with no build step and no server. Open `index.html` in a bro
 
 ## Your data
 
-The [privacy page](https://junkdrawer.works/shelfmark/privacy.html) (`privacy.html`) says this for anyone using it. Your catalog is kept in this browser's local storage and, if you turn on sync, in one file in your own Google Drive. Nothing else stores it: this site is static files, and links from Claude carry their books in the part of the address after `#`, which browsers never send to a server.
+The [privacy page](https://shelfmark.junkdrawer.works/privacy.html) (`privacy.html`) says this for anyone using it. Your catalog is kept in this browser's local storage and, if you turn on sync, in one file in your own Google Drive. Nothing else stores it: this site is static files, and links from Claude carry their books in the part of the address after `#`, which browsers never send to a server.
 
 Shelfmark asks Google for the narrowest Drive permission there is (`drive.file`). It can see and change only files it made itself, which is one folder, `Shelfmark`, holding `Shelfmark library.json`. It can't see anything else in your Drive.
 
@@ -45,7 +45,7 @@ Removed books are remembered, so a removal on your phone reaches your laptop ins
 
 Google signs a page like this out after an hour. When that happens the sync button turns amber and says **Sync**, and one tap signs you back in. Your changes wait safely on the device until then.
 
-The sign-in is shared with the other junkdrawer.works projects on the same device (kept under `junkdrawer.google` in localStorage). Signing in to any of them lets Shelfmark sync during that hour without asking, and the other way round. **Disconnect this device** only stops syncing here; it doesn't revoke Google's permission, which would sign every project out. To take the permission back, remove junkdrawer.works under Third-party apps & services in your Google Account.
+The sign-in is kept for the hour under `junkdrawer.google` in localStorage, the same way as the other junkdrawer.works projects, and it remembers your account for next time. Shelfmark has its own address, so it signs in on its own. **Disconnect this device** only stops syncing here; it doesn't revoke Google's permission, which would sign every project out. To take the permission back, remove junkdrawer.works under Third-party apps & services in your Google Account.
 
 Drive keeps earlier versions of the library file for 30 days (**File information › Manage versions** in Drive). If the file is ever damaged, Shelfmark leaves it alone rather than overwrite it, and says so.
 
@@ -62,16 +62,16 @@ Sync needs an OAuth client ID from a Google Cloud project, tied to the address S
    - contact email: your address
 4. In **Data Access**, choose **Add or remove scopes**. Add `https://www.googleapis.com/auth/drive.file` ("See, edit, create, and delete only the specific Google Drive files you use with this app"), then save.
 5. In **Branding**, fill in:
-   - **Application home page:** `https://junkdrawer.works/shelfmark/`
-   - **Application privacy policy link:** `https://junkdrawer.works/shelfmark/privacy.html`
+   - **Application home page:** `https://shelfmark.junkdrawer.works/`
+   - **Application privacy policy link:** `https://shelfmark.junkdrawer.works/privacy.html`
    - **Authorized domains:** `junkdrawer.works`
 
    Save. Google won't publish the app without these, even though the form doesn't mark them required.
 6. In **Audience**, choose **Publish app**. `drive.file` is a non-sensitive scope, so publishing needs no review. Or skip publishing: an app left in **Testing** works for the Google accounts you add under **Test users**, but Google may ask them to approve it again from time to time.
-7. In **Clients**, create a client of type **Web application**. Under **Authorized JavaScript origins**, add `https://junkdrawer.works`, then create it and copy the **Client ID**. It ends in `.apps.googleusercontent.com`. A client ID isn't a secret; it only works from the origins you listed.
+7. In **Clients**, create a client of type **Web application**. Under **Authorized JavaScript origins**, add the address Shelfmark is served from (for the junkdrawer.works copy, `https://shelfmark.junkdrawer.works`, plus `https://junkdrawer.works`, where it used to live), then create it and copy the **Client ID**. It ends in `.apps.googleusercontent.com`. A client ID isn't a secret; it only works from the origins you listed.
 8. Put the ID in `GOOGLE_CLIENT_ID` near the top of the script in `index.html`. Until then, you can paste it into **Settings › Sync with Google Drive** on each device.
 
-Then open **Settings › Connect Google Drive** on each device you use. The copy at junkdrawer.works already has its client ID.
+Then open **Settings › Connect Google Drive** on each device you use. The copy at shelfmark.junkdrawer.works already has its client ID.
 
 ## Adding books with Claude
 
@@ -90,7 +90,7 @@ python3 skill/shelfmark-cataloger/scripts/make_shelfmark.py books.json
 
 ## Opening books from a link
 
-A link like `https://junkdrawer.works/shelfmark/#s1z…` carries a batch of books in the part after `#`. Opening one shows the books and asks before adding them. Opening the same link again says so and unticks what's already there. The format is the batch JSON, compressed with raw DEFLATE and base64url-encoded; `#s1j…` is the same uncompressed. `#batch=` followed by URL-encoded JSON also works, for writing one by hand. `skill/shelfmark-cataloger/references/shelfmark-format.md` describes every field.
+A link like `https://shelfmark.junkdrawer.works/#s1z…` carries a batch of books in the part after `#`. Opening one shows the books and asks before adding them. Opening the same link again says so and unticks what's already there. The format is the batch JSON, compressed with raw DEFLATE and base64url-encoded; `#s1j…` is the same uncompressed. `#batch=` followed by URL-encoded JSON also works, for writing one by hand. `skill/shelfmark-cataloger/references/shelfmark-format.md` describes every field.
 
 ## Files
 

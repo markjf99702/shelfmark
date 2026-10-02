@@ -1,6 +1,6 @@
 # Shelfmark
 
-A home-library catalog: one static `index.html`, no build step, served by GitHub Pages at https://junkdrawer.works/shelfmark/. The catalog lives in the browser's localStorage and, optionally, in one file in the owner's Google Drive (`drive.file` scope). Nothing about anyone's books belongs in this repo.
+A home-library catalog: one static `index.html`, no build step, served by GitHub Pages at https://shelfmark.junkdrawer.works/. The catalog lives in the browser's localStorage and, optionally, in one file in the owner's Google Drive (`drive.file` scope). Nothing about anyone's books belongs in this repo.
 
 - **Book photos, a list of books, or a Goodreads/LibraryThing export sent in a session here:** follow `skill/shelfmark-cataloger/SKILL.md`. Write the batch JSON and the `.shelfmark.json` output to the scratchpad, not the repo, and hand over the link the script prints.
 - **Tests:** `node test/library.test.js` (no dependencies; also round-trips the skill's Python script when `python3` exists). The test pulls the pure logic out of `index.html` between `'use strict';` and `// ---------- state ----------`, plus `linkText` and `parseIncoming` by name, so keep that logic free of DOM access and keep those markers.

@@ -141,7 +141,7 @@ function randomDoc(r, n) {
   const json = JSON.stringify({ shelfmark: 1, batch: { id: 'c1', books: [{ title: 'Cien años de soledad', authors: ['Gabriel García Márquez'] }] } });
   const z = zlib.deflateRawSync(Buffer.from(json)).toString('base64url');
   const j = Buffer.from(json).toString('base64url');
-  eq((await S.parseIncoming('https://junkdrawer.works/shelfmark/#s1z' + z)).batch.books[0].title, 'Cien años de soledad', 'a compressed link opens, accents intact');
+  eq((await S.parseIncoming('https://shelfmark.junkdrawer.works/#s1z' + z)).batch.books[0].title, 'Cien años de soledad', 'a compressed link opens, accents intact');
   eq((await S.parseIncoming('#s1j' + j)).batch.books[0].authors[0], 'Gabriel García Márquez', 'an uncompressed link opens');
   eq((await S.parseIncoming('https://x/#batch=' + encodeURIComponent(json))).kind, 'batch', 'a hand-written #batch= link opens');
   eq((await S.parseIncoming('  ' + json + '\n')).batch.id, 'c1', 'pasted JSON opens');
@@ -163,7 +163,7 @@ function randomDoc(r, n) {
     ] }));
     const out = execFileSync('python3', [py, input, '--out', tmp], { encoding: 'utf8' });
     const url = /Link: (\S+)/.exec(out)[1];
-    check(url.startsWith('https://junkdrawer.works/shelfmark/#s1z'), 'the script makes a Shelfmark link');
+    check(url.startsWith('https://shelfmark.junkdrawer.works/#s1z'), 'the script makes a Shelfmark link');
     const got = (await S.parseIncoming(url)).batch;
     eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit'], 'the script’s link opens with every usable book, in order');
     eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
