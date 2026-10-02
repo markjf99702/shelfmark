@@ -6,7 +6,14 @@
 <meta name="description" content="Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and your own Google Drive.">
 <meta name="theme-color" content="#F5EFE3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15120E" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Shelfmark</title>
+<meta property="og:title" content="Shelfmark">
+<meta property="og:description" content="Your home library: where every book is, what you’ve read, and who borrowed what.">
+<meta property="og:image" content="https://junkdrawer.works/shelfmark/og.png">
+<meta property="og:url" content="https://junkdrawer.works/shelfmark/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -1184,5 +1191,6 @@ body.locked .toast.show{transform:translate(-50%,0)}
   renderSync();
   checkLink();
 })();</script>
+<script>if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () { });</script>
 </body>
 </html>

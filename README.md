@@ -2,7 +2,7 @@
 
 A catalog for the books in your house: what you have, where each one is, what you've read, and who borrowed what. Photograph a shelf, send the photos to Claude, and open the link it gives you to add them.
 
-It is one HTML file with no build step and no server. Open `index.html` in a browser, or host it anywhere static (GitHub Pages works). It lives at [junkdrawer.works/shelfmark](https://junkdrawer.works/shelfmark/).
+It is one HTML file with no build step and no server. Open `index.html` in a browser, or host it anywhere static (GitHub Pages works). It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; looking up a book's details needs a signal. `manifest.webmanifest`, the icons (`node tools/make-icons.mjs` redraws the PNGs from `icon.svg`) and `sw.js` make that work, and `og.png` is the link preview. It lives at [junkdrawer.works/shelfmark](https://junkdrawer.works/shelfmark/).
 
 ## What it does
 
