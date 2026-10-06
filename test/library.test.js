@@ -1,4 +1,4 @@
-// Checks Shelfmark's book cleaning, merging, duplicate finding, links and spreadsheet export.
+// Checks Shelfmark's book cleaning, merging, duplicate finding, links, spreadsheet export and what-to-read-next picks.
 // Run with: node test/library.test.js   (no dependencies; Node 18 or later)
 'use strict';
 const fs = require('fs');
@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, toCsv, csvCell, linkText, parseIncoming, authorOrder };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -125,6 +125,66 @@ function randomDoc(r, n) {
   const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }] }));
   eq(S.findDup(series, { title: 'Heartstopper: Volume 2', authors: ['Alice Oseman'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
   eq((S.findDup(series, { title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }) || {}).id, 'v1', 'but volume 1 again is');
+}
+
+// ---------- what to read next ----------
+{
+  const now = new Date('2026-10-06T12:00:00').getTime();
+  const lib = S.live(S.cleanDoc({ books: [
+    { id: 'old', t: 1, title: 'Middlemarch', authors: ['George Eliot'], pages: 880, added: '2019-03-04', room: 'Den', tags: ['classics'] },
+    { id: 'new', t: 1, title: 'Piranesi', authors: ['Susanna Clarke'], pages: 272, added: '2026-10-01', room: 'Hall', notes: 'Sam says start here\nsecond line' },
+    { id: 'lg2', t: 1, title: 'The Lathe of Heaven', authors: ['Ursula K. Le Guin'], pages: 184, added: '2024-06-01', room: 'Den', tags: ['sf'] },
+    { id: 'nop', t: 1, title: 'No Pages', authors: ['Ann Lee'], added: '2025-01-01' },
+    { id: 'rdg', t: 1, title: 'Being Read', status: 'reading', pages: 100 },
+    { id: 'lnt', t: 1, title: 'Lent Out', pages: 100, loan: { to: 'Sam' } },
+    { id: 'lg1', t: 1, title: 'The Dispossessed', authors: ['Ursula K. Le Guin'], status: 'read', rating: 5, pages: 387 },
+    { id: 'meh', t: 1, title: 'So-so', authors: ['Bo Chen'], status: 'read', rating: 2, pages: 90 },
+    { id: 'gone', t: 2, del: 1 }
+  ] }));
+  const ids = bs => bs.map(b => b.id).sort();
+  const base = S.cleanNext({});
+  eq(ids(S.nextPool(lib, base)), ['lg2', 'new', 'nop', 'old'], 'suggestions are unread books on hand: not read, being read, lent out or removed');
+  eq(ids(S.nextPool(lib, S.cleanNext({ reread: true }))), ['lg1', 'lg2', 'new', 'nop', 'old'], 'rereads add read books rated four stars or more, and only those');
+  eq([S.lengthOf(0), S.lengthOf(249), S.lengthOf(250), S.lengthOf(450), S.lengthOf(451)], ['', 'short', 'medium', 'medium', 'long'], 'length bands go by page count');
+  eq(ids(S.nextPool(lib, S.cleanNext({ len: 'Short' }))), ['lg2'], 'a length leaves out books with no page count');
+  eq(ids(S.nextPool(lib, S.cleanNext({ tag: 'sf', room: 'Den' }))), ['lg2'], 'tag and room narrow it');
+  eq(S.cleanNext({ len: 'huge', lean: 'Waiting longest', tag: 7, reread: 'yes' }), { len: '', lean: 'oldest', tag: '7', room: '', reread: true }, 'saved choices are cleaned');
+
+  const d = S.dealNext(lib, base, rng(3), {}, now);
+  eq(d.picks.length, 3, 'three picks from four matches');
+  eq(new Set(d.picks.map(p => p.b.id)).size, 3, 'no book twice in one pick');
+  eq(d.pool, 4, 'the pool size is reported');
+  // Working through every match before repeating one.
+  const seen = {}; d.picks.forEach(p => { seen[p.b.id] = 1; });
+  const d2 = S.dealNext(lib, base, rng(4), seen, now);
+  eq(d2.fresh, 1, 'the next pick starts with the one not yet shown');
+  check(!seen[d2.picks[0].b.id], 'and puts it first');
+  eq(S.dealNext(lib, base, rng(5), { old: 1, new: 1, lg2: 1, nop: 1 }, now).fresh, 0, 'once every match has been shown, fresh is 0');
+
+  const first = lean => { const n = {}; for (let k = 0; k < 600; k++) { const id = S.dealNext(lib, S.cleanNext({ lean }), rng(100 + k), {}, now).picks[0].b.id; n[id] = (n[id] || 0) + 1; } return n; };
+  const any = first(''), oldest = first('oldest'), newest = first('newest'), loved = first('loved');
+  check(any.old > 100 && any.new > 100 && any.lg2 > 100 && any.nop > 100, 'surprise me gives every match a fair chance ' + JSON.stringify(any));
+  check(oldest.old > 300 && oldest.old > 4 * (oldest.new || 0), 'waiting longest mostly picks the book added longest ago ' + JSON.stringify(oldest));
+  check(newest.new > 300 && newest.new > 4 * (newest.old || 0), 'newest arrivals mostly picks the latest one ' + JSON.stringify(newest));
+  check(loved.lg2 > 300, 'favorite authors mostly picks the Le Guin, after a five-star Le Guin ' + JSON.stringify(loved));
+
+  const why = (lean, id) => S.dealNext(lib, S.cleanNext({ lean }), rng(1), { old: id !== 'old' ? 1 : 0, new: id !== 'new' ? 1 : 0, lg2: id !== 'lg2' ? 1 : 0, nop: id !== 'nop' ? 1 : 0 }, now).picks[0].why;
+  eq(why('', 'lg2'), ['You gave “The Dispossessed” 5 stars', 'In your library since ' + new Date(2024, 5, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })], 'a book by an author you rated highly says so, and one over two years on the shelf says how long');
+  check(/^Waiting longest of these: in your library since .*2019$/.test(why('oldest', 'old')[0]), 'the longest-waiting book says so, with the month it was added');
+  eq(why('', 'new'), ['New arrival: added 5 days ago', 'Your note: Sam says start here'], 'a recent arrival says so, and the first line of a note comes along');
+  eq(why('', 'nop'), [], 'nothing special to say → no reasons');
+  const reread = S.dealNext(lib, S.cleanNext({ reread: true, len: 'medium' }), rng(1), {}, now).picks;
+  eq(reread.map(p => p.b.id).sort(), ['lg1', 'new'], 'medium length with rereads');
+  eq(reread.find(p => p.b.id === 'lg1').why, ['A reread: you gave it 5 stars'], 'a reread says what you gave it');
+  const none = S.dealNext(lib, S.cleanNext({ len: 'long', tag: 'sf' }), rng(1), {}, now);
+  eq([none.picks.length, none.noPages], [0, 0], 'no matches → no picks');
+  eq(S.dealNext(lib, S.cleanNext({ len: 'short', room: 'Hall' }), rng(1), {}, now).noPages, 0, 'books without pages are counted only when they would otherwise match');
+  eq(S.dealNext(lib, S.cleanNext({ len: 'long' }), rng(1), {}, now).noPages, 1, 'and counted when they would');
+  const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
+  check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
+  const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
+  check(S.dealNext(two, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).even, 'books all added the same day weigh the same');
+  eq(S.dealNext(two, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).fans, 0, 'and none by authors you have read is reported');
 }
 
 // ---------- batches and links ----------

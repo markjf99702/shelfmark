@@ -245,6 +245,39 @@ details.more .fs{padding:2px 12px 12px}
 .err{color:var(--bad);font-weight:600}
 .drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
 
+/* what to read next */
+.countrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:14px 2px 10px}
+.countrow .count{margin:0}
+.nextbtn{flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--accent);border-radius:999px;padding:6px 13px;font:600 13.5px var(--sans);color:var(--accent);box-shadow:var(--shadow);white-space:nowrap}
+.nextbtn:hover{background:var(--accent-soft)}
+.nextbtn svg{width:16px;height:16px;flex:none}
+.nx-crit{display:grid;gap:14px;padding-bottom:16px;margin-bottom:16px;border-bottom:3px double var(--rule)}
+.nx-f{display:grid;gap:6px;justify-items:start;min-width:0}
+.nx-chips{display:flex;flex-wrap:wrap;gap:6px}
+.nx-sel{display:flex;gap:8px}
+.nx-sel select{flex:1 1 0;padding:6px 28px 6px 12px;font-size:14px;border-radius:999px}
+.nx-range{color:var(--ink2);letter-spacing:.04em}
+.nx-crit .opt{padding:0}
+.nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
+.nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin-top:2px}
+.nx-t .s{color:var(--ink2);font-weight:400}
+.nx-why{margin:6px 0 6px;padding:0;list-style:none;display:grid;gap:5px}
+.nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
+.nx-why li::before{content:"";position:absolute;left:2px;top:.5em;width:5px;height:5px;border-radius:50%;background:var(--brass)}
+.nx-alts{display:grid;gap:8px;margin-top:20px;animation:deal .28s ease-out}
+.nx-alt{display:flex;gap:10px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
+.nx-alt:hover{border-color:var(--ink3)}
+.nx-alt .cv{width:34px;height:50px}
+.nx-alt .cv::after{top:8px;left:7px;right:5px}
+.nx-alt .cv-t{font-size:13px}
+.nx-alt .bk-t{font-size:16px}
+.nx-w{font-size:12.5px;color:var(--ink3);overflow-wrap:anywhere}
+.nx-out>.note{margin-top:16px}
+.nx-none h3{margin:0 0 6px;font:500 20px var(--serif)}
+.nx-none p{margin:0 0 10px;color:var(--ink2)}
+@keyframes deal{from{opacity:0;transform:translateY(6px)}}
+
 /* footer */
 .foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink2)}
 .foot a{color:var(--ink2);text-decoration:none}
@@ -279,7 +312,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 @media (max-width:340px){
   .two,.loan{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i{animation:none}}
+@media (prefers-reduced-motion:reduce){.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}}
 </style>
 </head>
 <body>
@@ -307,7 +340,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       </div>
     </div>
   </div>
-  <p class="count" id="count" aria-live="polite"></p>
+  <div class="countrow"><p class="count" id="count" aria-live="polite"></p><button class="nextbtn" id="nextBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>What to read next?</button></div>
   <div class="list" id="list"></div>
   <footer class="foot"><a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://shelfmark.junkdrawer.works/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a></footer>
 </main>
@@ -526,6 +559,105 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function shelfOrder(x, y) { return COLL.compare(x.room || '￿', y.room || '￿') || COLL.compare(x.shelf || '￿', y.shelf || '￿') || authorOrder(x, y); }
   function addedOrder(x, y) { return (y.added || '').localeCompare(x.added || '') || y.t - x.t; }
 
+  // ---------- what to read next ----------
+  // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
+  // rereads of four- and five-star books when asked. Length, tag and room narrow them; then up to three are drawn
+  // at random, weighted toward what the person leans to. Length goes by page count, so a book without one only
+  // comes up under Any.
+  var LENGTHS = [['', 'Any'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']];
+  var LEANS = [['', 'Surprise me'], ['oldest', 'Waiting longest'], ['newest', 'Newest arrivals'], ['loved', 'Favorite authors']];
+  function lengthOf(pages) { return !pages ? '' : pages < 250 ? 'short' : pages <= 450 ? 'medium' : 'long'; }
+  function cleanNext(o) {
+    o = o && typeof o === 'object' ? o : {};
+    return { len: pick(o.len, LENGTHS), lean: pick(o.lean, LEANS), tag: str(o.tag, 40), room: str(o.room, 60), reread: !!o.reread };
+  }
+  function onHand(all, reread) { return all.filter(function (b) { return !b.loan && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
+  function nextPool(all, c) {
+    return onHand(all, c.reread).filter(function (b) {
+      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room);
+    });
+  }
+  function authorKey(a) { return fold(a).replace(/[^\p{L}\p{N}]+/gu, ''); }
+  // For each author: how many of their books you've read, one of them, and the one you rated highest.
+  function authorFans(all) {
+    var f = {};
+    all.forEach(function (b) {
+      if (b.status !== 'read') return;
+      (b.authors || []).forEach(function (a) {
+        var k = authorKey(a); if (!k) return;
+        var x = f[k] || (f[k] = { name: a, n: 0, one: b, best: null });
+        x.n++; if (b.rating && (!x.best || b.rating > x.best.rating)) x.best = b;
+      });
+    });
+    return f;
+  }
+  // Roughly 0–7: your best rating of an author's books (2 if you read them but didn't rate them), and a half more
+  // for each further one you've read.
+  function fondness(x) { return x ? (x.best ? x.best.rating : 2) + Math.min(x.n - 1, 4) * 0.5 : 0; }
+  function fanOf(b, fans) {
+    var top = null;
+    (b.authors || []).forEach(function (a) { var x = fans[authorKey(a)]; if (x && fondness(x) > fondness(top)) top = x; });
+    return top;
+  }
+  function nextWeights(pool, c, fans) {
+    if (c.lean === 'oldest' || c.lean === 'newest') {
+      var seen = {}; pool.forEach(function (b) { if (b.added) seen[b.added] = 1; });
+      var days = Object.keys(seen).sort();
+      return pool.map(function (b) {
+        var p = b.added && days.length > 1 ? days.indexOf(b.added) / (days.length - 1) : 0.5; // 0 the earliest added, 1 the latest
+        return Math.exp(4 * (c.lean === 'oldest' ? 1 - p : p));
+      });
+    }
+    if (c.lean === 'loved') return pool.map(function (b) { var l = fondness(fanOf(b, fans)); return l >= 4 ? 12 : l >= 3 ? 4 : l >= 2 ? 2 : l > 0 ? 0.5 : 1; });
+    return pool.map(function () { return 1; });
+  }
+  function monthOf(d) { var p = d.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
+  // Plain reasons for a suggestion, the one that fits the lean first.
+  function nextWhy(b, c, fans, now, oldest) {
+    var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0];
+    if (b.status === 'read') fan = 'A reread: you gave it ' + plural(b.rating, 'star');
+    else if (f && (c.lean === 'loved' || fondness(f) >= 3)) {
+      var who = surname(f.name) || f.name;
+      if (f.best && f.best.rating >= 4) fan = (f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who + ' and gave ' : 'You gave ') + '“' + f.best.title + '” ' + plural(f.best.rating, 'star');
+      else fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who : 'You’ve read “' + f.one.title + '”, also by ' + who;
+    }
+    if (b.added) {
+      var age = Math.floor((now - new Date(b.added + 'T12:00:00').getTime()) / 864e5);
+      if (b.added === oldest && c.lean === 'oldest') when = 'Waiting longest of these: in your library since ' + monthOf(b.added);
+      else if (age >= 0 && age <= 30) when = 'New arrival: added ' + (age < 1 ? 'today' : age < 2 ? 'yesterday' : age + ' days ago');
+      else if (c.lean === 'oldest' || c.lean === 'newest' || age >= 730) when = 'In your library since ' + monthOf(b.added);
+    }
+    var why = c.lean === 'oldest' || c.lean === 'newest' ? [when, fan] : [fan, when];
+    if (note) why.push('Your note: ' + (note.length > 140 ? note.slice(0, 139).trim() + '…' : note));
+    return why.filter(Boolean);
+  }
+  // Up to three suggestions, drawn by weight from the books not yet shown (skip: {id: 1}), then from the rest.
+  // fresh says how many were new; none means every match has been shown.
+  function dealNext(all, c, rnd, skip, now) {
+    var pool = nextPool(all, c), fans = authorFans(all), w = nextWeights(pool, c, fans), left = pool.map(function (_, i) { return i; }), picks = [], fresh = 0;
+    // The one book added before all the others, if there is one (a shelf catalogued in one go shares a date).
+    var days = pool.map(function (b) { return b.added || ''; }).filter(Boolean).sort(), oldest = days.length > 1 && days[0] !== days[1] ? days[0] : '';
+    function draw(ok) {
+      var cand = left.filter(ok), tot = 0, r;
+      cand.forEach(function (i) { tot += w[i]; });
+      r = rnd() * tot;
+      for (var k = 0; k < cand.length; k++) { r -= w[cand[k]]; if (r < 0 || k === cand.length - 1) return cand[k]; }
+      return -1;
+    }
+    while (picks.length < 3) {
+      var i = draw(function (i) { return !skip[pool[i].id]; });
+      if (i < 0) i = draw(function () { return true; }); else fresh++;
+      if (i < 0) break;
+      left.splice(left.indexOf(i), 1); picks.push(pool[i]);
+    }
+    return {
+      pool: pool.length, fresh: fresh, even: w.every(function (x) { return x === w[0]; }),
+      fans: pool.filter(function (b) { return fanOf(b, fans); }).length,
+      noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' })).filter(function (b) { return !b.pages; }).length : 0,
+      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, oldest) }; })
+    };
+  }
+
   // ---------- state ----------
   var DOC = { books: {}, seen: {} };
   try { var raw = localStorage.getItem(LS); if (raw) DOC = cleanDoc(JSON.parse(raw)); } catch (e) { }
@@ -648,6 +780,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('tagSel').value = UI.tag; $('tagSel').hidden = !tk.length;
     $('sortSel').value = PREF.sort;
     $('tools').hidden = !all.length;
+    $('nextBtn').hidden = !onHand(all, true).length;
 
     var L = $('list');
     if (!all.length) {
@@ -957,6 +1090,89 @@ body.locked .toast.show{transform:translate(-50%,0)}
     takeIncoming(f.text().then(parseIncoming));
   });
 
+  // ---------- the what-to-read-next sheet ----------
+  // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
+  var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
+  function nextSheet() {
+    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, lap = false;
+    openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
+      '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
+      '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>');
+    function meta(b) { return [byLine(b), b.year, b.pages ? plural(b.pages, 'page') : ''].filter(Boolean).join(' · '); }
+    function drawCrit() {
+      var all = live(DOC), base = onHand(all, true), tags = {}, rooms = {};
+      base.forEach(function (b) { (b.tags || []).forEach(function (t) { tags[t] = 1; }); if (b.room) rooms[b.room] = 1; });
+      if (c.tag && !tags[c.tag]) c.tag = '';
+      if (c.room && !rooms[c.room]) c.room = '';
+      var tk = Object.keys(tags).sort(COLL.compare), rk = Object.keys(rooms).sort(COLL.compare), favs = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
+      $('nxCrit').innerHTML =
+        '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + LENGTHS.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+        '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + LEANS.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+        (tk.length || rk.length ? '<div class="nx-sel">' +
+          (tk.length ? '<label class="sr" for="nxTag">Tag</label><select id="nxTag"><option value="">Any tag</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '"' + (t === c.tag ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' : '') +
+          (rk.length ? '<label class="sr" for="nxRoom">Room</label><select id="nxRoom"><option value="">Any room</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '"' + (r === c.room ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select>' : '') + '</div>' : '') +
+        (favs ? '<label class="opt"><input type="checkbox" id="nxRe"' + (c.reread ? ' checked' : '') + '><span>Include rereads of 4- and 5-star books</span></label>' : '');
+    }
+    function dealNow() {
+      deal = dealNext(live(DOC), c, Math.random, seen, Date.now()); top = 0;
+      lap = deal.picks.length > 0 && !deal.fresh;
+      if (lap) seen = {};
+      deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
+      drawOut();
+    }
+    function drawOut() {
+      var o = $('nxOut'), p = deal.picks;
+      $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool < 2;
+      if (!p.length) {
+        var any = onHand(live(DOC), c.reread).length, favs = !c.reread && $('nxRe');
+        o.innerHTML = '<div class="nx-none">' + (any
+          ? '<h3>Nothing matches all of these</h3><p>' + (deal.noPages ? plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + (deal.noPages === 1 ? 'it only comes' : 'they only come') + ' up under Any length. You can add one in a book’s Edition and details.' : 'Try fewer of them.') + '</p><button class="btn" type="button" id="nxClear">Clear length, tag and room</button>'
+          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out.' + (favs ? ' Tick <b>Include rereads</b> above for an old favorite.' : '') + '</p>') + '</div>';
+        if ($('nxClear')) $('nxClear').addEventListener('click', function () { c.len = ''; c.tag = ''; c.room = ''; changed(); });
+        return;
+      }
+      var t = p[top], b = t.b, notes = [];
+      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room ? ' that match' : ' on hand') + '.');
+      if (lap) notes.push('You’ve seen every one, so these are repeats.');
+      else if (c.lean === 'loved' && !deal.fans) notes.push('None of them are by authors you’ve read yet, so this is a random pick.');
+      else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) notes.push('They were all added on the same day, so this is a random pick.');
+      o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
+        '<span class="nx-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
+        (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
+        (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
+        '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span></div></div>' +
+        (p.length > 1 ? '<div class="nx-alts"><span class="lbl">Or one of these</span>' + p.map(function (x, i) {
+          if (i === top) return '';
+          return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
+            (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (x.why[0] ? '<span class="nx-w">' + esc(x.why[0]) + '</span>' : '') + '</span></button>';
+        }).join('') + '</div>' : '') +
+        '<p class="note">' + notes.join(' ') + '</p>';
+    }
+    function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
+    $('nxCrit').addEventListener('click', function (e) {
+      var x = e.target.closest('[data-len],[data-lean]'); if (!x) return;
+      if (x.dataset.len != null) c.len = x.dataset.len; else c.lean = x.dataset.lean;
+      changed();
+    });
+    $('nxCrit').addEventListener('change', function (e) {
+      if (e.target.id === 'nxTag') c.tag = e.target.value;
+      else if (e.target.id === 'nxRoom') c.room = e.target.value;
+      else if (e.target.id === 'nxRe') c.reread = e.target.checked;
+      else return;
+      changed();
+    });
+    $('nxOut').addEventListener('click', function (e) { var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut(); });
+    $('nxx').addEventListener('click', closeSheet);
+    $('nxAgain').addEventListener('click', dealNow);
+    $('nxGo').addEventListener('click', function () {
+      var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
+      var was = b.status || '';
+      putBook(Object.assign({}, b, { status: 'reading' })); closeSheet();
+      toast('Marked “' + b.title + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); });
+    });
+    drawCrit(); dealNow();
+  }
+
   // ---------- settings ----------
   function settingsSheet() {
     var all = live(DOC);
@@ -1153,6 +1369,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- wiring ----------
   $('addBtn').addEventListener('click', function () { bookSheet({ title: '', room: UI.room && UI.room !== NOROOM ? UI.room : '' }, true); });
   $('importBtn').addEventListener('click', importSheet);
+  $('nextBtn').addEventListener('click', nextSheet);
   $('setBtn').addEventListener('click', function () { loadGis(); settingsSheet(); });
   $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err) { D.err = ''; sync(); } else { settingsSheet(); } });
   $('list').addEventListener('click', function (e) {

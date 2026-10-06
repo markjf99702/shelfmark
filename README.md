@@ -21,6 +21,12 @@ It is one HTML file with no build step and no server. Open `index.html` in a bro
   - see books you already own, which are unticked;
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right.
+- **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books are left out), with two more to choose from.
+  - Narrow it by length (short is under 250 pages, long over 450), tag or room.
+  - Lean it toward books **waiting longest**, the **newest arrivals**, or **favorite authors** (ones whose books you've read and rated highly). **Surprise me** is a plain random pick.
+  - Tick **Include rereads** to bring back books you gave four or five stars.
+  - Each suggestion says why, in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
+  - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
 - **Backups.** Download the whole library as a file, open it on any device (it merges), or download a spreadsheet (CSV).
 
@@ -113,6 +119,7 @@ No dependencies. The test reads the logic straight out of `index.html` and check
 - **Links:** compressed, uncompressed, hand-written and pasted links all open.
 - **The skill's script:** its link and file open in the page with every field intact. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
+- **What to read next:** which books can be suggested, that each lean pulls the way it says, the reasons given, and that every match comes up before any repeats.
 
 ## License
 
