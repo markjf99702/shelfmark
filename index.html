@@ -242,7 +242,7 @@ details.more .fs{padding:2px 12px 12px}
 .sect p{margin:0 0 10px;color:var(--ink2)}
 .sect .row{margin-top:8px}
 .kv{font:500 12.5px var(--mono);color:var(--ink2)}
-.err{color:var(--bad);font-weight:600}
+.sect .err{color:var(--bad);font-weight:600}
 .drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
 
 /* what to read next */
@@ -1236,6 +1236,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function freshDrive() { return { on: false, fileId: '', version: '', token: '', exp: 0, last: 0, err: '', pending: false, clientId: D && D.clientId || '' }; }
   var D = null; D = freshDrive();
   try { Object.assign(D, JSON.parse(localStorage.getItem(LSD) || '{}')); } catch (e) { }
+  // Until October 2026 a failure to load Google's script was saved here and then showed for good.
+  if (D.err === 'Couldn’t load Google sign-in. Check your connection.') D.err = '';
   function saveDrive() { try { localStorage.setItem(LSD, JSON.stringify(D)); } catch (e) { } }
   function clientId() { return GOOGLE_CLIENT_ID || D.clientId || ''; }
   function hasToken() { if (!(D.token && Date.now() < D.exp) && D.on && useShared()) saveDrive(); return !!D.token && Date.now() < D.exp; }
@@ -1252,19 +1254,22 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function shareToken() { var g = readShared(); if (!GOOGLE_CLIENT_ID || clientId() !== GOOGLE_CLIENT_ID) return; try { localStorage.setItem(LSG, JSON.stringify({ token: D.token, exp: D.exp + 60000, scope: SCOPE, email: g && g.email || '' })); } catch (e) { } }
   function dropShared(token) { var g = readShared(); if (g && g.token === token) try { localStorage.removeItem(LSG); } catch (e) { } }
-  var tokenClient = null, gisLoading = false, syncing = false, again = false, syncT, syncState = 'off';
+  // gisErr says Google's sign-in script couldn't load or start on this visit. It isn't saved with D: the next
+  // try clears it.
+  var tokenClient = null, gisLoading = false, gisErr = '', syncing = false, again = false, syncT, syncState = 'off';
 
   function loadGis() {
     if (tokenClient || gisLoading || !clientId()) return;
     if (window.google && google.accounts && google.accounts.oauth2) { initToken(); return; }
-    gisLoading = true;
+    gisLoading = true; gisErr = '';
     var s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
     s.onload = function () { gisLoading = false; initToken(); };
-    s.onerror = function () { gisLoading = false; D.err = 'Couldn’t load Google sign-in. Check your connection.'; renderSync(); renderDrive(); };
+    s.onerror = function () { gisLoading = false; gisErr = 'Couldn’t load Google sign-in. Check your connection.'; s.remove(); renderSync(); renderDrive(); };
     document.head.appendChild(s);
   }
   function initToken() {
     try {
+      gisErr = '';
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: clientId(), scope: SCOPE,
         callback: function (r) {
@@ -1274,14 +1279,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
         },
         error_callback: function (e) { if (e && e.type !== 'popup_closed') { D.err = 'Google sign-in didn’t open. If your browser blocks pop-ups, allow them for this page.'; saveDrive(); } renderSync(); renderDrive(); }
       });
-    } catch (e) { D.err = 'Google sign-in couldn’t start: ' + e.message; }
+    } catch (e) { gisErr = 'Google sign-in couldn’t start: ' + e.message; }
     renderSync(); renderDrive();
   }
   // Must run inside a tap: Google's sign-in opens a pop-up. With a sign-in from the last hour still kept (from
   // another tab, say), it isn't needed at all.
   function askToken() {
     if (useShared()) { D.on = true; D.err = ''; saveDrive(); sync(); renderSync(); renderDrive(); return; }
-    if (!tokenClient) { loadGis(); toast('Google sign-in is still loading — try again in a moment'); return; }
+    if (!tokenClient) { var failed = gisErr; loadGis(); toast(failed || 'Google sign-in is still loading — try again in a moment'); return; }
     var g = readShared(), hint = g && g.email;
     tokenClient.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: D.on ? '' : 'consent' });
   }
@@ -1374,10 +1379,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
         '<div class="isbnrow"><input id="dvCid" class="mono" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="dvCidGo">Save</button></div>';
     } else if (!D.on) {
       html += '<p>Keep your library in your own Google Drive and the same on every device you use. Shelfmark can see only the files it makes: one folder, <span class="drivepath">Shelfmark</span>, with your library file in it. <a href="privacy.html">More on privacy</a></p>' +
-        (D.err ? '<p class="err">' + esc(D.err) + '</p>' : '') + '<div class="row"><button class="btn primary" type="button" id="dvGo">Connect Google Drive</button></div>';
+        (D.err || gisErr ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') + '<div class="row"><button class="btn primary" type="button" id="dvGo">Connect Google Drive</button></div>';
     } else {
       html += '<p>' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Shelfmark out after an hour. Tap <b>Sync now</b> to sign back in; your changes are safe here meanwhile.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
-        (D.err ? '<p class="err">' + esc(D.err) + '</p>' : '') +
+        (D.err || gisErr ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') +
         '<p>Your library is in <span class="drivepath">My Drive › Shelfmark › Shelfmark library.json</span>. Drive keeps its earlier versions for 30 days (right-click it › File information › Manage versions).</p>' +
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }

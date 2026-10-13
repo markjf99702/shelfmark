@@ -287,6 +287,38 @@ step('a card left open while another tab changes the book keeps that change', as
   } finally { await ctx.close(); }
 });
 
+step('a failure to load Google sign-in isn\'t kept, and errors in Settings are red', async () => {
+  const ctx = await context(); // refuses accounts.google.com, as when offline
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await page.click('#setBtn');
+    await page.waitForSelector('#driveSect .err');
+    assert.match(await page.textContent('#driveSect .err'), /Couldn’t load Google sign-in/);
+    const [shown, bad] = await page.evaluate(() => {
+      const t = document.createElement('i'); t.style.color = 'var(--bad)'; document.body.append(t);
+      const c = getComputedStyle(t).color; t.remove();
+      return [getComputedStyle(document.querySelector('#driveSect .err')).color, c];
+    });
+    assert.equal(shown, bad, 'the error isn\'t in the error colour');
+    await page.click('#stx');
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    assert.doesNotMatch(await page.evaluate(() => localStorage.getItem('shelfmark.drive') || ''), /Couldn’t load/, 'the error was saved');
+
+    // Online again, with the error saved the way it used to be: Google's script loads and nothing is wrong.
+    await page.evaluate(() => localStorage.setItem('shelfmark.drive', JSON.stringify({ on: false, fileId: '', version: '', token: '', exp: 0, last: 0, err: 'Couldn’t load Google sign-in. Check your connection.', pending: true, clientId: '' })));
+    await fakeGoogle().install(ctx);
+    await page.reload();
+    await page.click('#setBtn');
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await page.waitForSelector('#dvGo');
+    assert.equal(await page.locator('#driveSect .err').count(), 0, 'an old error still shows');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another device changes the book keeps that change in Drive', async () => {
   const g = fakeGoogle();
   const driveBook = id => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library'); return f && f.body ? JSON.parse(f.body).library.books[id] : null; };
