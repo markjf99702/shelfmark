@@ -695,7 +695,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- covers ----------
   // With lookups on, each book's cover is found once through Open Library's search, by ISBN or by title and
   // author, and the cover's id is kept in this browser (0: none found). Covers fetched by id aren't rate-limited.
-  var LSC = 'shelfmark.covers', COVERS = {}, coverQ = [], coverQueued = {}, coverBusy = 0, coverPause = 0, coverFails = 0, coverSaveT;
+  // coverRound goes up when this device's copy is erased, so lookups still on their way are dropped.
+  var LSC = 'shelfmark.covers', COVERS = {}, coverQ = [], coverQueued = {}, coverBusy = 0, coverPause = 0, coverFails = 0, coverSaveT, coverRound = 0;
   try { COVERS = JSON.parse(localStorage.getItem(LSC) || '{}') || {}; } catch (e) { }
   function coverId(b, noQueue) {
     var c = coverQuery(b); if (!c) return 0;
@@ -710,19 +711,21 @@ body.locked .toast.show{transform:translate(-50%,0)}
     }
   }
   function fetchCover(c) {
-    var ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
+    var round = coverRound, ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
     var opt = ctl ? { signal: ctl.signal } : {}, get = function (u) { return fetch(u, opt).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
     get('https://openlibrary.org/search.json?' + c.q + '&fields=key,title,cover_i&limit=1').then(function (j) {
       var w = j && j.docs && j.docs[0];
       if (!w || !/^\/works\/OL\d+W$/.test(w.key || '')) return 0;
       return get('https://openlibrary.org' + w.key + '/editions.json?limit=100').then(function (e) { return pickCover(w, e && e.entries, c); });
     }).then(function (id) {
+      if (round !== coverRound) return;
       COVERS[c.key] = id > 0 ? id : 0; coverFails = 0; delete coverQueued[c.key];
       clearTimeout(coverSaveT); coverSaveT = setTimeout(function () { try { localStorage.setItem(LSC, JSON.stringify(COVERS)); } catch (e) { } }, 1000);
       if (COVERS[c.key]) showCover(c.key);
     }, function () {
       // Open Library is slow at times, or the connection dropped: try this one again later (three goes per
       // visit), and after a run of failures give it half a minute before carrying on.
+      if (round !== coverRound) return;
       if (++c.tries < 3) coverQ.push(c); else delete coverQueued[c.key];
       if (++coverFails >= 3) { coverFails = 0; coverPause = Date.now() + 30000; setTimeout(pumpCovers, 30500); }
     }).then(function () { clearTimeout(stop); coverBusy--; setTimeout(pumpCovers, 150); });
@@ -1207,7 +1210,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('stErase').addEventListener('click', function () {
       var btn = this;
       if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = 'Tap again to erase ' + plural(all.length, 'book'); btn.style.borderColor = 'var(--bad)'; return; }
-      try { localStorage.removeItem(LS); localStorage.removeItem(LSD); } catch (e) { }
+      // The covers found and the What to read next choices name books, rooms and tags, so they go too. Sorting and
+      // whether to look things up are this device's settings, not the catalog, and stay.
+      try { localStorage.removeItem(LS); localStorage.removeItem(LSD); localStorage.removeItem(LSC); } catch (e) { }
+      clearTimeout(coverSaveT); COVERS = {}; coverQ = []; coverQueued = {}; coverRound++;
+      delete PREF.next; savePrefs();
       DOC = { books: {}, seen: {} }; D = freshDrive(); saveDrive(); closeSheet(); renderSync(); render(); toast('Erased this device’s copy');
     });
   }

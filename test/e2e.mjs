@@ -77,6 +77,29 @@ function linkTo(batch) {
   }
 }
 
+// Open Library, faked: every search finds a work whose cover id counts up from 1001. Searches after the first
+// take `slow` ms to answer, to have lookups on their way at a chosen moment.
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+async function fakeOpenLibrary(ctx, slow = 0) {
+  const ol = { searches: 0 };
+  const cors = { 'Access-Control-Allow-Origin': '*' };
+  await ctx.route('https://openlibrary.org/**', async r => {
+    const u = new URL(r.request().url());
+    try {
+      if (u.pathname !== '/search.json') return await r.fulfill({ contentType: 'application/json', headers: cors, body: '{"entries":[]}' });
+      const n = ++ol.searches;
+      if (n > 1 && slow) await wait(slow);
+      await r.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify({ docs: [{ key: '/works/OL' + (1000 + n) + 'W', title: u.searchParams.get('title') || 'x', cover_i: 1000 + n }] }) });
+    } catch { /* the test closed the page first */ }
+  });
+  await ctx.route('https://covers.openlibrary.org/**', r => r.fulfill({ contentType: 'image/png', body: PIXEL }).catch(() => {}));
+  return ol;
+}
+
+const PIRANESI = { id: 'b03', t: 1000, title: 'Piranesi', authors: ['Susanna Clarke'], notes: 'Sam says start here', added: '2026-10-01', room: 'Hall' };
+const MIDDLEMARCH = { id: 'b04', t: 1000, title: 'Middlemarch', authors: ['George Eliot'], added: '2026-10-01', room: 'Den' };
+const CRADLE = { id: 'b05', t: 1000, title: 'Cat\u2019s Cradle', authors: ['Kurt Vonnegut, Jr.'], tags: ['Arts & crafts', 'sf'], added: '2026-10-01' };
+
 const steps = [];
 const step = (name, fn) => steps.push([name, fn]);
 
@@ -158,9 +181,26 @@ step('the privacy page links lead somewhere else', async () => {
   } finally { await ctx.close(); }
 });
 
-const PIRANESI = { id: 'b03', t: 1000, title: 'Piranesi', authors: ['Susanna Clarke'], notes: 'Sam says start here', added: '2026-10-01', room: 'Hall' };
-const MIDDLEMARCH = { id: 'b04', t: 1000, title: 'Middlemarch', authors: ['George Eliot'], added: '2026-10-01', room: 'Den' };
-const CRADLE = { id: 'b05', t: 1000, title: 'Cat\u2019s Cradle', authors: ['Kurt Vonnegut, Jr.'], tags: ['Arts & crafts', 'sf'], added: '2026-10-01' };
+step('erasing this device\'s copy leaves no list of the books behind', async () => {
+  const ctx = await context();
+  await fakeOpenLibrary(ctx, 2500);
+  try {
+    const page = await open(ctx);
+    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ sort: 'shelf', lookups: true, next: { lean: 'oldest', room: 'Hall', tag: 'sf' } })));
+    await seed(page, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    await until(() => page.evaluate(() => localStorage.getItem('shelfmark.covers')), 'the first cover to be kept');
+    await page.click('#setBtn');
+    await page.click('#stErase');
+    await page.click('#stErase');
+    await wait(3500); // the other two lookups answer meanwhile
+    assert.match(await page.textContent('#list'), /Your shelves are empty/);
+    const left = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])));
+    assert.deepEqual(Object.keys(left).filter(k => /^shelfmark\.(library|covers)$/.test(k)), [], 'the library or the covers found are still here');
+    assert.deepEqual(JSON.parse(left['shelfmark.prefs']), { sort: 'shelf', lookups: true }, 'only this device\'s settings are kept');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
