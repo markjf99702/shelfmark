@@ -47,7 +47,8 @@ async function context(opts = PHONE) {
 // while offline are expected; any other error, or a failed load from the site itself, is a problem.
 async function open(ctx, url = base) {
   const page = await ctx.newPage();
-  page.problems = [];
+  page.problems = []; page.outside = [];
+  page.on('request', r => { if (!r.url().startsWith(base)) page.outside.push(r.url()); });
   page.on('pageerror', e => page.problems.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/net::ERR_(FAILED|INTERNET_DISCONNECTED)/.test(m.text())) page.problems.push(m.text()); });
   await page.goto(url);
@@ -135,6 +136,8 @@ step('a link from the skill adds its books, and an edit survives a reload and go
 
     await page.reload();
     assert.match(await page.textContent(`#list .bk[data-id="${id}"]`), /Read/, 'the edit is there after a reload');
+    const fonts = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/"/g, '') + ' ' + f.style); });
+    for (const f of ['Newsreader normal', 'Newsreader italic', 'IBM Plex Mono normal']) assert.ok(fonts.includes(f), f + ' didn\'t load; loaded: ' + fonts);
 
     // Fits a phone: nothing scrolls sideways.
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
@@ -147,7 +150,18 @@ step('a link from the skill adds its books, and an edit survives a reload and go
     assert.match(await page.textContent(`#list .bk[data-id="${id}"]`), /Read/);
     await ctx.setOffline(false);
     assert.deepEqual(page.problems, []);
+    assert.deepEqual(page.outside, [], 'nothing should load from anywhere else');
   } finally { await ctx.close(); }
+});
+
+step('every file the service worker keeps for offline is there', async () => {
+  const sw = await readFile(join(root, 'sw.js'), 'utf8');
+  const shell = eval('[' + /const SHELL = \[([^\]]*)\]/.exec(sw)[1] + ']');
+  assert.ok(shell.length > 4);
+  for (const f of shell) assert.equal((await fetch(base + f)).status, 200, f + ' is missing');
+  const html = await readFile(join(root, 'index.html'), 'utf8');
+  const used = [...html.matchAll(/url\((fonts\/[^)]+)\)/g)].map(m => m[1]);
+  assert.deepEqual(used.filter(f => !shell.includes(f)), [], 'a font the page uses isn\'t kept for offline');
 });
 
 step('the header buttons have names on a phone, where they show only icons', async () => {

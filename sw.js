@@ -1,11 +1,14 @@
 // Offline support: keep a copy of the app so it works with no signal.
-// Your library lives in localStorage (and Drive, if it's on), not here. Covers and book lookups need a signal;
-// the fonts come from Google, so offline the page falls back to the system's.
+// Your library lives in localStorage (and Drive, if it's on), not here. Covers and book lookups need a signal.
 // Network first, so a new version shows up as soon as you're online.
 
-const CACHE = 'shelfmark-v2'; // bump the number when the file list changes
+const CACHE = 'shelfmark-v3'; // bump the number when the file list changes
 const SHELL = [
   './', 'index.html', 'carry.js', 'privacy.html', 'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
+  'fonts/newsreader-latin.woff2', 'fonts/newsreader-latin-ext.woff2', 'fonts/newsreader-vietnamese.woff2',
+  'fonts/newsreader-italic-latin.woff2', 'fonts/newsreader-italic-latin-ext.woff2', 'fonts/newsreader-italic-vietnamese.woff2',
+  'fonts/ibm-plex-mono-400-latin.woff2', 'fonts/ibm-plex-mono-400-latin-ext.woff2', 'fonts/ibm-plex-mono-400-vietnamese.woff2',
+  'fonts/ibm-plex-mono-500-latin.woff2', 'fonts/ibm-plex-mono-500-latin-ext.woff2', 'fonts/ibm-plex-mono-500-vietnamese.woff2',
 ];
 
 self.addEventListener('install', e => {
