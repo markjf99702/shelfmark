@@ -203,6 +203,25 @@ step('the keyboard stays in an open sheet, and comes back to the book after', as
   } finally { await ctx.close(); }
 });
 
+step('a book on the review screen ticks with a tap anywhere along its left edge', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx, linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
+    await page.waitForSelector('#rv-add');
+    const row = page.locator('#rv li').first(), box = row.locator('input[type=checkbox]');
+    const r = await row.boundingBox(), b = await box.boundingBox();
+    assert.deepEqual([Math.round(b.x - r.x), Math.round(b.y - r.y), Math.round(b.width)], [11, 16, 18], 'the box moved');
+    await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height + 14);
+    assert.equal(await box.isChecked(), false, 'a tap just below the box did nothing');
+    await page.touchscreen.tap(r.x + 3, r.y + r.height - 6);
+    assert.equal(await box.isChecked(), true, 'a tap at the row\'s bottom-left corner did nothing');
+    assert.equal(await page.textContent('#rv-add'), 'Add 2 books');
+    await page.touchscreen.tap(r.x + 60, r.y + 18);
+    assert.equal(await box.isChecked(), true, 'a tap on the title ticked the box');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a room typed on the review screen keeps the shelf Claude gave each book', async () => {
   const ctx = await context();
   try {

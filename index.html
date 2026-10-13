@@ -237,7 +237,8 @@ details.more .fs{padding:2px 12px 12px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
 .rv li.off{background:var(--surface2)}
 .rv li.off .rv-main{opacity:.62}
-.rv li>input[type=checkbox]{margin-top:6px}
+/* the tick box answers a tap anywhere along the row's left edge, not just on its own 18px */
+.rv-tick{flex:none;align-self:stretch;display:flex;align-items:flex-start;margin:-9px -10px -9px -10px;padding:15px 10px 9px;cursor:pointer}
 .rv-main{flex:1;min-width:0;display:grid;gap:2px}
 .rv-main input{padding:3px 7px;margin-left:-8px;width:calc(100% + 8px);font-size:15px;border-color:transparent;background:transparent}
 .rv-main input:hover{border-color:var(--line2)}
@@ -1093,7 +1094,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var b = r.b, meta = [b.isbn, b.year, b.publisher, where(b)].filter(Boolean).join(' · ');
-        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '><div class="rv-main">' +
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
           '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocomplete="off">' +
           (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
           (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
