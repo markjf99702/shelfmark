@@ -383,7 +383,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function str(v, n) { return typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim().slice(0, n) : ''; }
   function para(v, n) { return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, n) : ''; }
-  function int(v, lo, hi) { var x = typeof v === 'number' ? v : parseInt(String(v == null ? '' : v).replace(/[^\d-]/g, ''), 10); return isFinite(x) ? Math.max(lo, Math.min(hi, Math.round(x))) : 0; }
+  // A whole number in range. A plain number in text, decimals and all ("3.5", "1999.0"), is rounded; anything else
+  // keeps just its digits ("1,024", "c. 1937").
+  function int(v, lo, hi) {
+    var x = typeof v === 'number' ? v : String(v == null ? '' : v).trim();
+    if (typeof x === 'string') x = /^-?(\d+\.?\d*|\.\d+)$/.test(x) ? parseFloat(x) : parseInt(x.replace(/[^\d-]/g, ''), 10);
+    return isFinite(x) ? Math.max(lo, Math.min(hi, Math.round(x))) : 0;
+  }
   function day(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
