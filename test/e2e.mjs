@@ -326,6 +326,24 @@ step('an author typed with a "Jr." stays one author', async () => {
   } finally { await ctx.close(); }
 });
 
+step('typing in a card is kept when the page closes straight after', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await page.click('#list .bk[data-id="b03"]');
+    await page.fill('#f-notes', 'Typed just now');
+    await page.reload();
+    assert.equal((await storedBook(page, 'b03')).notes, 'Typed just now');
+    // and when the tab is hidden (switching apps on a phone)
+    await page.click('#list .bk[data-id="b03"]');
+    await page.fill('#f-shelf', 'By the door');
+    await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    assert.equal((await storedBook(page, 'b03')).shelf, 'By the door');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

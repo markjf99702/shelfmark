@@ -857,7 +857,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
 
   // ---------- sheets and toasts ----------
-  var sheetDone = null, sheetFrom = null;
+  // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would.
+  var sheetDone = null, sheetFrom = null, cardFlush = null;
   // While a sheet is open, the page behind it is out of reach of the keyboard and screen readers. The toast sits
   // outside both, so its Undo stays reachable.
   function behind(off) { ['.top', '.wrap'].forEach(function (q) { var el = document.querySelector(q); if (el) el.toggleAttribute('inert', off); }); }
@@ -874,7 +875,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function closeSheet() {
     if ($('sheet').hidden) return;
-    var f = sheetDone; sheetDone = null; if (f) f();
+    var f = sheetDone; sheetDone = null; cardFlush = null; if (f) f();
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
     if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
   }
@@ -1006,7 +1007,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
     head(); drawState();
-    if (!isNew) shown = read();
+    if (!isNew) { shown = read(); cardFlush = flush; }
   }
 
   // Open Library, only when the person has turned lookups on in Settings.
@@ -1483,7 +1484,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (e.key === LSG) renderSync(); // signed in from another tab
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }
   });
-  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && D.on && hasToken()) sync(); renderSync(); });
+  // A card's typing is saved a moment after it stops; leaving the page or the app saves it straight away.
+  window.addEventListener('pagehide', function () { if (cardFlush) cardFlush(); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && cardFlush) cardFlush();
+    if (document.visibilityState === 'visible' && D.on && hasToken()) sync();
+    renderSync();
+  });
   setInterval(function () { if (document.visibilityState === 'visible' && D.on && hasToken() && !syncing) sync(); else renderSync(); }, 60000);
 
   render();
