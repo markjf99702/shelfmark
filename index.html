@@ -840,12 +840,15 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- sheets and toasts ----------
   var sheetDone = null, sheetFrom = null;
+  // While a sheet is open, the page behind it is out of reach of the keyboard and screen readers. The toast sits
+  // outside both, so its Undo stays reachable.
+  function behind(off) { ['.top', '.wrap'].forEach(function (q) { var el = document.querySelector(q); if (el) el.toggleAttribute('inert', off); }); }
   function openSheet(html, onClose) {
     if (!$('sheet').hidden) closeSheet();
     sheetFrom = document.activeElement; sheetDone = onClose || null;
     var s = $('sheet');
     s.innerHTML = '<div class="scrim"></div><div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
-    s.hidden = false; document.body.classList.add('locked');
+    s.hidden = false; document.body.classList.add('locked'); behind(true);
     s.querySelector('.scrim').addEventListener('click', closeSheet);
     var f = s.querySelector('[autofocus]') || s.querySelector('.hd button');
     if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
@@ -854,7 +857,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function closeSheet() {
     if ($('sheet').hidden) return;
     var f = sheetDone; sheetDone = null; if (f) f();
-    $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked');
+    $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
     if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
   }
   var toastT;

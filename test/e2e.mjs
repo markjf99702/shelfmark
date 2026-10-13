@@ -161,6 +161,27 @@ step('the header buttons have names on a phone, where they show only icons', asy
   } finally { await ctx.close(); }
 });
 
+step('the keyboard stays in an open sheet, and comes back to the book after', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await page.focus('#list .bk[data-id="b03"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#f-title');
+    const outside = [];
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press('Tab');
+      const at = await page.evaluate(() => { const a = document.activeElement; return a === document.body || a.closest('#sheet') ? '' : a.id || a.className || a.tagName; });
+      if (at) outside.push(at);
+    }
+    assert.deepEqual(outside, [], 'Tab reached the page behind the sheet');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.id), 'b03');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a room typed on the review screen keeps the shelf Claude gave each book', async () => {
   const ctx = await context();
   try {
