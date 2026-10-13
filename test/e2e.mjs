@@ -405,6 +405,33 @@ step('junk in the saved covers and settings doesn\'t stop covers or sorting', as
   } finally { await ctx.close(); }
 });
 
+step('a quick second tap on Add to library doesn\'t open the book underneath', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, Array.from({ length: 9 }, (_, i) => ({ id: 'n' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'] })));
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Double Tap');
+    const b = await page.locator('#f-add').boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    const under = await page.evaluate(([x, y]) => {
+      const s = document.getElementById('sheet'), behind = [...document.querySelectorAll('[inert]')];
+      s.style.visibility = 'hidden'; behind.forEach(e => e.inert = false);
+      const e = document.elementFromPoint(x, y);
+      s.style.visibility = ''; behind.forEach(e => e.inert = true);
+      const b = e && e.closest('button'); return b && (b.id || b.className);
+    }, [x, y]);
+    assert.ok(under, 'nothing to tap lies under the button');
+    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(x, y);
+    await wait(500);
+    assert.equal(await sheetOpen(page), false, 'the second tap went through to ' + under);
+    assert.equal(Object.values((await stored(page)).library.books).filter(b => b.title === 'Double Tap').length, 1);
+    await page.click('#list .bk >> nth=0'); // a tap elsewhere, a moment later, works
+    assert.equal(await sheetOpen(page), true);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

@@ -868,6 +868,16 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- sheets and toasts ----------
   // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would.
   var sheetDone = null, sheetFrom = null, cardFlush = null;
+  // A quick second tap on the button that closed a sheet (Add to library, Done) would land on whatever lies under
+  // it once the sheet is gone, a book or a button. For a moment after a sheet closes, a tap where the closing tap
+  // was is ignored. Taps elsewhere, keys, and the page's own clicks go through.
+  var lastTap = null, tapGuard = null;
+  document.addEventListener('click', function (e) {
+    if (!e.detail) return;
+    var now = Date.now();
+    if (tapGuard && now - tapGuard.t < 400 && Math.abs(e.clientX - tapGuard.x) < 40 && Math.abs(e.clientY - tapGuard.y) < 40) { e.preventDefault(); e.stopPropagation(); return; }
+    lastTap = { x: e.clientX, y: e.clientY, t: now };
+  }, true);
   // While a sheet is open, the page behind it is out of reach of the keyboard and screen readers. The toast sits
   // outside both, so its Undo stays reachable.
   function behind(off) { ['.top', '.wrap'].forEach(function (q) { var el = document.querySelector(q); if (el) el.toggleAttribute('inert', off); }); }
@@ -885,6 +895,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function closeSheet() {
     if ($('sheet').hidden) return;
     var f = sheetDone; sheetDone = null; cardFlush = null; if (f) f();
+    tapGuard = lastTap && Date.now() - lastTap.t < 300 ? { x: lastTap.x, y: lastTap.y, t: Date.now() } : null;
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
     if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
   }
