@@ -60,6 +60,10 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
   eq(S.cleanBook({ id: 'a', title: 'T', loan: { to: 'Sam', since: 'last week' } }).loan, { to: 'Sam' }, 'a loan keeps its borrower even with a bad date');
   eq(S.cleanBook({ id: 'a', title: 'T', isbn: '12-34' }).isbn, '1234', 'a non-ISBN number is kept as typed digits');
+  eq(['0618260307, 9780618260300', '[0618260307]', '="0618260307"', 'x, 9780618260300', '0618260307 9780618260300', '978 0 618 26030 0'].map(isbn => S.cleanBook({ id: 'a', title: 'T', isbn }).isbn),
+    Array(6).fill('9780618260300'), 'the first valid ISBN is kept from a field holding several, as exports have');
+  eq(S.cleanBook({ id: 'a', title: 'T', isbn: '=""' }).isbn, undefined, 'an empty Goodreads cell is no ISBN');
+  eq(S.cleanBook({ id: 'a', title: 'T', isbn: '0618260308, 9780618260301' }).isbn, '0618260308', 'with none valid, the first one is kept as typed digits');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Ann Lee, Bo Chen & Cy Dee' }).authors, ['Ann Lee', 'Bo Chen', 'Cy Dee'], 'author text splits on commas and &');
   eq(S.cleanBook({ id: 'a', title: 'T', tags: 'Arts & crafts, sf; kids' }).tags, ['Arts & crafts', 'sf', 'kids'], 'tag text splits on commas and semicolons, not &');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Kurt Vonnegut, Jr.' }).authors, ['Kurt Vonnegut, Jr.'], 'a "Jr." after a comma stays with the name');
@@ -253,17 +257,21 @@ function randomDoc(r, n) {
     fs.writeFileSync(input, JSON.stringify({ name: 'Den, left case', room: 'Den', books: [
       { title: 'Middlemarch', authors: 'George Eliot', isbn: '0-14-143954-8', format: 'Paperback', status: 'finished', condition: 'VG', year: '1994' },
       { title: 'Beloved', authors: ['Toni Morrison'], isbn: '9780140449137', unsure: 'glare on the spine' },
-      { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], loan: { to: 'Sam', since: '2026-09-01' }, first: true },
-      { title: '' }
+      { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], loan: { to: 'Sam', since: '2026-09-01' }, first: true, isbn: '0618260307, 9780618260300' },
+      { title: '' },
+      { title: 'A Kindle book', isbn: '=""' }
     ] }));
     const out = execFileSync('python3', [py, input, '--out', tmp], { encoding: 'utf8' });
     const url = /Link: (\S+)/.exec(out)[1];
     check(url.startsWith('https://shelfmark.junkdrawer.works/#s1z'), 'the script makes a Shelfmark link');
     const got = (await S.parseIncoming(url)).batch;
-    eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit'], 'the script’s link opens with every usable book, in order');
+    eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit', 'A Kindle book'], 'the script’s link opens with every usable book, in order');
     eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
     check(!got.books[1].isbn && /glare on the spine; ISBN read as 9780140449137 fails its check digit/.test(got.books[1].check), 'a misread ISBN is dropped and flagged, not guessed');
     eq(got.books[2].loan, { to: 'Sam', since: '2026-09-01' }, 'loans come through');
+    eq([got.books[2].isbn, got.books[2].check], ['9780618260300', undefined], 'the script keeps the first valid ISBN from a list, as LibraryThing gives them');
+    eq([got.books[3].isbn, got.books[3].check], [undefined, undefined], 'and takes an empty Goodreads cell for no ISBN, without a flag');
+    check((out.match(/warning: .*fails its check digit/g) || []).length === 1, 'the script warns about the one bad ISBN only');
     eq(got.room, 'Den', 'the batch keeps its room');
     const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
     eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');

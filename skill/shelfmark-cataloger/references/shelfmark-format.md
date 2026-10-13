@@ -28,7 +28,7 @@ Each book:
 | `title` | Required. Up to 300 characters |
 | `sub` | Subtitle |
 | `authors` | List of names as printed, up to 12 |
-| `isbn` | ISBN-10 or ISBN-13, any punctuation. Shelfmark stores valid ones as ISBN-13 |
+| `isbn` | ISBN-10 or ISBN-13, any punctuation. Shelfmark stores valid ones as ISBN-13; given several ("0618260307, 9780618260300"), it keeps the first valid one |
 | `publisher`, `year`, `pages` | As printed |
 | `format` | `hardcover`, `paperback`, `mass-market`, `board`, `leather`, `other` |
 | `edition` | Free text: "2nd printing", "book club edition" |

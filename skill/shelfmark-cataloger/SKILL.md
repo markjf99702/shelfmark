@@ -116,6 +116,6 @@ For a Goodreads or LibraryThing export (CSV), map the columns onto batch fields 
   - `Exclusive Shelf` → `status` (read, currently-reading, to-read).
   - `Bookshelves` → `tags`.
   - `My Review` or `Private Notes` → `notes`.
-- **LibraryThing:** `Title`, `Primary Author`, `ISBNs`, `Publication`, `Date`, `Tags`, `Collections`, `Comments`.
+- **LibraryThing:** `Title`, `Primary Author`, `ISBN` (one ISBN in brackets; pass it as it is), `Publication`, `Date`, `Tags`, `Collections`, `Comments`.
 
 These are usually large, so hand over the file rather than the link, and say how many books came through.

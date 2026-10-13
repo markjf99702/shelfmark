@@ -65,6 +65,21 @@ def isbn13(v):
     return ''
 
 
+ISBN_SEPS = r'''[,;|/\[\](){}"'=]+'''
+
+
+def first_isbn(v):
+    """The first valid ISBN in a value that may hold several, the way exports give them: "0618260307, 9780618260300",
+    "[0618260307]", '="0618260307"'. The whole value is tried first, so "978 0 14 044913 6" is one ISBN."""
+    v = str(v or '')
+    for parts in ([v], re.split(ISBN_SEPS, v), re.split(ISBN_SEPS, ','.join(v.split()))):
+        for p in parts:
+            good = isbn13(p)
+            if good:
+                return good
+    return ''
+
+
 def names(v, n=12):
     if isinstance(v, str):
         v = re.split(r'\s*;\s*|\s+&\s+|\s+and\s+', v)
@@ -106,14 +121,14 @@ def clean(b, i, warn):
         return None
     flags = [s(b.get('unsure') or b.get('check'), 300)]
     out = {'title': title, 'sub': s(b.get('sub') or b.get('subtitle'), 300), 'authors': names(b.get('authors') or b.get('author') or [])}
-    raw = s(b.get('isbn'), 24)
-    if raw:
-        good = isbn13(raw)
+    raw = s(b.get('isbn'), 200)
+    if re.search(r'\d', raw):  # an empty Goodreads cell, ="", is no ISBN at all
+        good = first_isbn(raw)
         if good:
             out['isbn'] = good
         else:
-            flags.append(f'ISBN read as {raw} fails its check digit, so it was left off')
-            warn.append(f'“{title}”: ISBN {raw} fails its check digit; dropped and flagged')
+            flags.append(f'ISBN read as {raw[:40]} fails its check digit, so it was left off')
+            warn.append(f'“{title}”: ISBN {raw[:40]} fails its check digit; dropped and flagged')
     out['publisher'] = s(b.get('publisher'), 120)
     out['year'] = whole(b.get('year'), 0, 2200)
     out['pages'] = whole(b.get('pages'), 0, 50000)

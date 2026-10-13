@@ -401,6 +401,15 @@ body.locked .toast.show{transform:translate(-50%,0)}
     }
     return '';
   }
+  // The first valid ISBN in a field that may hold several, the way exports give them: "0618260307, 9780618260300",
+  // "[0618260307]", '="0618260307"'. The whole field is tried first, so "978 0 14 044913 6" is one ISBN.
+  var ISBN_SEPS = /[,;|\/\[\](){}"'=]+/;
+  function firstIsbn(s) {
+    s = String(s || '');
+    var tries = [[s], s.split(ISBN_SEPS), s.split(/\s+/).join(',').split(ISBN_SEPS)];
+    for (var i = 0; i < tries.length; i++) for (var j = 0; j < tries[i].length; j++) { var x = isbn13(tries[i][j]); if (x) return x; }
+    return '';
+  }
   // Several values typed in one field. They split on commas and semicolons, so "Arts & crafts" stays one tag;
   // names (authors) also split on " & ", and keep a "Jr." or "III" with the name before it ("Kurt Vonnegut, Jr."),
   // which also mends a name split from its "Jr." before.
@@ -419,7 +428,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (/^\d*$/.test(id)) id = id ? 'b' + id : '';
     if (o.del) return id ? { id: id, t: t, del: 1 } : null;
     var title = str(o.title, 300); if (!title) return null;
-    var raw = str(o.isbn, 24), isbn = isbn13(raw) || raw.replace(/[^0-9Xx]/g, '').toUpperCase().slice(0, 13);
+    // With no valid ISBN, the first number in the field is kept as typed (some books have none, or an odd one).
+    var raw = str(o.isbn, 200), isbn = firstIsbn(raw) || (raw.split(ISBN_SEPS).map(function (x) { return x.replace(/[^0-9Xx]/g, '').toUpperCase(); }).filter(Boolean)[0] || '').slice(0, 13);
     var loan = o.loan && typeof o.loan === 'object' && str(o.loan.to, 80) ? { to: str(o.loan.to, 80), since: day(o.loan.since) } : null;
     if (loan && !loan.since) delete loan.since;
     var b = {
