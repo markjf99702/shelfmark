@@ -150,6 +150,17 @@ step('a link from the skill adds its books, and an edit survives a reload and go
   } finally { await ctx.close(); }
 });
 
+step('the header buttons have names on a phone, where they show only icons', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    for (const [id, name] of [['importBtn', 'Import'], ['setBtn', 'Settings'], ['addBtn', 'Add a book']]) {
+      assert.equal(await page.locator('#' + id).isVisible(), true);
+      assert.equal(await page.getByRole('button', { name, exact: true }).getAttribute('id'), id, '#' + id + ' has no name on a phone');
+    }
+  } finally { await ctx.close(); }
+});
+
 step('a room typed on the review screen keeps the shelf Claude gave each book', async () => {
   const ctx = await context();
   try {
