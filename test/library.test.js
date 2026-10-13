@@ -269,29 +269,32 @@ function randomDoc(r, n) {
   let havePy = true; try { execFileSync('python3', ['--version']); } catch (e) { havePy = false; }
   if (havePy) {
     const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'shelfmark-'));
-    const input = path.join(tmp, 'in.json');
-    fs.writeFileSync(input, JSON.stringify({ name: 'Den, left case', room: 'Den', books: [
-      { title: 'Middlemarch', authors: 'George Eliot', isbn: '0-14-143954-8', format: 'Paperback', status: 'finished', condition: 'VG', year: '1994' },
-      { title: 'Beloved', authors: ['Toni Morrison'], isbn: '9780140449137', unsure: 'glare on the spine' },
-      { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], loan: { to: 'Sam', since: '2026-09-01' }, first: true, isbn: '0618260307, 9780618260300' },
-      { title: '' },
-      { title: 'A Kindle book', isbn: '=""' }
-    ] }));
-    const out = execFileSync('python3', [py, input, '--out', tmp], { encoding: 'utf8' });
-    const url = /Link: (\S+)/.exec(out)[1];
-    check(url.startsWith('https://shelfmark.junkdrawer.works/#s1z'), 'the script makes a Shelfmark link');
-    const got = (await S.parseIncoming(url)).batch;
-    eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit', 'A Kindle book'], 'the script’s link opens with every usable book, in order');
-    eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
-    check(!got.books[1].isbn && /glare on the spine; ISBN read as 9780140449137 fails its check digit/.test(got.books[1].check), 'a misread ISBN is dropped and flagged, not guessed');
-    eq(got.books[2].loan, { to: 'Sam', since: '2026-09-01' }, 'loans come through');
-    eq([got.books[2].isbn, got.books[2].check], ['9780618260300', undefined], 'the script keeps the first valid ISBN from a list, as LibraryThing gives them');
-    eq([got.books[3].isbn, got.books[3].check], [undefined, undefined], 'and takes an empty Goodreads cell for no ISBN, without a flag');
-    check((out.match(/warning: .*fails its check digit/g) || []).length === 1, 'the script warns about the one bad ISBN only');
-    eq(got.room, 'Den', 'the batch keeps its room');
-    const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
-    eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
-    check(/warning: #4: no title/.test(out), 'the script says what it left out');
+    try {
+      const input = path.join(tmp, 'in.json');
+      fs.writeFileSync(input, JSON.stringify({ name: 'Den, left case', room: 'Den', books: [
+        { title: 'Middlemarch', authors: 'George Eliot', isbn: '0-14-143954-8', format: 'Paperback', status: 'finished', condition: 'VG', year: '1994' },
+        { title: 'Beloved', authors: ['Toni Morrison'], isbn: '9780140449137', unsure: 'glare on the spine' },
+        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], loan: { to: 'Sam', since: '2026-09-01' }, first: true, isbn: '0618260307, 9780618260300' },
+        { title: '' },
+        { title: 'A Kindle book', isbn: '=""' }
+      ] }));
+      const out = execFileSync('python3', [py, input, '--out', tmp], { encoding: 'utf8' });
+      const url = /Link: (\S+)/.exec(out)[1];
+      check(url.startsWith('https://shelfmark.junkdrawer.works/#s1z'), 'the script makes a Shelfmark link');
+      const got = (await S.parseIncoming(url)).batch;
+      eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit', 'A Kindle book'], 'the script’s link opens with every usable book, in order');
+      eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
+      check(!got.books[1].isbn && /glare on the spine; ISBN read as 9780140449137 fails its check digit/.test(got.books[1].check), 'a misread ISBN is dropped and flagged, not guessed');
+      eq(got.books[2].loan, { to: 'Sam', since: '2026-09-01' }, 'loans come through');
+      eq([got.books[2].isbn, got.books[2].check], ['9780618260300', undefined], 'the script keeps the first valid ISBN from a list, as LibraryThing gives them');
+      eq([got.books[3].isbn, got.books[3].check], [undefined, undefined], 'and takes an empty Goodreads cell for no ISBN, without a flag');
+      check((out.match(/warning: .*fails its check digit/g) || []).length === 1, 'the script warns about the one bad ISBN only');
+      eq(got.room, 'Den', 'the batch keeps its room');
+      const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
+      eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
+      check(/warning: #4: no title/.test(out), 'the script says what it left out');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');
 
   // ---------- spreadsheet ----------
