@@ -983,19 +983,23 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- bringing books in ----------
   // shelfmark/#s1z… carries a batch as deflated JSON in base64url (#s1j… uncompressed); the Shelfmark
-  // skill for Claude makes these. #batch=<url-encoded JSON> works too, for writing one by hand.
+  // skill for Claude makes these. #batch=<url-encoded JSON> works too, for writing one by hand; there a % that
+  // doesn't start an escape stands for itself, as in "100% Fun". A link that can't be read (cut short, say)
+  // gives a promise that fails, like any other bad input, so the page can say so.
   function linkText(hash) {
-    var m = /^#s1([zj])([A-Za-z0-9_-]+)$/.exec(hash || '');
-    if (m) {
-      var b = m[2].replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
-      var bin = atob(b), bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      if (m[1] === 'j') return Promise.resolve(new TextDecoder().decode(bytes));
-      if (!window.DecompressionStream) return Promise.reject(new Error('This browser is too old to open Shelfmark links. Ask Claude for the file instead.'));
-      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
-    }
-    m = /^#batch=(.+)$/.exec(hash || '');
-    return Promise.resolve(m ? decodeURIComponent(m[1]) : null);
+    try {
+      var m = /^#s1([zj])([A-Za-z0-9_-]+)$/.exec(hash || '');
+      if (m) {
+        var b = m[2].replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
+        var bin = atob(b), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (m[1] === 'j') return Promise.resolve(new TextDecoder().decode(bytes));
+        if (!window.DecompressionStream) return Promise.reject(new Error('This browser is too old to open Shelfmark links. Ask Claude for the file instead.'));
+        return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      }
+      m = /^#batch=(.+)$/.exec(hash || '');
+      return Promise.resolve(m ? decodeURIComponent(m[1].replace(/%(?![0-9A-Fa-f]{2})/g, '%25')) : null);
+    } catch (e) { return Promise.reject(e); }
   }
   // Text from a link, a file or the paste box → {kind: 'batch' | 'library', …}.
   function parseIncoming(t) {

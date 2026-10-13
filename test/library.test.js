@@ -216,6 +216,14 @@ function randomDoc(r, n) {
   eq((await S.parseIncoming('https://x/#batch=' + encodeURIComponent(json))).kind, 'batch', 'a hand-written #batch= link opens');
   eq((await S.parseIncoming('  ' + json + '\n')).batch.id, 'c1', 'pasted JSON opens');
   eq((await S.parseIncoming(S.canon(S.cleanDoc({ books: [{ id: 'q', t: 1, title: 'Q' }] })))).kind, 'library', 'a library backup is recognized as one');
+  // A link cut short, or written by hand with a bare %, is refused the way other bad input is: by a promise that
+  // fails, so the page can say so, never by an error thrown on the spot.
+  async function refused(f) { let p; try { p = f(); } catch (e) { return 'threw on the spot'; } try { await p; return 'opened'; } catch (e) { return 'refused'; } }
+  for (let cut = 1; cut <= 4; cut++) eq(await refused(() => S.parseIncoming('https://shelfmark.junkdrawer.works/#s1z' + z.slice(0, z.length - cut))), 'refused', 'a link cut ' + cut + ' short is refused');
+  eq(await refused(() => S.linkText('#s1z' + z.slice(0, 4 * Math.floor(z.length / 4) - 3))), 'refused', 'even with a length base64 can\'t have');
+  eq(await refused(() => S.linkText('#batch=%E9t%C3')), 'refused', 'a #batch= link that isn\'t UTF-8 is refused');
+  eq((await S.parseIncoming('#batch={%22books%22:[{%22title%22:%22100%%20Fun%22}]}')).batch.books[0].title, '100% Fun', 'a hand-written #batch= link with a % in it opens, as a browser hands it over');
+  eq((await S.parseIncoming('https://shelfmark.junkdrawer.works/#batch={"books":[{"title":"100%Fun"}]}')).batch.books[0].title, '100%Fun', 'and pasted');
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
 

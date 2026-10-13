@@ -169,6 +169,23 @@ step('a room typed on the review screen keeps the shelf Claude gave each book', 
   } finally { await ctx.close(); }
 });
 
+step('a link cut short says so, and a hand-written link with a % opens', async () => {
+  const ctx = await context();
+  try {
+    const link = linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] });
+    const data = link.split('#s1z')[1];
+    let n = data.length - 6; while (n % 4 !== 1) n--; // the length atob refuses outright
+    const page = await open(ctx, base + '#s1z' + data.slice(0, n));
+    await until(() => page.evaluate(() => document.getElementById('toast').classList.contains('show')), 'a message');
+    assert.match(await page.textContent('#toastTx'), /doesn’t look like books from Claude/);
+    assert.equal(await sheetOpen(page), false);
+    await page.goto(base + '#batch={"books":[{"title":"100% Fun"}]}');
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.inputValue('#rv input[data-f="title"]'), '100% Fun');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {
