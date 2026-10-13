@@ -1,10 +1,18 @@
 # Shelfmark
 
-A catalog for the books in your house: what you have, where each one is, what you've read, and who borrowed what. Photograph a shelf, send the photos to Claude, and open the link it gives you to add them.
+**Use it: [shelfmark.junkdrawer.works](https://shelfmark.junkdrawer.works/)**
 
-It is one HTML file with no build step and no server. Open `index.html` in a browser, or host it anywhere static (GitHub Pages works). It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; looking up a book's details needs a signal. `manifest.webmanifest`, the icons (`node tools/make-icons.mjs` redraws the PNGs from `icon.svg`) and `sw.js` make that work, and `og.png` is the link preview. The fonts, Newsreader and IBM Plex Mono (SIL Open Font License), are in `fonts/`, served from here so nothing loads from elsewhere. It lives at [shelfmark.junkdrawer.works](https://shelfmark.junkdrawer.works/).
+**A catalog for the books in your house: what you have, where each one is, what you've read, and who borrowed what.** Photograph a shelf, send the photos to Claude, and open the link it gives you: Shelfmark shows the books to check, with the ones you already own unticked, before anything is added. Your catalog stays in your browser, and in your own Google Drive if you turn on sync.
 
-## What it does
+<p align="center">
+  <img src="docs/phone-shelves.png" alt="The library on a phone, sorted by shelf: under Bedroom › Nightstand, Pride and Prejudice and A Wizard of Earthsea are marked Read with their stars, The Name of the Wind is flagged Check, and To Kill a Mockingbird and The Hobbit wait unread" width="250">
+  &nbsp;
+  <img src="docs/phone-review.png" alt="Add books from Claude: five books from a photo of the hall console table, to be shelved in Hall › Console table, with The Overstory flagged to check for glare over the author and Piranesi unticked because it's already in the library" width="250">
+  &nbsp;
+  <img src="docs/phone-next.png" alt="What to read next, leaning toward favorite authors: try Gilead by Marilynne Robinson, because you gave Housekeeping 5 stars and your note says to read it slowly, or The Left Hand of Darkness, or To Kill a Mockingbird, a new arrival" width="250">
+</p>
+
+## How it works
 
 - **Catalog.** For each book it keeps:
   - title, subtitle, authors
@@ -29,6 +37,7 @@ It is one HTML file with no build step and no server. Open `index.html` in a bro
   - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
 - **Backups.** Download the whole library as a file, open it on any device (it merges), or download a spreadsheet (CSV).
+- No account and no server. Your catalog stays in your browser, and in your Google Drive if you turn on sync. It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; covers and looking up a book's details need a signal.
 
 ## Your data
 
@@ -98,20 +107,29 @@ python3 skill/shelfmark-cataloger/scripts/make_shelfmark.py books.json
 
 A link like `https://shelfmark.junkdrawer.works/#s1z…` carries a batch of books in the part after `#`. Opening one shows the books and asks before adding them. Opening the same link again says so and unticks what's already there. The format is the batch JSON, compressed with raw DEFLATE and base64url-encoded; `#s1j…` is the same uncompressed. `#batch=` followed by URL-encoded JSON also works, for writing one by hand. `skill/shelfmark-cataloger/references/shelfmark-format.md` describes every field.
 
-## Files
+## File formats
 
 - **A batch from Claude** is `{"shelfmark": 1, "batch": {…}}`.
 - **A library backup, or the Drive file,** is `{"shelfmark": 1, "library": {"books": {…}, "seen": {…}}}`.
 
 Both open from **Import › Open a file**. Opening a library merges it into yours. Anything that comes in is cleaned field by field first, so a hand-edited file can't break the page.
 
-## Tests
+## Running it
 
-```
-npm test
+It's a static site: plain HTML, CSS and JavaScript, with no build step. Open `index.html` in a browser, or host it anywhere static.
+
+```sh
+npx serve .                   # or any static file server, then open the printed address
+npm test                      # checks the logic, then uses the page in Chromium (needs Playwright)
+node tools/screenshots.mjs    # redraws docs/*.png and og.png
+node tools/make-icons.mjs     # redraws the PNG icons from icon.svg
 ```
 
-That runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright): it opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways.
+To put it online with GitHub Pages: **Settings → Pages → Build and deployment → Deploy from a branch**, then pick `main` and `/ (root)`. The `CNAME` file gives it its own address, shelfmark.junkdrawer.works.
+
+### Tests
+
+`npm test` runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright), and nothing in it reaches the internet. It opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways and nothing loaded from elsewhere. It also has two tabs, and two devices sharing a stand-in Google Drive, change the same book; and it checks the review screen's shelving, links that are cut short, erasing a device, and the keyboard and screen readers in the sheets.
 
 `node test/library.test.js` has no dependencies. It reads the logic straight out of `index.html` and checks:
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
@@ -122,6 +140,18 @@ That runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it need
 - **The skill's script:** its link and file open in the page with every field intact. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
 - **What to read next:** which books can be suggested, that each lean pulls the way it says, the reasons given, and that every match comes up before any repeats.
+
+### Files
+
+- `index.html`: the whole app, its styles and its script. The pure logic (cleaning books, merging, duplicates, links, the spreadsheet, what to read next) comes first in the script, where the unit test reads it.
+- `privacy.html`: Shelfmark's privacy page.
+- `fonts/`: Newsreader and IBM Plex Mono (SIL Open Font License), served from here so nothing loads from elsewhere.
+- `sw.js`: keeps a copy for using offline.
+- `manifest.webmanifest`, `icon.svg` and `icon-*.png`: what a phone needs to install it. `tools/make-icons.mjs` redraws the PNGs from `icon.svg` and `tools/icon-full-bleed.svg`.
+- `og.png` and `docs/`: the link preview and the screenshots above, made by `tools/screenshots.mjs` from a sample library.
+- `carry.js`: the first time Shelfmark opens at shelfmark.junkdrawer.works, brings your catalog over from its old address, junkdrawer.works/shelfmark/.
+- `skill/shelfmark-cataloger/`: the skill for Claude, with its script and the format notes.
+- `test/library.test.js` and `test/e2e.mjs`: the tests. `test/fake-google.mjs` stands in for Google sign-in and Drive.
 
 ## License
 

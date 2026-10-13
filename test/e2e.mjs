@@ -154,6 +154,13 @@ step('a link from the skill adds its books, and an edit survives a reload and go
   } finally { await ctx.close(); }
 });
 
+step('the pictures the README shows are all here', async () => {
+  const readme = await readFile(join(root, 'README.md'), 'utf8');
+  const pictures = [...readme.matchAll(/<img src="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(pictures.length >= 2, 'the README shows no screenshots');
+  for (const f of pictures) assert.equal((await fetch(base + f)).status, 200, f + ' is missing');
+});
+
 step('every file the service worker keeps for offline is there', async () => {
   const sw = await readFile(join(root, 'sw.js'), 'utf8');
   const shell = eval('[' + /const SHELL = \[([^\]]*)\]/.exec(sw)[1] + ']');
