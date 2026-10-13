@@ -180,6 +180,11 @@ function randomDoc(r, n) {
   check(/^Waiting longest of these: in your library since .*2019$/.test(why('oldest', 'old')[0]), 'the longest-waiting book says so, with the month it was added');
   eq(why('', 'new'), ['New arrival: added 5 days ago', 'Your note: Sam says start here'], 'a recent arrival says so, and the first line of a note comes along');
   eq(why('', 'nop'), [], 'nothing special to say → no reasons');
+  for (const hour of ['00:30', '09:00', '15:00', '23:30']) {
+    const at = new Date('2026-10-13T' + hour + ':00').getTime();
+    const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }] })), base, rng(1), {}, at).picks[0].why[0];
+    eq([said('2026-10-13'), said('2026-10-12'), said('2026-10-01')], ['New arrival: added today', 'New arrival: added yesterday', 'New arrival: added 12 days ago'], 'new arrivals count calendar days, at ' + hour);
+  }
   const reread = S.dealNext(lib, S.cleanNext({ reread: true, len: 'medium' }), rng(1), {}, now).picks;
   eq(reread.map(p => p.b.id).sort(), ['lg1', 'new'], 'medium length with rereads');
   eq(reread.find(p => p.b.id === 'lg1').why, ['A reread: you gave it 5 stars'], 'a reread says what you gave it');

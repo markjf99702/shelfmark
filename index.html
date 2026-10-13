@@ -638,7 +638,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
       else fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who : 'You’ve read “' + f.one.title + '”, also by ' + who;
     }
     if (b.added) {
-      var age = Math.floor((now - new Date(b.added + 'T12:00:00').getTime()) / 864e5);
+      // Whole calendar days between the day it was added and today, wherever in the day "now" falls.
+      var p = b.added.split('-'), d = new Date(now), age = Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(+p[0], p[1] - 1, +p[2])) / 864e5);
       if (b.added === oldest && c.lean === 'oldest') when = 'Waiting longest of these: in your library since ' + monthOf(b.added);
       else if (age >= 0 && age <= 30) when = 'New arrival: added ' + (age < 1 ? 'today' : age < 2 ? 'yesterday' : age + ' days ago');
       else if (c.lean === 'oldest' || c.lean === 'newest' || age >= 730) when = 'In your library since ' + monthOf(b.added);
