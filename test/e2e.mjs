@@ -252,6 +252,20 @@ step('a link pasted into Import with a full stop after it opens', async () => {
   } finally { await ctx.close(); }
 });
 
+step('search finds a book by the ISBN printed on it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, { id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780261102217' }]);
+    for (const q of ['978-0-261-10221-7', '0261102214']) {
+      await page.fill('#q', q);
+      await until(async () => (await titles(page)).length === 1, 'the search');
+      assert.deepEqual(await titles(page), ['The Hobbit'], q);
+    }
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

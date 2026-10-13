@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -72,6 +72,11 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ['Kurt Vonnegut', 'Jr.'] }).authors, ['Kurt Vonnegut, Jr.'], 'a name split from its "Jr." before is put back together');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ', Jr., Sammy Davis Jr.' }).authors, ['Jr.', 'Sammy Davis Jr.'], 'a "Jr." with no name before it is left alone');
 }
+
+// ---------- searching ----------
+eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');
+eq(S.searchWords('0261102214'), ['9780261102217'], 'and so does its ISBN-10');
+eq(S.searchWords('Hobbit 1937 9780261'), ['hobbit', '1937', '9780261'], 'other words and numbers are left as they are');
 
 // ---------- merging ----------
 function randomDoc(r, n) {

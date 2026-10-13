@@ -595,6 +595,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
     };
     return c;
   }
+  // The words of a search. One that's an ISBN as printed on the book ("978-0-261-10221-7", or its ISBN-10) becomes
+  // the 13 digits Shelfmark keeps, so it finds the book.
+  function searchWords(s) { return fold(s).split(/\s+/).filter(Boolean).map(function (w) { return /^[\dx-]+$/.test(w) && isbn13(w) || w; }); }
   function authorOrder(x, y) { return COLL.compare(keys(x).author, keys(y).author) || COLL.compare(keys(x).title, keys(y).title); }
   function titleOrder(x, y) { return COLL.compare(keys(x).title, keys(y).title) || authorOrder(x, y); }
   function shelfOrder(x, y) { return COLL.compare(x.room || '￿', y.room || '￿') || COLL.compare(x.shelf || '￿', y.shelf || '￿') || authorOrder(x, y); }
@@ -792,7 +795,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + '</span></button>';
   }
   function visible(all) {
-    var q = fold(UI.q).split(/\s+/).filter(Boolean);
+    var q = searchWords(UI.q);
     return all.filter(function (b) {
       if (UI.status === 'lent') { if (!b.loan) return false; }
       else if (UI.status === 'check') { if (!b.check) return false; }
