@@ -127,6 +127,25 @@ step('a link from the skill adds its books, and an edit survives a reload and go
   } finally { await ctx.close(); }
 });
 
+step('a room typed on the review screen keeps the shelf Claude gave each book', async () => {
+  const ctx = await context();
+  try {
+    // A whole bookcase in one photo, room not known: a shelf for each book and none for the batch.
+    const page = await open(ctx, linkTo({ name: 'Bookcase by the window', books: [
+      { title: 'Middlemarch', authors: ['George Eliot'], shelf: 'Shelf 1 from top' },
+      { title: 'Gilead', authors: ['Marilynne Robinson'], shelf: 'Shelf 2 from top' },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    assert.match(await page.textContent('#rv-bulknote'), /Leave blank to keep what each book says/);
+    await page.fill('#rv-room', 'Living room');
+    await page.click('#rv-add');
+    const lib = await stored(page);
+    assert.deepEqual(Object.values(lib.library.books).map(b => b.title + ' @ ' + b.room + ' > ' + b.shelf).sort(),
+      ['Gilead @ Living room > Shelf 2 from top', 'Middlemarch @ Living room > Shelf 1 from top']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 const PIRANESI = { id: 'b03', t: 1000, title: 'Piranesi', authors: ['Susanna Clarke'], notes: 'Sam says start here', added: '2026-10-01', room: 'Hall' };
 const MIDDLEMARCH = { id: 'b04', t: 1000, title: 'Middlemarch', authors: ['George Eliot'], added: '2026-10-01', room: 'Den' };
 const CRADLE = { id: 'b05', t: 1000, title: 'Cat\u2019s Cradle', authors: ['Kurt Vonnegut, Jr.'], tags: ['Arts & crafts', 'sf'], added: '2026-10-01' };

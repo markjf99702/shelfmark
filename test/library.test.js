@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -197,6 +197,16 @@ function randomDoc(r, n) {
     'a batch keeps good books only, turns "unsure" into a check flag, and ignores ids, times and removals');
   eq(S.cleanBatch([{ title: 'A' }]).books.length, 1, 'a bare list of books is a batch');
   eq(S.cleanBatch({ nope: 1 }), null, 'something else is not');
+
+  // "Shelve them in" on the review screen. A whole bookcase from one photo comes with a shelf for each book and,
+  // when the room isn't known, no room: typing one in must not wipe those shelves.
+  const where = (books, bulk) => books.map(b => S.shelve(Object.assign({}, b), bulk)).map(b => [b.room || '', b.shelf || ''].join(' > '));
+  const bookcase = [{ title: 'Middlemarch', shelf: 'Shelf 1 from top' }, { title: 'Gilead', shelf: 'Shelf 2 from top' }, { title: 'Beloved', room: 'Den', shelf: 'Top' }];
+  eq(where(bookcase, { room: 'Living room', shelf: '', touched: true }), ['Living room > Shelf 1 from top', 'Living room > Shelf 2 from top', 'Living room > Top'], 'a room typed for the batch moves every book there and keeps each one\'s shelf');
+  eq(where(bookcase, { room: '', shelf: 'By the window', touched: true }), [' > By the window', ' > By the window', 'Den > By the window'], 'a shelf typed for the batch moves every book onto it and keeps each one\'s room');
+  eq(where(bookcase, { room: '', shelf: '', touched: true }), [' > Shelf 1 from top', ' > Shelf 2 from top', 'Den > Top'], 'both left blank keeps what each book says');
+  eq(where([{ title: 'A' }, { title: 'B', shelf: 'Top' }, { title: 'C', room: 'Den' }, { title: 'D', room: 'hall' }], { room: 'Hall', shelf: 'Tall bookcase', touched: false }),
+    ['Hall > Tall bookcase', 'Hall > Top', 'Den > ', 'hall > Tall bookcase'], 'untouched, the batch\'s own room and shelf fill in only for books Claude didn\'t place');
 
   const json = JSON.stringify({ shelfmark: 1, batch: { id: 'c1', books: [{ title: 'Cien años de soledad', authors: ['Gabriel García Márquez'] }] } });
   const z = zlib.deflateRawSync(Buffer.from(json)).toString('base64url');

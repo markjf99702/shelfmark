@@ -508,6 +508,17 @@ body.locked .toast.show{transform:translate(-50%,0)}
       name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books
     };
   }
+  // Where a book from a batch goes. The review screen's "Shelve them in" fields start out as the batch's own room
+  // and shelf, which fill in for any book Claude didn't place. Once the person changes them, each one filled in
+  // moves every book there, and a blank one leaves each book's own as it is.
+  function shelve(b, bulk) {
+    if (bulk.touched) { if (bulk.room) b.room = bulk.room; if (bulk.shelf) b.shelf = bulk.shelf; }
+    else {
+      if (!b.shelf && (!b.room || fold(b.room) === fold(bulk.room))) b.shelf = bulk.shelf;
+      if (!b.room) b.room = bulk.room;
+    }
+    return b;
+  }
 
   function fmtDay(s) {
     if (!day(s)) return '';
@@ -1052,13 +1063,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       var now = Date.now(), added = today(), n = 0, first = null;
       rows.forEach(function (r) {
         if (!r.on) return;
-        var b = Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added });
-        if (bulk.touched) { if (bulk.room || bulk.shelf) { b.room = bulk.room; b.shelf = bulk.shelf; } }
-        else {
-          if (!b.shelf && (!b.room || fold(b.room) === fold(bulk.room))) b.shelf = bulk.shelf;
-          if (!b.room) b.room = bulk.room;
-        }
-        b = cleanBook(b); if (!b) return;
+        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added }), bulk)); if (!b) return;
         DOC.books[b.id] = b; n++; first = first || b;
       });
       if (!n) return;
