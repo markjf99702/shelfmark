@@ -401,8 +401,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
     }
     return '';
   }
-  function list(v, n, each) {
-    var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/\s*[,;]\s*|\s+&\s+/) : v ? [v] : [], out = [], seen = {};
+  // Several values typed in one field. They split on commas and semicolons, so "Arts & crafts" stays one tag;
+  // names (authors) also split on " & ".
+  function list(v, n, each, names) {
+    var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(names ? /\s*[,;]\s*|\s+&\s+/ : /\s*[,;]\s*/) : v ? [v] : [], out = [], seen = {};
     a.forEach(function (x) { x = str(x, each); var k = fold(x); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });
     return out.slice(0, n);
   }
@@ -418,7 +420,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var loan = o.loan && typeof o.loan === 'object' && str(o.loan.to, 80) ? { to: str(o.loan.to, 80), since: day(o.loan.since) } : null;
     if (loan && !loan.since) delete loan.since;
     var b = {
-      id: id || uid(), t: t, title: title, sub: str(o.sub, 300), authors: list(o.authors || o.author, 12, 120),
+      id: id || uid(), t: t, title: title, sub: str(o.sub, 300), authors: list(o.authors || o.author, 12, 120, true),
       isbn: isbn, publisher: str(o.publisher, 120), year: int(o.year, 0, 2200), format: pick(o.format, FORMATS), pages: int(o.pages, 0, 50000),
       room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
@@ -926,7 +928,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
       $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
-      $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn'), authors: list(v('f-authors'), 12, 120) }, 'lg', true);
+      $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn'), authors: list(v('f-authors'), 12, 120, true) }, 'lg', true);
     }
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
@@ -1062,7 +1064,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     $('rv').addEventListener('input', function (e) {
       var li = e.target.closest('li'); if (!li || !e.target.dataset.f) return; var r = rows[+li.dataset.i];
-      if (e.target.dataset.f === 'title') r.b.title = e.target.value; else r.b.authors = list(e.target.value, 12, 120);
+      if (e.target.dataset.f === 'title') r.b.title = e.target.value; else r.b.authors = list(e.target.value, 12, 120, true);
     });
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.touched = true; bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);

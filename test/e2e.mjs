@@ -219,6 +219,19 @@ step('erasing this device\'s copy leaves no list of the books behind', async () 
 });
 
 
+step('a tag typed with an & in it stays one tag', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [MIDDLEMARCH]);
+    await page.click('#list .bk[data-id="b04"]');
+    await page.fill('#f-tags', 'Arts & crafts, classics');
+    await page.click('#bkx2');
+    assert.deepEqual((await storedBook(page, 'b04')).tags, ['Arts & crafts', 'classics']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

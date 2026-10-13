@@ -61,6 +61,7 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(S.cleanBook({ id: 'a', title: 'T', loan: { to: 'Sam', since: 'last week' } }).loan, { to: 'Sam' }, 'a loan keeps its borrower even with a bad date');
   eq(S.cleanBook({ id: 'a', title: 'T', isbn: '12-34' }).isbn, '1234', 'a non-ISBN number is kept as typed digits');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Ann Lee, Bo Chen & Cy Dee' }).authors, ['Ann Lee', 'Bo Chen', 'Cy Dee'], 'author text splits on commas and &');
+  eq(S.cleanBook({ id: 'a', title: 'T', tags: 'Arts & crafts, sf; kids' }).tags, ['Arts & crafts', 'sf', 'kids'], 'tag text splits on commas and semicolons, not &');
 }
 
 // ---------- merging ----------
