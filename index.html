@@ -870,6 +870,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would;
   // cardRefresh shows changes made elsewhere in it.
   var sheetDone = null, sheetFrom = null, cardFlush = null, cardRefresh = null;
+  // Another tab's change to the library doesn't redraw the list under an open sheet; closing the sheet does.
+  var listStale = false;
   // A quick second tap on the button that closed a sheet (Add to library, Done) would land on whatever lies under
   // it once the sheet is gone, a book or a button. For a moment after a sheet closes, a tap where the closing tap
   // was is ignored, until another sheet opens over the page: taps on that one are meant for it. Taps elsewhere,
@@ -900,7 +902,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var f = sheetDone; sheetDone = null; cardFlush = cardRefresh = null; if (f) f();
     tapGuard = lastTap && Date.now() - lastTap.t < 300 ? { x: lastTap.x, y: lastTap.y, t: Date.now() } : null;
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
-    if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
+    if (listStale) { listStale = false; render(); }
+    // Back to where the sheet was opened from. A book's row may have been drawn again meanwhile: find it by its id.
+    var to = sheetFrom, id = to && to.dataset && to.dataset.id;
+    if (id && !document.contains(to)) to = [].filter.call(document.querySelectorAll('#list .bk'), function (x) { return x.dataset.id === id; })[0];
+    if (to && document.contains(to)) try { to.focus({ preventScroll: true }); } catch (e) { }
   }
   var toastT;
   function toast(m, act, fn) {
@@ -1534,7 +1540,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         if (!e.newValue) DOC = { books: {}, seen: {} };
         else { var theirs = cleanDoc(JSON.parse(e.newValue)), m = mergeDocs(DOC, theirs); DOC = m; if (canon(m) !== canon(theirs)) persist(true); }
       } catch (x) { }
-      if ($('sheet').hidden) render(); else if (cardRefresh) cardRefresh();
+      if ($('sheet').hidden) render(); else { listStale = true; if (cardRefresh) cardRefresh(); }
     }
     if (e.key === LSG) renderSync(); // signed in from another tab
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }

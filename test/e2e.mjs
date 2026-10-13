@@ -559,6 +559,30 @@ step('an open card shows another tab\'s change in the fields not being edited', 
   } finally { await ctx.close(); }
 });
 
+step('the list behind a card shows another tab\'s change once the card closes', async () => {
+  const ctx = await context(DESK);
+  try {
+    const a = await open(ctx);
+    await seed(a, [PIRANESI, MIDDLEMARCH]);
+    await a.focus('#list .bk[data-id="b03"]');
+    await a.keyboard.press('Enter');
+    await a.waitForSelector('#f-title');
+    const b = await open(ctx);
+    await b.click('#list .bk[data-id="b03"]');
+    await b.click('#f-status button[data-v="read"]');
+    await b.click('#f-rating button[data-v="4"]');
+    await b.click('#bkx2');
+    await a.bringToFront();
+    await until(async () => await a.getAttribute('#f-status button[data-v="read"]', 'aria-pressed') === 'true', 'the open card to show the change');
+    await a.keyboard.press('Escape'); // closed untouched, so nothing is saved
+    assert.equal(await sheetOpen(a), false);
+    assert.match(await a.textContent('#list .bk[data-id="b03"]'), /Read/, 'the list still shows the book as it was');
+    assert.match(await a.textContent('#count'), /1 read/);
+    assert.equal(await a.evaluate(() => document.activeElement.dataset.id), 'b03', 'the keyboard didn\'t come back to the book');
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await ctx.close(); }
+});
+
 step('a failure to load Google sign-in isn\'t kept, and errors in Settings are red', async () => {
   const ctx = await context(); // refuses accounts.google.com, as when offline
   try {
