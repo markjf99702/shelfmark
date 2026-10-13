@@ -175,6 +175,18 @@ step('every file the service worker keeps for offline is there', async () => {
   assert.deepEqual(used.filter(f => !shell.includes(f)), [], 'a font the page uses isn\'t kept for offline');
 });
 
+step('without JavaScript the page says what it needs', async () => {
+  const ctx = await browser.newContext({ ...PHONE, javaScriptEnabled: false });
+  await ctx.route(url => !url.href.startsWith(base), r => r.abort());
+  try {
+    const page = await ctx.newPage();
+    await page.goto(base);
+    // Chromium with scripts turned off this way still parses <noscript> as if they were on, so read the source.
+    assert.match(await readFile(join(root, 'index.html'), 'utf8'), /<noscript>.*Shelfmark needs JavaScript to keep your catalog\..*<\/noscript>/);
+    assert.equal(await page.locator('#q').isVisible(), false, 'an empty search box shows');
+  } finally { await ctx.close(); }
+});
+
 step('the header buttons have names on a phone, where they show only icons', async () => {
   const ctx = await context();
   try {
