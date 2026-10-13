@@ -12,6 +12,7 @@ import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import assert from 'node:assert/strict';
+import { fakeGoogle } from './fake-google.mjs';
 
 const require = createRequire(import.meta.url);
 let pw;
@@ -31,6 +32,11 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
 const DESK = { viewport: { width: 1280, height: 800 } };
 const browser = await pw.chromium.launch();
 const wait = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, what, ms = 30000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { if (await fn()) return; await wait(200); }
+  throw new Error('gave up waiting for ' + what);
+}
 
 async function context(opts = PHONE) {
   const ctx = await browser.newContext(opts);
@@ -119,6 +125,96 @@ step('a link from the skill adds its books, and an edit survives a reload and go
     await ctx.setOffline(false);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
+});
+
+const PIRANESI = { id: 'b03', t: 1000, title: 'Piranesi', authors: ['Susanna Clarke'], notes: 'Sam says start here', added: '2026-10-01', room: 'Hall' };
+const MIDDLEMARCH = { id: 'b04', t: 1000, title: 'Middlemarch', authors: ['George Eliot'], added: '2026-10-01', room: 'Den' };
+const CRADLE = { id: 'b05', t: 1000, title: 'Cat\u2019s Cradle', authors: ['Kurt Vonnegut, Jr.'], tags: ['Arts & crafts', 'sf'], added: '2026-10-01' };
+
+step('a card left open while another tab changes the book keeps that change', async () => {
+  const ctx = await context(DESK);
+  try {
+    const a = await open(ctx);
+    await seed(a, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    // Opening a card and closing it untouched writes nothing, even for a book whose fields would read back
+    // differently from the form.
+    await a.click('#list .bk[data-id="b05"]');
+    await a.click('#bkx2');
+    assert.deepEqual(await storedBook(a, 'b05'), CRADLE, 'an untouched card was saved again');
+
+    await a.click('#list .bk[data-id="b03"]');
+    const b = await open(ctx);
+    await b.click('#list .bk[data-id="b03"]');
+    await b.click('#f-status button[data-v="read"]');
+    await b.click('#f-rating button[data-v="4"]');
+    await b.fill('#f-notes', 'Loved the statues.');
+    await b.click('#bkx2');
+    const fromB = await storedBook(b, 'b03');
+    assert.deepEqual([fromB.status, fromB.rating, fromB.notes], ['read', 4, 'Loved the statues.']);
+    await a.bringToFront();
+    await a.click('#bkx2');
+    assert.deepEqual(await storedBook(a, 'b03'), fromB, 'closing the untouched card in the other tab undid the change');
+
+    // An edit in a card that has gone stale changes only what was edited, a cleared field included.
+    await a.click('#list .bk[data-id="b03"]');
+    await b.click('#list .bk[data-id="b03"]');
+    await b.click('#f-rating button[data-v="5"]');
+    await b.click('#bkx2');
+    await a.bringToFront();
+    await a.fill('#f-shelf', 'By the door');
+    await a.fill('#f-notes', '');
+    await a.click('#bkx2');
+    const both = await storedBook(a, 'b03');
+    assert.deepEqual([both.status, both.rating, both.shelf, both.notes], ['read', 5, 'By the door', undefined]);
+    await b.bringToFront();
+    await until(async () => /By the door/.test(await b.textContent('#list .bk[data-id="b03"]')), 'the other tab to show the shelf');
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await ctx.close(); }
+});
+
+step('a card left open while another device changes the book keeps that change in Drive', async () => {
+  const g = fakeGoogle();
+  const driveBook = id => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library'); return f && f.body ? JSON.parse(f.body).library.books[id] : null; };
+  async function device() {
+    const ctx = await context(DESK);
+    await g.install(ctx);
+    const page = await open(ctx);
+    return page;
+  }
+  async function connect(page) {
+    await page.click('#setBtn');
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await page.click('#dvGo');
+    await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.drive') || '{}').fileId), 'Drive to connect');
+    await page.click('#stx');
+  }
+  const syncNow = page => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const a = await device(), b = await device();
+  try {
+    await seed(a, [PIRANESI]);
+    await connect(a);
+    await until(() => driveBook('b03'), 'the library to reach Drive');
+    await connect(b);
+    await until(() => storedBook(b, 'b03'), 'the second device to get the book');
+
+    await a.click('#list .bk[data-id="b03"]');
+    await b.click('#list .bk[data-id="b03"]');
+    await b.click('#f-status button[data-v="read"]');
+    await b.click('#f-rating button[data-v="5"]');
+    await b.click('#bkx2');
+    await until(() => (driveBook('b03') || {}).status === 'read', 'the change to reach Drive');
+    await syncNow(a);
+    await until(async () => (await storedBook(a, 'b03')).status === 'read', 'the first device to sync while its card is open');
+    await a.click('#bkx2');
+    await wait(3500); // a change would be sent to Drive 2.5 s after it was saved
+    await syncNow(a);
+    await wait(1500);
+    assert.deepEqual([driveBook('b03').status, driveBook('b03').rating], ['read', 5], 'closing the untouched card undid the change in Drive');
+    await syncNow(b);
+    await wait(1500);
+    assert.equal((await storedBook(b, 'b03')).rating, 5);
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await a.context().close(); await b.context().close(); }
 });
 
 const only = process.argv.slice(2);

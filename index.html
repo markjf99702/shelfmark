@@ -893,12 +893,20 @@ body.locked .toast.show{transform:translate(-50%,0)}
       }));
     }
     function same(x, y) { var a = Object.assign({}, x), c = Object.assign({}, y); a.t = c.t = 0; return JSON.stringify(a) === JSON.stringify(c); }
-    var saveT;
+    // shown is what the form held when the card opened or last saved. A save puts only the fields changed since
+    // then onto the book as it is now, so a card left open doesn't undo what another tab or device changed
+    // meanwhile, and a card closed untouched writes nothing.
+    var saveT, shown = null;
     function flush() {
       clearTimeout(saveT); if (isNew) return;
       var n = read(), cur = DOC.books[b.id];
-      if (!n || !cur || cur.del) return;
-      if (!same(n, cur)) { b = putBook(n) || b; }
+      if (!n || !shown || !cur || cur.del || same(n, shown)) return;
+      var next = Object.assign({}, cur);
+      Object.keys(Object.assign({}, shown, n)).forEach(function (k) {
+        if (k === 'id' || k === 't' || JSON.stringify(n[k]) === JSON.stringify(shown[k])) return;
+        if (k in n) next[k] = n[k]; else delete next[k]; // a field emptied in the form is dropped, as cleanBook would
+      });
+      b = putBook(next) || b; shown = n;
     }
     function later() { if (isNew) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
     function head() {
@@ -947,6 +955,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
     head(); drawState();
+    if (!isNew) shown = read();
   }
 
   // Open Library, only when the person has turned lookups on in Settings.
