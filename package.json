@@ -4,6 +4,6 @@
   "license": "MIT",
   "description": "A home library catalog that keeps your books in your browser and your own Google Drive",
   "scripts": {
-    "test": "node test/library.test.js"
+    "test": "node test/library.test.js && node test/e2e.mjs"
   }
 }

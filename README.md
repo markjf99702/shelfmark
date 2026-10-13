@@ -108,10 +108,12 @@ Both open from **Import › Open a file**. Opening a library merges it into your
 ## Tests
 
 ```
-node test/library.test.js
+npm test
 ```
 
-No dependencies. The test reads the logic straight out of `index.html` and checks:
+That runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright): it opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways.
+
+`node test/library.test.js` has no dependencies. It reads the logic straight out of `index.html` and checks:
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
 - **Cleaning:** every field is trimmed, clamped and mapped.
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
