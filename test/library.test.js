@@ -62,6 +62,11 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(S.cleanBook({ id: 'a', title: 'T', isbn: '12-34' }).isbn, '1234', 'a non-ISBN number is kept as typed digits');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Ann Lee, Bo Chen & Cy Dee' }).authors, ['Ann Lee', 'Bo Chen', 'Cy Dee'], 'author text splits on commas and &');
   eq(S.cleanBook({ id: 'a', title: 'T', tags: 'Arts & crafts, sf; kids' }).tags, ['Arts & crafts', 'sf', 'kids'], 'tag text splits on commas and semicolons, not &');
+  eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Kurt Vonnegut, Jr.' }).authors, ['Kurt Vonnegut, Jr.'], 'a "Jr." after a comma stays with the name');
+  eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Martin Luther King, Jr., Coretta Scott King; Ann Lee, PhD & Bo Chen, III' }).authors,
+    ['Martin Luther King, Jr.', 'Coretta Scott King', 'Ann Lee, PhD', 'Bo Chen, III'], 'and so do Sr., II, III, IV, PhD and MD, among several authors');
+  eq(S.cleanBook({ id: 'a', title: 'T', authors: ['Kurt Vonnegut', 'Jr.'] }).authors, ['Kurt Vonnegut, Jr.'], 'a name split from its "Jr." before is put back together');
+  eq(S.cleanBook({ id: 'a', title: 'T', authors: ', Jr., Sammy Davis Jr.' }).authors, ['Jr.', 'Sammy Davis Jr.'], 'a "Jr." with no name before it is left alone');
 }
 
 // ---------- merging ----------
@@ -98,6 +103,7 @@ function randomDoc(r, n) {
 {
   eq(S.surname('Ursula K. Le Guin'), 'Le Guin', 'surname keeps particles');
   eq(S.surname('Martin Luther King Jr.'), 'King', 'surname drops Jr.');
+  eq([S.surname('Kurt Vonnegut, Jr.'), S.surname('Ann Lee, Ph.D.'), S.surname('Bo Chen III.')], ['Vonnegut', 'Lee', 'Chen'], 'and the other endings a name can have');
   eq(S.surname('Homer'), 'Homer', 'single name');
   eq(S.titleKey('The Hobbit: or There and Back Again'), S.titleKey('The Hobbit'), 'title key drops the article and subtitle');
   check(S.titleKey('Heartstopper: Volume 2') !== S.titleKey('Heartstopper: Volume 1'), 'numbered volumes of a series have different title keys');
@@ -181,6 +187,11 @@ function randomDoc(r, n) {
   eq([none.picks.length, none.noPages], [0, 0], 'no matches → no picks');
   eq(S.dealNext(lib, S.cleanNext({ len: 'short', room: 'Hall' }), rng(1), {}, now).noPages, 0, 'books without pages are counted only when they would otherwise match');
   eq(S.dealNext(lib, S.cleanNext({ len: 'long' }), rng(1), {}, now).noPages, 1, 'and counted when they would');
+  const jr = S.live(S.cleanDoc({ books: [
+    { id: 'a', t: 1, title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut', 'Jr.'], status: 'read', rating: 5 },
+    { id: 'b', t: 1, title: 'Breakfast of Champions', authors: ['Kurt Vonnegut, Jr.'], status: 'read', rating: 3 },
+    { id: 'c', t: 1, title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'] }] }));
+  eq(S.dealNext(jr, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks[0].why, ['You’ve read 2 by Vonnegut and gave “Slaughterhouse-Five” 5 stars'], 'an author with a "Jr." is named by surname, not as "Jr."');
   const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
   check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));

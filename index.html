@@ -402,9 +402,12 @@ body.locked .toast.show{transform:translate(-50%,0)}
     return '';
   }
   // Several values typed in one field. They split on commas and semicolons, so "Arts & crafts" stays one tag;
-  // names (authors) also split on " & ".
+  // names (authors) also split on " & ", and keep a "Jr." or "III" with the name before it ("Kurt Vonnegut, Jr."),
+  // which also mends a name split from its "Jr." before.
+  var SUFFIX = /^(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$/i;
   function list(v, n, each, names) {
     var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(names ? /\s*[,;]\s*|\s+&\s+/ : /\s*[,;]\s*/) : v ? [v] : [], out = [], seen = {};
+    if (names) a = a.reduce(function (r, x) { var y = str(x, each), p = r.length ? str(r[r.length - 1], each) : ''; if (p && SUFFIX.test(y)) r[r.length - 1] = p + ', ' + y; else r.push(x); return r; }, []);
     a.forEach(function (x) { x = str(x, each); var k = fold(x); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });
     return out.slice(0, n);
   }
@@ -458,7 +461,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   var PARTICLES = /^(de|da|di|du|del|della|der|den|van|von|le|la|st\.?|al|el|bin|ibn|ten|ter)$/i;
   function surname(name) {
-    var w = str(name, 120).replace(/,?\s+(jr\.?|sr\.?|ii|iii|iv|phd|md)$/i, '').split(' ');
+    var w = str(name, 120).replace(/,?\s+(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$/i, '').split(' ');
     if (w.length < 2) return w[0] || '';
     var i = w.length - 1; while (i > 1 && PARTICLES.test(w[i - 1])) i--;
     return w.slice(i).join(' ');

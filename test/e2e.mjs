@@ -232,6 +232,20 @@ step('a tag typed with an & in it stays one tag', async () => {
   } finally { await ctx.close(); }
 });
 
+step('an author typed with a "Jr." stays one author', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Why We Can’t Wait');
+    await page.fill('#f-authors', 'Martin Luther King, Jr.');
+    await page.click('#f-add');
+    const lib = await stored(page);
+    assert.deepEqual(Object.values(lib.library.books).map(b => b.authors), [['Martin Luther King, Jr.']]);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {
