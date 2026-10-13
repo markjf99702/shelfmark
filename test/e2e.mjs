@@ -390,6 +390,21 @@ step('What to read next counts one match in the singular', async () => {
   } finally { await ctx.close(); }
 });
 
+step('junk in the saved covers and settings doesn\'t stop covers or sorting', async () => {
+  const ctx = await context();
+  const ol = await fakeOpenLibrary(ctx);
+  try {
+    const page = await open(ctx);
+    await page.evaluate(() => { localStorage.setItem('shelfmark.covers', '5'); localStorage.setItem('shelfmark.prefs', JSON.stringify({ sort: 'junk', lookups: true })); });
+    await seed(page, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    await until(() => page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('shelfmark.covers')) || {}).length === 3), 'all three covers to be found');
+    assert.equal(ol.searches, 3);
+    assert.equal(await page.inputValue('#sortSel'), 'author');
+    assert.equal(await page.locator('#list .cv img').count(), 3, 'the covers didn\'t show');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

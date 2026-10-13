@@ -715,6 +715,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   try { var raw = localStorage.getItem(LS); if (raw) DOC = cleanDoc(JSON.parse(raw)); } catch (e) { }
   var PREF = { sort: 'author', lookups: false };
   try { Object.assign(PREF, JSON.parse(localStorage.getItem(LSP) || '{}')); } catch (e) { }
+  if (['author', 'title', 'shelf', 'added'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
+  PREF.lookups = PREF.lookups === true;
   var UI = { q: '', status: '', room: '', tag: '' };
   var editSeq = 0, persistAsked = false;
 
@@ -738,7 +740,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // author, and the cover's id is kept in this browser (0: none found). Covers fetched by id aren't rate-limited.
   // coverRound goes up when this device's copy is erased, so lookups still on their way are dropped.
   var LSC = 'shelfmark.covers', COVERS = {}, coverQ = [], coverQueued = {}, coverBusy = 0, coverPause = 0, coverFails = 0, coverSaveT, coverRound = 0;
-  try { COVERS = JSON.parse(localStorage.getItem(LSC) || '{}') || {}; } catch (e) { }
+  try { var kept = JSON.parse(localStorage.getItem(LSC) || '{}'); if (kept && typeof kept === 'object' && !Array.isArray(kept)) COVERS = kept; } catch (e) { }
   function coverId(b, noQueue) {
     var c = coverQuery(b); if (!c) return 0;
     var v = COVERS[c.key];
