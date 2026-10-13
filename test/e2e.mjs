@@ -161,6 +161,10 @@ step('the pictures the README shows are all here', async () => {
   for (const f of pictures) assert.equal((await fetch(base + f)).status, 200, f + ' is missing');
 });
 
+step('GitHub Pages is told to serve the files as they are, SKILL.md included', async () => {
+  assert.equal((await fetch(base + '.nojekyll')).status, 200, 'no .nojekyll, so Jekyll turns SKILL.md into SKILL.html');
+});
+
 step('every file the service worker keeps for offline is there', async () => {
   const sw = await readFile(join(root, 'sw.js'), 'utf8');
   const shell = eval('[' + /const SHELL = \[([^\]]*)\]/.exec(sw)[1] + ']');
