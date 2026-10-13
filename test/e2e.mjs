@@ -363,6 +363,19 @@ step('typing in a card is kept when the page closes straight after', async () =>
   } finally { await ctx.close(); }
 });
 
+step('a book\'s ISBN reads like its other details', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780261102217', publisher: 'HarperCollins' }]);
+    await page.click('#list .bk[data-id="b06"]');
+    await page.click('details.more > summary');
+    const look = id => page.$eval(id, e => { const c = getComputedStyle(e); return [c.color, c.fontWeight, c.textTransform, c.letterSpacing]; });
+    assert.deepEqual(await look('#f-isbn'), await look('#f-publisher'));
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {
