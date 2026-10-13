@@ -1206,7 +1206,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         return;
       }
       var t = p[top], b = t.b, notes = [];
-      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room ? ' that match' : ' on hand') + '.');
+      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
       if (lap) notes.push('You’ve seen every one, so these are repeats.');
       else if (c.lean === 'loved' && !deal.fans) notes.push('None of them are by authors you’ve read yet, so this is a random pick.');
       else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) notes.push('They were all added on the same day, so this is a random pick.');

@@ -376,6 +376,20 @@ step('a book\'s ISBN reads like its other details', async () => {
   } finally { await ctx.close(); }
 });
 
+step('What to read next counts one match in the singular', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, pages: 272 }, { ...MIDDLEMARCH, pages: 880 }]);
+    await page.click('#nextBtn');
+    await page.click('[data-len="long"]');
+    assert.equal(await page.textContent('#nxOut .note'), 'From 1 unread book that matches.');
+    await page.click('[data-len=""]');
+    assert.equal(await page.textContent('#nxOut .note'), 'From 2 unread books on hand.');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {
