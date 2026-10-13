@@ -466,6 +466,31 @@ step('a quick second tap on Add to library doesn\'t open the book underneath', a
   } finally { await ctx.close(); }
 });
 
+step('a book opened straight after adding one closes with Done, though Done is where Add was', async () => {
+  const ctx = await context();
+  // The clock stands still from here on, so however slow the machine, every tap comes within the moment after a
+  // sheet closes, when a tap where the closing tap was is ignored.
+  await ctx.clock.install({ time: new Date('2026-10-13T10:00:00') });
+  try {
+    const page = await open(ctx);
+    await seed(page, Array.from({ length: 9 }, (_, i) => ({ id: 'n' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'] })));
+    await ctx.clock.pauseAt(new Date('2026-10-13T10:00:05'));
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Quick One');
+    const add = await page.locator('#f-add').boundingBox();
+    await page.touchscreen.tap(add.x + add.width / 2, add.y + add.height / 2);
+    assert.equal(await sheetOpen(page), false);
+    const row = await page.locator('#list .bk >> nth=0').boundingBox();
+    await page.touchscreen.tap(row.x + 40, row.y + row.height / 2); // a book, nowhere near Add
+    assert.equal(await sheetOpen(page), true, 'the book didn\'t open');
+    const done = await page.locator('#bkx2').boundingBox();
+    assert.ok(Math.abs(done.x + done.width / 2 - (add.x + add.width / 2)) < 40 && Math.abs(done.y + done.height / 2 - (add.y + add.height / 2)) < 40, 'Done isn\'t where Add was, so this proves nothing');
+    await page.touchscreen.tap(done.x + done.width / 2, done.y + done.height / 2);
+    assert.equal(await sheetOpen(page), false, 'Done was ignored');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

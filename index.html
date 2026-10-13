@@ -872,7 +872,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   var sheetDone = null, sheetFrom = null, cardFlush = null, cardRefresh = null;
   // A quick second tap on the button that closed a sheet (Add to library, Done) would land on whatever lies under
   // it once the sheet is gone, a book or a button. For a moment after a sheet closes, a tap where the closing tap
-  // was is ignored. Taps elsewhere, keys, and the page's own clicks go through.
+  // was is ignored, until another sheet opens over the page: taps on that one are meant for it. Taps elsewhere,
+  // keys, and the page's own clicks go through.
   var lastTap = null, tapGuard = null;
   document.addEventListener('click', function (e) {
     if (!e.detail) return;
@@ -884,7 +885,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // outside both, so its Undo stays reachable.
   function behind(off) { ['.top', '.wrap'].forEach(function (q) { var el = document.querySelector(q); if (el) el.toggleAttribute('inert', off); }); }
   function openSheet(html, onClose) {
-    if (!$('sheet').hidden) closeSheet();
+    if (!$('sheet').hidden) closeSheet(); else tapGuard = null;
     sheetFrom = document.activeElement; sheetDone = onClose || null;
     var s = $('sheet');
     s.innerHTML = '<div class="scrim"></div><div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
