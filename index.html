@@ -829,7 +829,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var chipDefs = [['', 'All'], ['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
-    $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
+    $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
     var rk = Object.keys(rooms).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
     $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
     $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
@@ -919,7 +919,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- the catalog card: one book, to add or edit ----------
   function bookSheet(b, isNew) {
     var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '' };
-    var tagList = distinct(function (x) { return x.tags; });
+    // Tags used on other books, to add with a tap; those this book has already aren't offered.
+    var own = (b.tags || []).map(fold), tagList = distinct(function (x) { return x.tags; }).filter(function (t) { return own.indexOf(fold(t)) < 0; });
     var panel = openSheet(
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
@@ -994,6 +995,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     panel.addEventListener('input', function (e) {
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
       if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
+      if (e.target.id === 'f-tags') drawPicks();
       later();
     });
     panel.addEventListener('change', later);
@@ -1004,8 +1006,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
       var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
-      $('f-tags').value = cur.join(', '); later();
+      $('f-tags').value = cur.join(', '); drawPicks(); later();
     });
+    function drawPicks() {
+      var box = $('f-tagpicks'), cur = list(v('f-tags'), 20, 40).map(fold), any = false; if (!box) return;
+      box.querySelectorAll('button').forEach(function (x) { x.hidden = cur.indexOf(fold(x.dataset.t)) >= 0; any = any || !x.hidden; });
+      box.hidden = !any;
+    }
     if ($('f-look')) $('f-look').addEventListener('click', function () {
       var btn = this, i = isbn13(v('f-isbn'));
       if (!i) { toast('That ISBN doesn’t check out. It’s 10 or 13 digits, usually above the barcode.'); return; }

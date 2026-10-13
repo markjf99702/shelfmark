@@ -363,6 +363,24 @@ step('typing in a card is kept when the page closes straight after', async () =>
   } finally { await ctx.close(); }
 });
 
+step('filter chips read their counts apart, and a card offers only tags the book hasn\'t got', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], tags: ['kids', 'fantasy'] }, { ...MIDDLEMARCH, tags: ['classics'] }, CRADLE]);
+    assert.equal(await page.getByRole('button', { name: 'Unread, 3', exact: true }).count(), 1, 'the Unread chip\'s name runs into its count');
+    await page.click('#list .bk[data-id="b06"]');
+    const picks = () => page.$$eval('#f-tagpicks button:not([hidden])', bs => bs.map(b => b.dataset.t));
+    assert.deepEqual(await picks(), ['Arts & crafts', 'classics', 'sf']);
+    await page.click('#f-tagpicks button[data-t="sf"]');
+    assert.equal(await page.inputValue('#f-tags'), 'kids, fantasy, sf');
+    assert.deepEqual(await picks(), ['Arts & crafts', 'classics']);
+    await page.fill('#f-tags', 'kids, fantasy, sf, classics, Arts & crafts');
+    assert.equal(await page.locator('#f-tagpicks').isVisible(), false, 'an empty row of picks still shows');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
