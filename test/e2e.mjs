@@ -146,6 +146,18 @@ step('a room typed on the review screen keeps the shelf Claude gave each book', 
   } finally { await ctx.close(); }
 });
 
+step('the privacy page links lead somewhere else', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx, base + 'privacy.html');
+    const self = page.url();
+    const links = await page.$$eval('main a[href]', as => as.map(a => [a.textContent, a.href]));
+    assert.ok(links.length > 4);
+    assert.deepEqual(links.filter(([, href]) => href.split('#')[0] === self), [], 'a link on the privacy page goes to the privacy page');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 const PIRANESI = { id: 'b03', t: 1000, title: 'Piranesi', authors: ['Susanna Clarke'], notes: 'Sam says start here', added: '2026-10-01', room: 'Hall' };
 const MIDDLEMARCH = { id: 'b04', t: 1000, title: 'Middlemarch', authors: ['George Eliot'], added: '2026-10-01', room: 'Den' };
 const CRADLE = { id: 'b05', t: 1000, title: 'Cat\u2019s Cradle', authors: ['Kurt Vonnegut, Jr.'], tags: ['Arts & crafts', 'sf'], added: '2026-10-01' };

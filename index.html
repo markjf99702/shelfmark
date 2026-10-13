@@ -1222,8 +1222,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function saveDrive() { try { localStorage.setItem(LSD, JSON.stringify(D)); } catch (e) { } }
   function clientId() { return GOOGLE_CLIENT_ID || D.clientId || ''; }
   function hasToken() { if (!(D.token && Date.now() < D.exp) && D.on && useShared()) saveDrive(); return !!D.token && Date.now() < D.exp; }
-  // Every junkdrawer.works app shares one Google sign-in (same address, same OAuth client), kept under this key
-  // as { token, exp, scope, email }: signing in to any of them lets the others sync for that hour without asking.
+  // The Google sign-in is kept under this key as { token, exp, scope, email }, the way every junkdrawer.works
+  // project keeps it, so a reload or another tab can use it for the hour without asking. Shelfmark has its own
+  // address, so the key here is Shelfmark's alone; the projects at junkdrawer.works share theirs.
   // Only with the junkdrawer.works client; a pasted client ID is a different client that sees different files.
   var LSG = 'junkdrawer.google';
   function readShared() { if (!GOOGLE_CLIENT_ID || clientId() !== GOOGLE_CLIENT_ID) return null; try { return JSON.parse(localStorage.getItem(LSG) || 'null'); } catch (e) { return null; } }
@@ -1259,8 +1260,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     } catch (e) { D.err = 'Google sign-in couldn’t start: ' + e.message; }
     renderSync(); renderDrive();
   }
-  // Must run inside a tap: Google's sign-in opens a pop-up. Signed in to another junkdrawer.works app within
-  // the hour, it isn't needed at all.
+  // Must run inside a tap: Google's sign-in opens a pop-up. With a sign-in from the last hour still kept (from
+  // another tab, say), it isn't needed at all.
   function askToken() {
     if (useShared()) { D.on = true; D.err = ''; saveDrive(); sync(); renderSync(); renderDrive(); return; }
     if (!tokenClient) { loadGis(); toast('Google sign-in is still loading — try again in a moment'); return; }
@@ -1412,7 +1413,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       } catch (x) { }
       if ($('sheet').hidden) render();
     }
-    if (e.key === LSG) renderSync(); // another junkdrawer.works app signed in
+    if (e.key === LSG) renderSync(); // signed in from another tab
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && D.on && hasToken()) sync(); renderSync(); });
