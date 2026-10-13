@@ -496,6 +496,7 @@ step('a card left open while another tab changes the book keeps that change', as
     await b.click('#f-rating button[data-v="5"]');
     await b.click('#bkx2');
     await a.bringToFront();
+    await until(async () => await a.locator('#f-rating button.on').count() === 5, 'the change to reach the other tab'); // as it has by the time a person gets there
     await a.fill('#f-shelf', 'By the door');
     await a.fill('#f-notes', '');
     await a.click('#bkx2');
@@ -503,6 +504,32 @@ step('a card left open while another tab changes the book keeps that change', as
     assert.deepEqual([both.status, both.rating, both.shelf, both.notes], ['read', 5, 'By the door', undefined]);
     await b.bringToFront();
     await until(async () => /By the door/.test(await b.textContent('#list .bk[data-id="b03"]')), 'the other tab to show the shelf');
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await ctx.close(); }
+});
+
+step('an open card shows another tab\'s change in the fields not being edited', async () => {
+  const ctx = await context(DESK);
+  try {
+    const a = await open(ctx);
+    await seed(a, [PIRANESI]);
+    await a.click('#list .bk[data-id="b03"]');
+    await a.$eval('#f-shelf', e => { e.value = 'Half typed'; }); // being typed here, not saved yet
+    const b = await open(ctx);
+    await b.click('#list .bk[data-id="b03"]');
+    await b.click('#f-status button[data-v="read"]');
+    await b.click('#f-rating button[data-v="4"]');
+    await b.fill('#f-notes', 'Loved the statues.');
+    await b.fill('#f-shelf', 'Theirs');
+    await b.click('#bkx2');
+    await a.bringToFront();
+    await until(async () => await a.inputValue('#f-notes') === 'Loved the statues.', 'the open card to show the new note');
+    assert.equal(await a.getAttribute('#f-status button[data-v="read"]', 'aria-pressed'), 'true');
+    assert.equal(await a.locator('#f-rating button.on').count(), 4);
+    assert.equal(await a.inputValue('#f-shelf'), 'Half typed', 'what was being typed was replaced');
+    await a.click('#bkx2');
+    const got = await storedBook(a, 'b03');
+    assert.deepEqual([got.status, got.rating, got.notes, got.shelf], ['read', 4, 'Loved the statues.', 'Half typed']);
     assert.deepEqual([...a.problems, ...b.problems], []);
   } finally { await ctx.close(); }
 });

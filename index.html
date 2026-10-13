@@ -867,8 +867,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
 
   // ---------- sheets and toasts ----------
-  // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would.
-  var sheetDone = null, sheetFrom = null, cardFlush = null;
+  // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would;
+  // cardRefresh shows changes made elsewhere in it.
+  var sheetDone = null, sheetFrom = null, cardFlush = null, cardRefresh = null;
   // A quick second tap on the button that closed a sheet (Add to library, Done) would land on whatever lies under
   // it once the sheet is gone, a book or a button. For a moment after a sheet closes, a tap where the closing tap
   // was is ignored. Taps elsewhere, keys, and the page's own clicks go through.
@@ -895,7 +896,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function closeSheet() {
     if ($('sheet').hidden) return;
-    var f = sheetDone; sheetDone = null; cardFlush = null; if (f) f();
+    var f = sheetDone; sheetDone = null; cardFlush = cardRefresh = null; if (f) f();
     tapGuard = lastTap && Date.now() - lastTap.t < 300 ? { x: lastTap.x, y: lastTap.y, t: Date.now() } : null;
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
     if (sheetFrom && document.contains(sheetFrom)) try { sheetFrom.focus({ preventScroll: true }); } catch (e) { }
@@ -966,21 +967,46 @@ body.locked .toast.show{transform:translate(-50%,0)}
         tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check
       }));
     }
-    function same(x, y) { var a = Object.assign({}, x), c = Object.assign({}, y); a.t = c.t = 0; return JSON.stringify(a) === JSON.stringify(c); }
     // shown is what the form held when the card opened or last saved. A save puts only the fields changed since
     // then onto the book as it is now, so a card left open doesn't undo what another tab or device changed
     // meanwhile, and a card closed untouched writes nothing.
     var saveT, shown = null;
     function flush() {
       clearTimeout(saveT); if (isNew) return;
-      var n = read(), cur = DOC.books[b.id];
-      if (!n || !shown || !cur || cur.del || same(n, shown)) return;
-      var next = Object.assign({}, cur);
+      var n = read(), cur = DOC.books[b.id], next, changed = false;
+      if (!n || !shown || !cur || cur.del) return;
+      next = Object.assign({}, cur);
       Object.keys(Object.assign({}, shown, n)).forEach(function (k) {
         if (k === 'id' || k === 't' || JSON.stringify(n[k]) === JSON.stringify(shown[k])) return;
         if (k in n) next[k] = n[k]; else delete next[k]; // a field emptied in the form is dropped, as cleanBook would
+        changed = true;
       });
-      b = putBook(next) || b; shown = n;
+      if (changed) { b = putBook(next) || b; shown = n; }
+    }
+    // Another tab or a sync changed the book while its card is open: show the new values in every field the person
+    // hasn't touched since the card opened or last saved. What they're typing stays, and wins when it's saved.
+    var FIELDS = ['title', 'sub', 'authors', 'isbn', 'publisher', 'year', 'pages', 'format', 'condition', 'edition', 'signed', 'first',
+      'room', 'shelf', 'status', 'rating', 'loan', 'tags', 'notes', 'added', 'check'];
+    function put(k, x) {
+      if (k === 'status') st.status = x || 'unread';
+      else if (k === 'rating') st.rating = x || 0;
+      else if (k === 'check') st.check = x || '';
+      else if (k === 'loan') { $('f-lent').value = x ? x.to : ''; $('f-since').value = x && x.since || ''; }
+      else if (k === 'signed' || k === 'first') $('f-' + k).checked = !!x;
+      else if (k === 'authors') $('f-authors').value = byLine({ authors: x });
+      else if (k === 'tags') $('f-tags').value = (x || []).join(', ');
+      else $('f-' + k).value = x == null ? '' : x;
+    }
+    function refresh() {
+      var cur = DOC.books[b.id], now = read(), done = [];
+      if (isNew || !shown || !now || !cur || cur.del) return;
+      FIELDS.forEach(function (k) {
+        var was = JSON.stringify(shown[k]);
+        if (JSON.stringify(now[k]) === was && JSON.stringify(cur[k]) !== was) { put(k, cur[k]); done.push(k); }
+      });
+      if (!done.length) return;
+      head(); drawState(); drawPicks();
+      var after = read(); done.forEach(function (k) { if (k in after) shown[k] = after[k]; else delete shown[k]; });
     }
     function later() { if (isNew) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
     function head() {
@@ -1035,7 +1061,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
     head(); drawState();
-    if (!isNew) { shown = read(); cardFlush = flush; }
+    if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
   }
 
   // Open Library, only when the person has turned lookups on in Settings.
@@ -1400,7 +1426,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         if (fs.length) {
           var extra = fs.slice(1);
           return extra.reduce(function (p, x) {
-            return p.then(function () { return download_(x.id); }).then(function (d) { DOC = mergeDocs(DOC, d); persist(true); render(); D.pending = true; return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json'); });
+            return p.then(function () { return download_(x.id); }).then(function (d) { DOC = mergeDocs(DOC, d); persist(true); render(); if (cardRefresh) cardRefresh(); D.pending = true; return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json'); });
           }, Promise.resolve()).then(function () { D.fileId = fs[0].id; return { id: fs[0].id, version: String(fs[0].version) }; });
         }
         return findFiles('folder').then(function (fo) {
@@ -1421,7 +1447,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       var got = f.version === D.version ? Promise.resolve(null) : download_(f.id);
       return got.then(function (remote) {
         var merged = remote ? mergeDocs(DOC, remote) : DOC;
-        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); }
+        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); if (cardRefresh) cardRefresh(); }
         if (!remote || canon(merged) !== canon(remote)) return upload(f.id, merged).then(function (v) { D.version = v; });
         D.version = f.version;
       });
@@ -1507,7 +1533,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         if (!e.newValue) DOC = { books: {}, seen: {} };
         else { var theirs = cleanDoc(JSON.parse(e.newValue)), m = mergeDocs(DOC, theirs); DOC = m; if (canon(m) !== canon(theirs)) persist(true); }
       } catch (x) { }
-      if ($('sheet').hidden) render();
+      if ($('sheet').hidden) render(); else if (cardRefresh) cardRefresh();
     }
     if (e.key === LSG) renderSync(); // signed in from another tab
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }
