@@ -1035,19 +1035,33 @@ body.locked .toast.show{transform:translate(-50%,0)}
       return Promise.resolve(m ? decodeURIComponent(m[1].replace(/%(?![0-9A-Fa-f]{2})/g, '%25')) : null);
     } catch (e) { return Promise.reject(e); }
   }
-  // Text from a link, a file or the paste box → {kind: 'batch' | 'library', …}.
+  // Text from a link, a file or the paste box → {kind: 'batch' | 'library', …}. A pasted Shelfmark link can be
+  // anywhere in the text: after "Link:", inside a markdown link, with a full stop after it, or broken over lines
+  // by a mail app, whose pieces are joined back (the longest join that reads wins).
   function parseIncoming(t) {
-    t = String(t || '').trim();
-    var m = /#(s1[zj][A-Za-z0-9_-]+|batch=\S+)\s*$/.exec(t);
-    var c = t.charAt(0);
-    if (m && c !== '{' && c !== '[') return linkText('#' + m[1]).then(parseIncoming);
-    return Promise.resolve().then(function () {
-      var o = JSON.parse(t);
+    function read(o) {
       if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
       var b = cleanBatch(o);
       if (!b || !b.books.length) throw new Error('empty');
       return { kind: 'batch', batch: b };
-    });
+    }
+    t = String(t || '').trim();
+    var c = t.charAt(0), json, m;
+    if (c === '{' || c === '[') try { json = JSON.parse(t); } catch (e) { }
+    if (json === undefined) {
+      m = /#s1[zj][A-Za-z0-9_-]+(?:[ \t]*\r?\n\s*[A-Za-z0-9_-]+)*/.exec(t);
+      if (m) {
+        var pieces = m[0].slice(1).split(/\s+/).slice(0, 200);
+        var join = function (n) {
+          return linkText('#' + pieces.slice(0, n).join('')).then(function (x) { return read(JSON.parse(x)); })
+            .catch(function (e) { if (n > 1) return join(n - 1); throw e; });
+        };
+        return join(pieces.length);
+      }
+      m = /#(batch=\S+)\s*$/.exec(t);
+      if (m) return linkText('#' + m[1]).then(parseIncoming);
+    }
+    return Promise.resolve().then(function () { return read(json === undefined ? JSON.parse(t) : json); });
   }
   function takeIncoming(p) {
     return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else reviewSheet(r.batch); })

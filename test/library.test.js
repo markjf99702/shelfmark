@@ -245,6 +245,15 @@ function randomDoc(r, n) {
   eq(await refused(() => S.linkText('#batch=%E9t%C3')), 'refused', 'a #batch= link that isn\'t UTF-8 is refused');
   eq((await S.parseIncoming('#batch={%22books%22:[{%22title%22:%22100%%20Fun%22}]}')).batch.books[0].title, '100% Fun', 'a hand-written #batch= link with a % in it opens, as a browser hands it over');
   eq((await S.parseIncoming('https://shelfmark.junkdrawer.works/#batch={"books":[{"title":"100%Fun"}]}')).batch.books[0].title, '100%Fun', 'and pasted');
+  // Pasted links come with all sorts around them.
+  const link = 'https://shelfmark.junkdrawer.works/#s1z' + z, half = Math.floor(link.length / 2);
+  for (const [text, what] of [[link + '.', 'with a full stop after it'], ['[Open in Shelfmark](' + link + ')', 'inside a markdown link'],
+    [link.slice(0, half) + '\n' + link.slice(half), 'broken over two lines'], ['Link: ' + link + '\n\nFile: /tmp/den.shelfmark.json', 'as the script prints it'],
+    ['Here it is: ' + link + ' Open it and check the list', 'with words after it']]) {
+    let got = null; try { got = (await S.parseIncoming(text)).batch.books[0].title; } catch (e) { got = 'refused'; }
+    eq(got, 'Cien años de soledad', 'a pasted link opens ' + what);
+  }
+  eq((await S.parseIncoming(JSON.stringify({ books: [{ title: 'T', notes: 'from https://x/#s1zAAAA' }] }))).batch.books[0].notes, 'from https://x/#s1zAAAA', 'JSON that mentions a link is still read as JSON');
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
 

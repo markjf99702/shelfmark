@@ -239,6 +239,19 @@ step('a link cut short says so, and a hand-written link with a % opens', async (
   } finally { await ctx.close(); }
 });
 
+step('a link pasted into Import with a full stop after it opens', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await page.click('#importBtn');
+    await page.fill('#impaste', 'Here are your books: ' + linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }) + '.');
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.inputValue('#rv input[data-f="title"]'), 'Middlemarch');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {
