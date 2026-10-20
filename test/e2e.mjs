@@ -503,6 +503,29 @@ step('small grey text and the Reading badge reach WCAG AA contrast, light and da
   }
 });
 
+step('on a phone the sort menu and the search box show their words whole', async () => {
+  for (const [size, placeholder] of [[PHONE, 'Search your books'], [DESK, 'Search titles, authors, shelves, tags, borrowers…']]) {
+    const ctx = await context(size);
+    try {
+      const page = await open(ctx);
+      await seed(page, [{ ...PIRANESI, tags: ['sf'] }, { ...MIDDLEMARCH, room: 'Living room', tags: ['classics'] }]);
+      await page.selectOption('#sortSel', 'added');
+      await page.evaluate(() => document.fonts.ready);
+      // How much of each box's words fits inside it, as text drawn in its own font.
+      const fits = id => page.$eval(id, el => {
+        const c = getComputedStyle(el), g = document.createElement('canvas').getContext('2d');
+        g.font = c.fontWeight + ' ' + c.fontSize + ' ' + c.fontFamily;
+        const text = el.tagName === 'SELECT' ? el.options[el.selectedIndex].text : el.placeholder;
+        return [text, g.measureText(text).width <= el.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight)];
+      });
+      assert.deepEqual(await fits('#sortSel'), ['Newest first', true], 'the sort menu is cut short at ' + size.viewport.width);
+      assert.deepEqual(await fits('#q'), [placeholder, true], 'the search box\'s placeholder is cut short at ' + size.viewport.width);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {

@@ -319,6 +319,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   .list{grid-template-columns:1fr}
   .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
   .selects select{flex:1 1 0;min-width:0;max-width:none}
+  #sortSel{flex:none}
 }
 @media (max-width:420px){
   .brand b{font-size:21px}
@@ -1558,6 +1559,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
   });
   $('chips').addEventListener('click', function (e) { var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s; render(); });
   var qT; $('q').addEventListener('input', function () { clearTimeout(qT); var v = this.value; qT = setTimeout(function () { UI.q = v; render(); }, 90); });
+  // On a phone the search box is too narrow for the whole placeholder, which stopped at "tags, b".
+  var narrow = window.matchMedia ? matchMedia('(max-width:720px)') : null;
+  function placeholder() { $('q').placeholder = narrow && narrow.matches ? 'Search your books' : 'Search titles, authors, shelves, tags, borrowers…'; }
+  placeholder();
+  if (narrow) { if (narrow.addEventListener) narrow.addEventListener('change', placeholder); else if (narrow.addListener) narrow.addListener(placeholder); }
   $('roomSel').addEventListener('change', function () { UI.room = this.value; render(); });
   $('tagSel').addEventListener('change', function () { UI.tag = this.value; render(); });
   $('sortSel').addEventListener('change', function () { PREF.sort = this.value; savePrefs(); render(); });
