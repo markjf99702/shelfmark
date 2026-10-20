@@ -130,7 +130,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 
 ### Tests
 
-`npm test` runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright), and nothing in it reaches the internet. It opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways and nothing loaded from elsewhere. It also has two tabs, and two devices sharing a stand-in Google Drive, change the same book; and it checks the review screen's shelving, links that are cut short, erasing a device, and the keyboard and screen readers in the sheets.
+`npm test` runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright), and nothing in it reaches the internet. It opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways and nothing loaded from elsewhere. It also has two tabs, and two devices sharing a stand-in Google Drive, change the same book; and it checks the review screen's shelving and order, batches too big to take at once, links that are cut short, spreadsheets opened by mistake, erasing a device, signing back in to Google, the Back button, contrast, and the keyboard and screen readers in the sheets.
 
 `node test/library.test.js` has no dependencies. It reads the logic straight out of `index.html` and checks:
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
