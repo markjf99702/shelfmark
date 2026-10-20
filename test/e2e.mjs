@@ -411,6 +411,23 @@ step('typing in a card is kept when the page closes straight after', async () =>
   } finally { await ctx.close(); }
 });
 
+step('a card closed while typing doesn\'t save over the next book opened', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    // Escape closes the card with the notes still being edited, and another book opens straight after.
+    await page.click('#list .bk[data-id="b03"]');
+    await page.fill('#f-notes', 'Typed, then Escape');
+    await page.keyboard.press('Escape');
+    await page.click('#list .bk[data-id="b04"]');
+    await wait(900); // past the moment a late save would come
+    assert.deepEqual(await storedBook(page, 'b03'), { ...PIRANESI, t: (await storedBook(page, 'b03')).t, notes: 'Typed, then Escape' }, 'the book closed was saved with the next one\'s details');
+    assert.deepEqual(await storedBook(page, 'b04'), MIDDLEMARCH);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('filter chips read their counts apart, and a card offers only tags the book hasn\'t got', async () => {
   const ctx = await context();
   try {

@@ -982,8 +982,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
     // then onto the book as it is now, so a card left open doesn't undo what another tab or device changed
     // meanwhile, and a card closed untouched writes nothing.
     var saveT, shown = null;
+    // A field still being edited sends its change as the card closes, and Escape or Back close it without that field
+    // losing focus first. Once the card has gone, that late save is dropped: the close saved everything already, and
+    // the fields it would read could by then be another book's, in the next card opened.
     function flush() {
-      clearTimeout(saveT); if (isNew) return;
+      clearTimeout(saveT); if (isNew || !panel.isConnected) return;
       var n = read(), cur = DOC.books[b.id], next, changed = false;
       if (!n || !shown || !cur || cur.del) return;
       next = Object.assign({}, cur);
@@ -1019,7 +1022,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       head(); drawState(); drawPicks();
       var after = read(); done.forEach(function (k) { if (k in after) shown[k] = after[k]; else delete shown[k]; });
     }
-    function later() { if (isNew) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
+    function later() { if (isNew || !panel.isConnected) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
       $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
