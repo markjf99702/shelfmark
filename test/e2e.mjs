@@ -666,6 +666,33 @@ step('a failure to load Google sign-in isn\'t kept, and errors in Settings are r
   } finally { await ctx.close(); }
 });
 
+step('signing back in after the hour goes straight to the same Google account', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await page.click('#setBtn');
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await page.click('#dvGo');
+    await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('junkdrawer.google') || '{}').email === 'mark@gmail.com'), 'the account\'s email to be kept with the sign-in');
+    assert.ok(g.calls.some(c => c.startsWith('GET /drive/v3/about')), 'the email wasn\'t asked of Drive');
+    await page.click('#stx');
+    // An hour on, Google's sign-in has run out.
+    await page.evaluate(() => {
+      for (const k of ['junkdrawer.google', 'shelfmark.drive']) localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)), exp: Date.now() - 1000 }));
+    });
+    await page.reload();
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await until(() => page.evaluate(() => document.getElementById('syncBtn').dataset.s === 'tap'), 'the sync button to ask for a tap');
+    await page.click('#syncBtn');
+    await until(() => page.evaluate(() => (window.__prompts || []).length > 0), 'Google to be asked');
+    assert.deepEqual(await page.evaluate(() => window.__prompts.at(-1)), { prompt: '', login_hint: 'mark@gmail.com' }, 'Google wasn\'t told which account, so it shows the chooser');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another device changes the book keeps that change in Drive', async () => {
   const g = fakeGoogle();
   const driveBook = id => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library'); return f && f.body ? JSON.parse(f.body).library.books[id] : null; };

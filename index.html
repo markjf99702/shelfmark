@@ -1389,7 +1389,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         callback: function (r) {
           if (!r || r.error || !r.access_token) { D.err = 'Google didn’t allow access' + (r && r.error ? ' (' + r.error + ')' : '') + '.'; saveDrive(); renderSync(); renderDrive(); return; }
           if (google.accounts.oauth2.hasGrantedAllScopes && !google.accounts.oauth2.hasGrantedAllScopes(r, SCOPE)) { D.err = 'Shelfmark needs permission to keep its own file in your Drive. Try again and leave that box ticked.'; saveDrive(); renderSync(); renderDrive(); return; }
-          D.token = r.access_token; D.exp = Date.now() + (Math.max(+r.expires_in || 3600, 120) - 60) * 1000; D.on = true; D.err = ''; saveDrive(); shareToken(); sync();
+          D.token = r.access_token; D.exp = Date.now() + (Math.max(+r.expires_in || 3600, 120) - 60) * 1000; D.on = true; D.err = ''; saveDrive(); shareToken(); sync(); rememberEmail();
         },
         error_callback: function (e) { if (e && e.type !== 'popup_closed') { D.err = 'Google sign-in didn’t open. If your browser blocks pop-ups, allow them for this page.'; saveDrive(); } renderSync(); renderDrive(); }
       });
@@ -1403,6 +1403,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (!tokenClient) { var failed = gisErr; loadGis(); toast(failed || 'Google sign-in is still loading — try again in a moment'); return; }
     var g = readShared(), hint = g && g.email;
     tokenClient.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: D.on ? '' : 'consent' });
+  }
+  // The account's email, kept with the sign-in, so signing back in each hour skips Google's account chooser.
+  function rememberEmail() {
+    api('GET', 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)').then(function (r) { return r.json(); }).then(function (j) {
+      var g = readShared(), email = str(j && j.user && j.user.emailAddress, 200);
+      if (g && email && g.token === D.token) { g.email = email; try { localStorage.setItem(LSG, JSON.stringify(g)); } catch (e) { } }
+    }).catch(function () { }); // only a convenience
   }
   function api(method, url, body, type) {
     var h = { Authorization: 'Bearer ' + D.token }; if (type) h['Content-Type'] = type;
