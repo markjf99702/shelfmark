@@ -429,6 +429,25 @@ step('filter chips read their counts apart, and a card offers only tags the book
   } finally { await ctx.close(); }
 });
 
+step('small grey text and the Reading badge reach WCAG AA contrast, light and dark', async () => {
+  for (const colorScheme of ['light', 'dark']) {
+    const ctx = await context({ ...PHONE, colorScheme });
+    try {
+      for (const [url, pairs] of [[base, [['ink3', 'ground'], ['ink3', 'surface'], ['ink3', 'surface2'], ['brass', 'brass-soft'], ['brass', 'surface']]], [base + 'privacy.html', [['ink3', 'ground']]]]) {
+        const page = await open(ctx, url);
+        const ratios = await page.evaluate(pairs => {
+          const css = getComputedStyle(document.documentElement), hex = n => css.getPropertyValue('--' + n).trim();
+          const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+          return pairs.map(([fg, bg]) => { const [a, b] = [lum(hex(fg)), lum(hex(bg))].sort((x, y) => y - x); return [fg + ' on ' + bg, (a + 0.05) / (b + 0.05)]; });
+        }, pairs);
+        for (const [what, r] of ratios) assert.ok(r >= 4.5, colorScheme + ', ' + (url === base ? 'the app' : 'the privacy page') + ': ' + what + ' is ' + r.toFixed(2) + ':1');
+        assert.deepEqual(page.problems, []);
+        await page.close();
+      }
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
