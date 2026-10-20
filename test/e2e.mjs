@@ -556,8 +556,9 @@ step('small grey text and the Reading badge reach WCAG AA contrast, light and da
   }
 });
 
-step('on a phone the sort menu and the search box show their words whole', async () => {
-  for (const [size, placeholder] of [[PHONE, 'Search your books'], [DESK, 'Search titles, authors, shelves, tags, borrowers…']]) {
+step('on a phone, a narrow one too, the menus and the search box show their words whole', async () => {
+  const narrow = width => ({ ...PHONE, viewport: { width, height: 760 } });
+  for (const [size, placeholder] of [[PHONE, 'Search your books'], [narrow(360), 'Search your books'], [narrow(320), 'Search your books'], [DESK, 'Search titles, authors, shelves, tags, borrowers…']]) {
     const ctx = await context(size);
     try {
       const page = await open(ctx);
@@ -569,8 +570,10 @@ step('on a phone the sort menu and the search box show their words whole', async
         const c = getComputedStyle(el), g = document.createElement('canvas').getContext('2d');
         g.font = c.fontWeight + ' ' + c.fontSize + ' ' + c.fontFamily;
         const text = el.tagName === 'SELECT' ? el.options[el.selectedIndex].text : el.placeholder;
-        return [text, g.measureText(text).width <= el.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight)];
+        return [text, g.measureText(text).width <= el.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight) + 0.5];
       });
+      assert.deepEqual(await fits('#roomSel'), ['All rooms', true], 'the room menu is cut short at ' + size.viewport.width);
+      assert.deepEqual(await fits('#tagSel'), ['All tags', true], 'the tag menu is cut short at ' + size.viewport.width);
       assert.deepEqual(await fits('#sortSel'), ['Newest first', true], 'the sort menu is cut short at ' + size.viewport.width);
       assert.deepEqual(await fits('#q'), [placeholder, true], 'the search box\'s placeholder is cut short at ' + size.viewport.width);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

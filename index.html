@@ -319,8 +319,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
   .list{grid-template-columns:1fr}
   .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
-  .selects select{flex:1 1 0;min-width:0;max-width:none}
+  /* the sort menu keeps its own width; a little less padding fits "All rooms" beside it at 360px */
+  .selects select{flex:1 1 0;min-width:0;max-width:none;padding-left:8px;padding-right:25px}
   #sortSel{flex:none}
+}
+@media (max-width:359px){
+  /* narrower still, the sort menu goes on a row of its own */
+  .selects{flex-wrap:wrap}
+  #sortSel{flex:1 1 100%}
 }
 @media (max-width:420px){
   .brand b{font-size:21px}
