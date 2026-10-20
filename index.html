@@ -1169,7 +1169,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       }
       m = /#(batch=\S+)\s*$/.exec(t);
       if (m) return linkText('#' + m[1]).then(parseIncoming);
-      if (isSheet(t)) { var e = new Error('That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the link it gives you.'); e.say = true; return Promise.reject(e); }
+      if (isSheet(t)) { var e = new Error('That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the file or link it gives you.'); e.say = true; return Promise.reject(e); }
     }
     return Promise.resolve().then(function () { return read(json === undefined ? JSON.parse(t) : json); });
   }

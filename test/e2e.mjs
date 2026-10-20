@@ -396,7 +396,7 @@ step('a spreadsheet export, pasted or opened, says to send it to Claude', async 
   const ctx = await context();
   try {
     const page = await open(ctx);
-    const hint = 'That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the link it gives you.';
+    const hint = 'That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the file or link it gives you.';
     const csv = '﻿Book Id,Title,Author,ISBN,Exclusive Shelf\r\n5907,"The Hobbit, or There and Back Again",J.R.R. Tolkien,"=""0618260307""",read\r\n';
     await page.click('#importBtn');
     await page.fill('#impaste', csv);

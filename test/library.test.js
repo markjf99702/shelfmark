@@ -281,7 +281,7 @@ function randomDoc(r, n) {
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
   // A spreadsheet export can't be read here; it's refused with a word on what to do instead.
   const sheetSaid = async t => { try { await S.parseIncoming(t); return 'opened'; } catch (e) { return e.say ? e.message : 'refused'; } };
-  const hint = 'That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the link it gives you.';
+  const hint = 'That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the file or link it gives you.';
   eq(await sheetSaid('﻿Book Id,Title,Author,ISBN\r\n5907,"The Hobbit, or There and Back Again",J.R.R. Tolkien,"=""0618260307"""\r\n'), hint, 'a Goodreads export says what to do with it');
   eq(await sheetSaid('"Book Id","Title","Primary Author"\n"101","The Hobbit","Tolkien, J. R. R."'), hint, 'and so does a LibraryThing one');
   eq(await sheetSaid('��B\u0000o\u0000o\u0000k\u0000 \u0000I\u0000d\u0000\t\u0000T\u0000i\u0000t\u0000l\u0000e\u0000\r\u0000\n\u0000'), hint, 'and LibraryThing\'s UTF-16 one, read as UTF-8');
