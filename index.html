@@ -300,7 +300,7 @@ details.more .fs{padding:2px 12px 12px}
 .foot a:hover,.foot a:focus-visible{color:var(--accent);text-decoration:underline}
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;width:max-content;max-width:calc(100vw - 32px)}
 .toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
 body.locked .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top,0px));transform:translate(-50%,-24px)}
 body.locked .toast.show{transform:translate(-50%,0)}
@@ -364,7 +364,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 </main>
 <div id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button></div>
-<input type="file" id="fileIn" accept=".json,application/json" hidden>
+<input type="file" id="fileIn" accept=".json,application/json,.csv,text/csv" hidden>
 
 <script>(function () {
   'use strict';
@@ -551,6 +551,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
       name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books, more: more
     };
   }
+  // A spreadsheet export, from Goodreads, LibraryThing or Shelfmark itself: a header row with a Title column, in any of
+  // the encodings these come in. Shelfmark can't read one, but the skill for Claude can.
+  function isSheet(t) {
+    var head = String(t || '').replace(/\u0000/g, '').replace(/^[\s\uFEFF\uFFFD]+/, '').split(/\r?\n/)[0];
+    return head.split(/[,\t;]/).some(function (c) { return c.replace(/^[\s"']+|[\s"']+$/g, '').toLowerCase() === 'title'; });
+  }
+
   // Where a book from a batch goes. The review screen's "Shelve them in" fields start out as the batch's own room
   // and shelf, which fill in for any book Claude didn't place. Each field the person changes moves every book there
   // (emptied, it leaves each book's own as it is); a field left as the batch gave it still only fills in, so
@@ -938,7 +945,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
     b.onclick = act ? function () { t.classList.remove('show'); fn(); } : null;
     t.classList.add('show'); clearTimeout(toastT);
-    toastT = setTimeout(function () { t.classList.remove('show'); }, act ? 6000 : 3000);
+    toastT = setTimeout(function () { t.classList.remove('show'); }, act || m.length > 60 ? 6000 : 3000); // a long one needs time to read
   }
   function download(name, text, type) {
     var url = URL.createObjectURL(new Blob([text], { type: type })), a = document.createElement('a');
@@ -1152,12 +1159,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
       }
       m = /#(batch=\S+)\s*$/.exec(t);
       if (m) return linkText('#' + m[1]).then(parseIncoming);
+      if (isSheet(t)) { var e = new Error('That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the link it gives you.'); e.say = true; return Promise.reject(e); }
     }
     return Promise.resolve().then(function () { return read(json === undefined ? JSON.parse(t) : json); });
   }
   function takeIncoming(p) {
     return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else reviewSheet(r.batch); })
-      .catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
+      .catch(function (e) { toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
   }
   function checkLink() {
     var h = location.hash; if (!/^#(s1[zj]|batch=)/.test(h)) return;

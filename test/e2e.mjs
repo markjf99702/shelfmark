@@ -379,6 +379,24 @@ step('a link pasted into Import with a full stop after it opens', async () => {
   } finally { await ctx.close(); }
 });
 
+step('a spreadsheet export, pasted or opened, says to send it to Claude', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const hint = 'That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the link it gives you.';
+    const csv = '﻿Book Id,Title,Author,ISBN,Exclusive Shelf\r\n5907,"The Hobbit, or There and Back Again",J.R.R. Tolkien,"=""0618260307""",read\r\n';
+    await page.click('#importBtn');
+    await page.fill('#impaste', csv);
+    await page.click('#imgo');
+    await until(async () => await page.textContent('#toastTx') === hint, 'the hint about spreadsheets');
+    assert.match(await page.getAttribute('#fileIn', 'accept'), /(^|,)\.csv(,|$)/, 'a phone\'s file picker won\'t offer a .csv');
+    await page.evaluate(() => { document.getElementById('toastTx').textContent = ''; });
+    await page.setInputFiles('#fileIn', { name: 'goodreads_library_export.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+    await until(async () => await page.textContent('#toastTx') === hint, 'the hint for an opened file');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('search finds a book by the ISBN printed on it', async () => {
   const ctx = await context();
   try {
