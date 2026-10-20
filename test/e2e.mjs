@@ -257,6 +257,19 @@ step('the Back button closes an open sheet instead of leaving Shelfmark', async 
   } finally { await ctx.close(); }
 });
 
+step('a sheet opens with its heading focused, not a ring around Not now', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx, linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }));
+    await page.waitForSelector('#rv-add');
+    const focused = () => page.evaluate(() => { const a = document.activeElement, c = getComputedStyle(a); return [a.id || a.tagName, c.outlineStyle === 'none' || c.outlineWidth === '0px']; });
+    assert.deepEqual(await focused(), ['sheetTitle', true], 'focus isn\'t on the heading, or the heading has a ring');
+    await page.keyboard.press('Tab'); // and the keyboard goes on from there, inside the sheet
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'rvx');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book on the review screen ticks with a tap anywhere along its left edge', async () => {
   const ctx = await context();
   try {

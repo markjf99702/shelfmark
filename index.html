@@ -186,6 +186,7 @@ a{color:var(--accent)}
 .panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:var(--surface);border-radius:16px;box-shadow:0 30px 80px -20px rgba(0,0,0,.55);overflow:hidden}
 .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
 .hd h2{margin:0;font:500 21px/1.2 var(--serif);flex:1;min-width:0}
+#sheetTitle{outline:none} /* focused as a sheet opens; it isn't something to press */
 .hd .callno{flex:1;min-width:0;font:500 11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bd{padding:16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .ft{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface2)}
@@ -921,7 +922,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
     s.innerHTML = '<div class="scrim"></div><div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
     s.hidden = false; document.body.classList.add('locked'); behind(true);
     s.querySelector('.scrim').addEventListener('click', closeSheet);
-    var f = s.querySelector('[autofocus]') || s.querySelector('.hd button');
+    // Focus starts on the field marked autofocus, or else on the sheet's heading: inside the dialog for the keyboard
+    // and screen readers, without a ring drawn around a button nobody has touched.
+    var h = s.querySelector('#sheetTitle'); if (h) h.tabIndex = -1;
+    var f = s.querySelector('[autofocus]') || h || s.querySelector('.hd button');
     if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
     return s.querySelector('.panel');
   }
