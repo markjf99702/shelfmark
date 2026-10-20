@@ -890,8 +890,21 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // While a sheet is open, the page behind it is out of reach of the keyboard and screen readers. The toast sits
   // outside both, so its Undo stays reachable.
   function behind(off) { ['.top', '.wrap'].forEach(function (q) { var el = document.querySelector(q); if (el) el.toggleAttribute('inert', off); }); }
+  // The phone's Back button closes an open sheet rather than leaving Shelfmark (and losing a half-typed book). Each
+  // sheet adds one entry to the browser's history, and a sheet that takes another's place takes over its entry. Back
+  // leaves the entry, which closes the sheet; a sheet closed any other way leaves its entry with history.back().
+  // backs counts those, so their popstate isn't taken for the Back button. An entry is marked with this page's own
+  // id: one left from before a reload belongs to the page as it was, and going back to it would load the page again.
+  var sheetN = 0, backs = 0, PAGE = uid();
+  function sheetEntry() { var st = history.state; return st && st.page === PAGE ? st.sheet : 0; }
+  // Leaving a sheet's entry, the browser would scroll the page back to where it was when the sheet opened, after
+  // Add has moved the list to its top. It's told not to until the page's own entry is back.
+  function pushSheet() { try { history.scrollRestoration = 'manual'; history.pushState({ sheet: sheetN, page: PAGE }, ''); } catch (e) { } }
   function openSheet(html, onClose) {
-    if (!$('sheet').hidden) closeSheet(); else tapGuard = null;
+    if (!$('sheet').hidden) shut(true); else tapGuard = null;
+    sheetN++;
+    if (!sheetEntry()) pushSheet();
+    else try { history.replaceState({ sheet: sheetN, page: PAGE }, ''); } catch (e) { }
     sheetFrom = document.activeElement; sheetDone = onClose || null;
     var s = $('sheet');
     s.innerHTML = '<div class="scrim"></div><div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
@@ -901,8 +914,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
     return s.querySelector('.panel');
   }
-  function closeSheet() {
+  function closeSheet() { shut(false); }
+  // keepEntry: the sheet's history entry is already gone (Back) or is about to go to the sheet taking its place.
+  function shut(keepEntry) {
     if ($('sheet').hidden) return;
+    if (!keepEntry && sheetEntry() === sheetN) try { backs++; history.back(); } catch (e) { backs--; }
     var f = sheetDone; sheetDone = null; cardFlush = cardRefresh = null; if (f) f();
     tapGuard = lastTap && Date.now() - lastTap.t < 300 ? { x: lastTap.x, y: lastTap.y, t: Date.now() } : null;
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
@@ -1550,6 +1566,16 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (e.key === '/' && $('sheet').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) { e.preventDefault(); $('q').focus(); }
   });
   window.addEventListener('hashchange', checkLink);
+  window.addEventListener('popstate', function () {
+    var open = !$('sheet').hidden;
+    if (backs) {
+      // A sheet closed by a button or a key just left its entry. Should another sheet have opened since, it needs one.
+      backs--;
+      if (open && !sheetEntry()) pushSheet();
+    } else if (open && sheetEntry() !== sheetN) shut(true);
+    if (!sheetEntry()) try { history.scrollRestoration = 'auto'; } catch (e) { }
+  });
+  try { history.scrollRestoration = 'auto'; } catch (e) { } // as a sheet's entry left it, if the page was reloaded there
   // Another tab on this device changed the library: pick it up.
   window.addEventListener('storage', function (e) {
     if (e.key === LS) {

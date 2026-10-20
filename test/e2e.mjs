@@ -219,6 +219,44 @@ step('the keyboard stays in an open sheet, and comes back to the book after', as
   } finally { await ctx.close(); }
 });
 
+step('the Back button closes an open sheet instead of leaving Shelfmark', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, Array.from({ length: 30 }, (_, i) => ({ id: 'n' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'] })));
+    const here = page.url(), length = () => page.evaluate(() => history.length), start = await length();
+    // Back on a card closes it, and keeps what was typed.
+    await page.click('#list .bk[data-id="n0"]');
+    await page.fill('#f-notes', 'Half typed');
+    await page.goBack();
+    await until(async () => !(await sheetOpen(page)), 'Back to close the card');
+    assert.equal(page.url(), here, 'Back left Shelfmark');
+    assert.equal((await storedBook(page, 'n0')).notes, 'Half typed');
+    // A sheet closed with its own button takes its history entry with it, so Back isn't needed twice later.
+    await page.click('#list .bk[data-id="n1"]');
+    await page.click('#bkx2');
+    await until(() => page.evaluate(() => !(history.state && history.state.sheet)), 'the card\'s entry to go');
+    // A sheet that takes another's place takes over its entry: Import, then the books it read.
+    await page.click('#importBtn');
+    await page.fill('#impaste', linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }));
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    assert.equal(await length(), start + 1, 'the review screen added a second entry over the Import sheet\'s');
+    await page.goBack();
+    await until(async () => !(await sheetOpen(page)), 'one Back to close the review screen');
+    assert.equal(page.url(), here);
+    // Adding books moves the list to its top, and leaving the sheet's entry doesn't scroll it back down.
+    await page.evaluate(() => window.scrollTo(0, 1200));
+    await page.goto(linkTo({ name: 'Hall', books: [{ title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
+    await page.waitForSelector('#rv-add');
+    await page.click('#rv-add');
+    await until(() => page.evaluate(() => !(history.state && history.state.sheet)), 'the review screen\'s entry to go');
+    await wait(300);
+    assert.equal(await page.evaluate(() => scrollY), 0, 'the list scrolled back down after adding');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book on the review screen ticks with a tap anywhere along its left edge', async () => {
   const ctx = await context();
   try {
