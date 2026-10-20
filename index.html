@@ -723,7 +723,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
   try { Object.assign(PREF, JSON.parse(localStorage.getItem(LSP) || '{}')); } catch (e) { }
   if (['author', 'title', 'shelf', 'added'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
   PREF.lookups = PREF.lookups === true;
-  var UI = { q: '', status: '', room: '', tag: '' };
+  // sort, when set, is how the list is sorted for this visit only, over the saved PREF.sort: after books are added
+  // from a link they show newest first, without undoing a sort the person chose.
+  var UI = { q: '', status: '', room: '', tag: '', sort: '' };
   var editSeq = 0, persistAsked = false;
 
   function savePrefs() { try { localStorage.setItem(LSP, JSON.stringify(PREF)); } catch (e) { } }
@@ -841,7 +843,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
     $('tagSel').innerHTML = '<option value="">All tags</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
     $('tagSel').value = UI.tag; $('tagSel').hidden = !tk.length;
-    $('sortSel').value = PREF.sort;
+    var sort = UI.sort || PREF.sort;
+    $('sortSel').value = sort;
     $('tools').hidden = !all.length;
     $('nextBtn').hidden = !onHand(all, true).length;
 
@@ -854,7 +857,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       return;
     }
     var vis = visible(all);
-    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder }[PREF.sort] || authorOrder;
+    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder }[sort] || authorOrder;
     vis.sort(order);
     var filtered = vis.length !== all.length;
     $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') + (counts.read ? ' · ' + counts.read + ' read' : '');
@@ -863,7 +866,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       return;
     }
     var html = '';
-    if (PREF.sort === 'shelf') {
+    if (sort === 'shelf') {
       var groups = [], g = null;
       vis.forEach(function (b) { var k = where(b) || 'Not shelved yet'; if (!g || g.k !== k) groups.push(g = { k: k, bs: [] }); g.bs.push(b); });
       groups.forEach(function (g) { html += '<h3 class="grp">' + esc(g.k) + ' <span class="n">' + g.bs.length + '</span></h3>' + g.bs.map(row).join(''); });
@@ -1208,15 +1211,16 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function () {
       var now = Date.now(), added = today(), n = 0, first = null;
-      rows.forEach(function (r) {
+      rows.forEach(function (r, i) {
         if (!r.on) return;
-        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added }), bulk, batch)); if (!b) return;
+        // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order.
+        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || added }), bulk, batch)); if (!b) return;
         DOC.books[b.id] = b; n++; first = first || b;
       });
       if (!n) return;
       DOC.seen[batch.id] = DOC.seen[batch.id] || now;
       DOC = cleanDoc(DOC); persist(); closeSheet();
-      UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; PREF.sort = 'added'; savePrefs(); render();
+      UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
       toast('Added ' + plural(n, 'book') + ' — newest first');
     });
@@ -1566,7 +1570,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   if (narrow) { if (narrow.addEventListener) narrow.addEventListener('change', placeholder); else if (narrow.addListener) narrow.addListener(placeholder); }
   $('roomSel').addEventListener('change', function () { UI.room = this.value; render(); });
   $('tagSel').addEventListener('change', function () { UI.tag = this.value; render(); });
-  $('sortSel').addEventListener('change', function () { PREF.sort = this.value; savePrefs(); render(); });
+  $('sortSel').addEventListener('change', function () { PREF.sort = this.value; UI.sort = ''; savePrefs(); render(); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !$('sheet').hidden) { closeSheet(); return; }
     if (e.key === '/' && $('sheet').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) { e.preventDefault(); $('q').focus(); }

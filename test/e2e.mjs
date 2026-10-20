@@ -327,6 +327,28 @@ step('a batch of more than 3,000 books says how many didn\'t fit and what to do'
   } finally { await ctx.close(); }
 });
 
+step('books added from a link keep the shelf\'s order, and the sort chosen before stays saved', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ sort: 'shelf', lookups: false })));
+    await seed(page, [PIRANESI]);
+    const shelf = ['Wuthering Heights', 'Beloved', 'Middlemarch', 'Gilead', 'Dune', 'Circe', 'Emma', 'Atonement'];
+    await page.goto(linkTo({ name: 'Den, left case', room: 'Den', books: shelf.map(title => ({ title, authors: ['Ann Lee'] })) }));
+    await page.waitForSelector('#rv-add');
+    await page.click('#rv-add');
+    assert.equal(await page.inputValue('#sortSel'), 'added', 'the list isn\'t newest first after adding');
+    assert.deepEqual(await titles(page), [...shelf, 'Piranesi'], 'the books came out of the shelf\'s order');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('shelfmark.prefs'))).sort, 'shelf', 'adding books changed the saved sort');
+    await page.reload();
+    assert.equal(await page.inputValue('#sortSel'), 'shelf', 'the sort chosen before didn\'t come back');
+    await page.selectOption('#sortSel', 'title'); // a sort chosen by hand is still kept
+    await page.reload();
+    assert.equal(await page.inputValue('#sortSel'), 'title');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a link cut short says so, and a hand-written link with a % opens', async () => {
   const ctx = await context();
   try {
