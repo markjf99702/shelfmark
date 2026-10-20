@@ -257,6 +257,26 @@ step('a room typed on the review screen keeps the shelf Claude gave each book', 
   } finally { await ctx.close(); }
 });
 
+step('changing only the room on the review screen keeps each book\'s own shelf', async () => {
+  const ctx = await context();
+  try {
+    // SKILL.md's own example: a room and a shelf for the batch, and books on the bookcase's top shelf.
+    const page = await open(ctx, linkTo({ name: 'Living room, tall bookcase', room: 'Living room', shelf: 'Tall bookcase', books: [
+      { title: 'Middlemarch', authors: ['George Eliot'], shelf: 'Tall bookcase, top' },
+      { title: 'Beloved', authors: ['Toni Morrison'], shelf: 'Tall bookcase, top' },
+      { title: 'The Hobbit', authors: ['J. R. R. Tolkien'] },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.inputValue('#rv-shelf'), 'Tall bookcase');
+    await page.fill('#rv-room', 'Den');
+    await page.click('#rv-add');
+    const lib = await stored(page);
+    assert.deepEqual(Object.values(lib.library.books).map(b => b.title + ' @ ' + b.room + ' > ' + b.shelf).sort(),
+      ['Beloved @ Den > Tall bookcase, top', 'Middlemarch @ Den > Tall bookcase, top', 'The Hobbit @ Den > Tall bookcase']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a link cut short says so, and a hand-written link with a % opens', async () => {
   const ctx = await context();
   try {

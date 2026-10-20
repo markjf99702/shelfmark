@@ -547,14 +547,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
     };
   }
   // Where a book from a batch goes. The review screen's "Shelve them in" fields start out as the batch's own room
-  // and shelf, which fill in for any book Claude didn't place. Once the person changes them, each one filled in
-  // moves every book there, and a blank one leaves each book's own as it is.
-  function shelve(b, bulk) {
-    if (bulk.touched) { if (bulk.room) b.room = bulk.room; if (bulk.shelf) b.shelf = bulk.shelf; }
-    else {
-      if (!b.shelf && (!b.room || fold(b.room) === fold(bulk.room))) b.shelf = bulk.shelf;
-      if (!b.room) b.room = bulk.room;
-    }
+  // and shelf, which fill in for any book Claude didn't place. Each field the person changes moves every book there
+  // (emptied, it leaves each book's own as it is); a field left as the batch gave it still only fills in, so
+  // changing just the room keeps the shelf Claude gave each book.
+  function shelve(b, bulk, batch) {
+    if (bulk.shelf !== batch.shelf) { if (bulk.shelf) b.shelf = bulk.shelf; }
+    else if (!b.shelf && (!b.room || fold(b.room) === fold(batch.room))) b.shelf = batch.shelf;
+    if (bulk.room !== batch.room) { if (bulk.room) b.room = bulk.room; }
+    else if (!b.room) b.room = batch.room;
     return b;
   }
 
@@ -1145,7 +1145,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       dupKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
       return { b: b, dup: dup, twin: twin, on: !dup };
     });
-    var seenAt = DOC.seen[batch.id], bulk = { room: batch.room, shelf: batch.shelf, touched: false };
+    var seenAt = DOC.seen[batch.id], bulk = { room: batch.room, shelf: batch.shelf };
     var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.b.check; }).length;
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'book') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
@@ -1177,13 +1177,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
       var li = e.target.closest('li'); if (!li || !e.target.dataset.f) return; var r = rows[+li.dataset.i];
       if (e.target.dataset.f === 'title') r.b.title = e.target.value; else r.b.authors = list(e.target.value, 12, 120, true);
     });
-    ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.touched = true; bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
+    ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function () {
       var now = Date.now(), added = today(), n = 0, first = null;
       rows.forEach(function (r) {
         if (!r.on) return;
-        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added }), bulk)); if (!b) return;
+        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now, added: r.b.added || added }), bulk, batch)); if (!b) return;
         DOC.books[b.id] = b; n++; first = first || b;
       });
       if (!n) return;
