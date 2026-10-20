@@ -20,12 +20,14 @@ books.json (every field but "title" is optional; "authors" may be a list or one 
 
 It checks every ISBN's check digit (a misread one is dropped and flagged, never guessed at), maps
 common words for format, condition and status onto Shelfmark's, flags likely doubles in the list,
-and exits 1 (printing why) if the input can't be used.
+and exits 1 (printing why) if the input can't be used. Shelfmark takes 3,000 books at a time, so a
+longer list is written as numbered files of up to 3,000 each, to open one after another.
 """
 import argparse, base64, datetime, hashlib, json, re, sys, zlib
 from pathlib import Path
 
 DEFAULT_BASE = 'https://shelfmark.junkdrawer.works/'
+MAX_BOOKS = 3000  # the most Shelfmark takes in one batch (BATCH_MAX in index.html)
 FORMATS = {
     'hardcover': 'hardcover', 'hardback': 'hardcover', 'hard cover': 'hardcover', 'hc': 'hardcover', 'cloth': 'hardcover', 'library binding': 'hardcover',
     'paperback': 'paperback', 'softcover': 'paperback', 'soft cover': 'paperback', 'trade paperback': 'paperback', 'pb': 'paperback', 'tpb': 'paperback',
@@ -188,10 +190,21 @@ def build(doc, warn):
             seen.setdefault(k, b['title'])
     made = datetime.date.today().isoformat()
     name = s(doc.get('name'), 120)
-    body = json.dumps(books, ensure_ascii=False, sort_keys=True)
-    bid = 'c' + made.replace('-', '') + '-' + hashlib.sha1((name + body).encode()).hexdigest()[:10]
-    batch = {'id': bid, 'name': name, 'made': made, 'room': s(doc.get('room'), 60), 'shelf': s(doc.get('shelf'), 60), 'books': books}
-    return {'shelfmark': 1, 'batch': {k: v for k, v in batch.items() if v != ''}}
+    # Up to 3,000 books a batch. Longer lists are cut into parts, each a batch of its own with its own id, named
+    # "… (2 of 3)" so the review screen says which one it is.
+    parts = [books[i:i + MAX_BOOKS] for i in range(0, len(books), MAX_BOOKS)]
+    outs = []
+    for n, part in enumerate(parts, 1):
+        body = json.dumps(part, ensure_ascii=False, sort_keys=True)
+        bid = 'c' + made.replace('-', '') + '-' + hashlib.sha1((name + body).encode()).hexdigest()[:10]
+        label = name
+        if len(parts) > 1:
+            bid += f'-{n}'
+            tail = f' ({n} of {len(parts)})'
+            label = name[:120 - len(tail)] + tail if name else f'Part {n} of {len(parts)}'
+        batch = {'id': bid, 'name': label, 'made': made, 'room': s(doc.get('room'), 60), 'shelf': s(doc.get('shelf'), 60), 'books': part}
+        outs.append({'shelfmark': 1, 'batch': {k: v for k, v in batch.items() if v != ''}})
+    return outs, name
 
 
 def link(out, base):
@@ -217,11 +230,11 @@ def main():
     except (OSError, json.JSONDecodeError) as e:
         raise SystemExit(f'error: can’t read {a.books}: {e}')
     warn = []
-    out = build(doc, warn)
-    b = out['batch']
-    books = b['books']
+    outs, name = build(doc, warn)
+    b = outs[0]['batch']
+    books = [x for o in outs for x in o['batch']['books']]
     place = ' › '.join(x for x in (b.get('room'), b.get('shelf')) if x)
-    print(f'{b.get("name") or "Books"}: {len(books)} book{"s" if len(books) != 1 else ""}' + (f', shelved in {place} unless they say otherwise' if place else ''))
+    print(f'{name or "Books"}: {len(books):,} book{"s" if len(books) != 1 else ""}' + (f', shelved in {place} unless they say otherwise' if place else ''))
     for x in books:
         by = ', '.join(x.get('authors', [])) or 'author unknown'
         where = ' › '.join(y for y in (x.get('room'), x.get('shelf')) if y)
@@ -231,11 +244,21 @@ def main():
     for w in warn:
         print(f'warning: {w}')
     Path(a.out).mkdir(parents=True, exist_ok=True)
-    f = Path(a.out) / f'{slug(b.get("name") or "books")}-{b["made"]}.shelfmark.json'
-    f.write_text(json.dumps(out, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    stem = f'{slug(name or "books")}-{b["made"]}'
+    if len(outs) > 1:
+        print(f'\nShelfmark takes {MAX_BOOKS:,} books at a time, so these are in {len(outs)} numbered files. '
+              'Hand over all of them, to open in Shelfmark one after another (Import › Open a file):')
+        for n, o in enumerate(outs, 1):
+            f = Path(a.out) / f'{stem}-{n}.shelfmark.json'
+            f.write_text(json.dumps(o, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            k = len(o['batch']['books'])
+            print(f'File {n} of {len(outs)} ({k:,} book{"s" if k != 1 else ""}): {f}')
+        return
+    f = Path(a.out) / f'{stem}.shelfmark.json'
+    f.write_text(json.dumps(outs[0], ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
     print(f'\nFile: {f}')
     if not a.no_link:
-        url = link(out, a.base if a.base.endswith('/') else a.base + '/')
+        url = link(outs[0], a.base if a.base.endswith('/') else a.base + '/')
         if len(url) > 30000:
             print(f'\nThe link is {len(url):,} characters, too long to pass around safely. Hand over the file instead.')
         else:

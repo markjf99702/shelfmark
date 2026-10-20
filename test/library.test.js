@@ -221,10 +221,16 @@ function randomDoc(r, n) {
     { title: 'Middlemarch', authors: ['George Eliot'], unsure: 'spine cut off', id: 'evil', t: 99, del: 1 },
     { title: '' }, 'nonsense'
   ] } });
-  eq(batch, { id: 'c20260926-abc', name: 'Hall', made: '', room: 'Hall', shelf: '', books: [{ title: 'Middlemarch', authors: ['George Eliot'], check: 'spine cut off' }] },
+  eq(batch, { id: 'c20260926-abc', name: 'Hall', made: '', room: 'Hall', shelf: '', books: [{ title: 'Middlemarch', authors: ['George Eliot'], check: 'spine cut off' }], more: 0 },
     'a batch keeps good books only, turns "unsure" into a check flag, and ignores ids, times and removals');
   eq(S.cleanBatch([{ title: 'A' }]).books.length, 1, 'a bare list of books is a batch');
   eq(S.cleanBatch({ nope: 1 }), null, 'something else is not');
+  {
+    // A phone takes 3,000 at a time; the batch says how many more there were, junk not counted.
+    const many = [{ title: '' }, 'junk'].concat(Array.from({ length: 3005 }, (_, i) => ({ title: 'Book ' + (i + 1) })), [{ title: ' ' }, null]);
+    const big = S.cleanBatch({ books: many });
+    eq([big.books.length, big.books[0].title, big.books[2999].title, big.more], [3000, 'Book 1', 'Book 3000', 5], 'a batch takes the first 3,000 books and counts the rest');
+  }
 
   // "Shelve them in" on the review screen: bulk is what its two fields say, batch the room and shelf the batch came
   // with. A whole bookcase from one photo comes with a shelf for each book and, when the room isn't known, no room:
@@ -303,6 +309,19 @@ function randomDoc(r, n) {
       const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
       eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
+
+      // More books than Shelfmark takes at once: numbered files of up to 3,000, each a batch of its own.
+      const bigIn = path.join(tmp, 'big.json'), bigOut = path.join(tmp, 'big');
+      fs.writeFileSync(bigIn, JSON.stringify({ name: 'Goodreads export', books: Array.from({ length: 6001 }, (_, i) => ({ title: 'Book ' + (i + 1), authors: ['Ann Lee'] })) }));
+      const said = execFileSync('python3', [py, bigIn, '--out', bigOut], { encoding: 'utf8' });
+      const files = fs.readdirSync(bigOut).sort();
+      eq(files.map(f => f.replace(/-\d{4}-\d\d-\d\d/, '')), ['goodreads-export-1.shelfmark.json', 'goodreads-export-2.shelfmark.json', 'goodreads-export-3.shelfmark.json'], 'a list of over 3,000 books is written as numbered files');
+      const parts = [];
+      for (const f of files) parts.push((await S.parseIncoming(fs.readFileSync(path.join(bigOut, f), 'utf8'))).batch);
+      eq(parts.map(p => [p.books.length, p.more, p.name]), [[3000, 0, 'Goodreads export (1 of 3)'], [3000, 0, 'Goodreads export (2 of 3)'], [1, 0, 'Goodreads export (3 of 3)']], 'of up to 3,000 books each, every one taken whole and named for its part');
+      eq(new Set(parts.map(p => p.id)).size, 3, 'each part has a batch id of its own');
+      eq([parts[1].books[0].title, parts[2].books[0].title], ['Book 3001', 'Book 6001'], 'the parts keep the list in order');
+      check(/Shelfmark takes 3,000 books at a time, so these are in 3 numbered files/.test(said) && /File 3 of 3 \(1 book\): /.test(said) && !/Link:/.test(said), 'the script says so, and hands over the files without a link');
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');

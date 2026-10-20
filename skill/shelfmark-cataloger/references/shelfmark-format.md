@@ -19,7 +19,7 @@ Use this when you can't run `scripts/make_shelfmark.py` and need to write a batc
 | `name` | What the batch is, shown when it's opened. Up to 120 characters |
 | `room`, `shelf` | Where the books are. A book with no room of its own gets the batch's room. It gets the batch's shelf only when it has no shelf and no room of its own, or its room is the batch's |
 | `id` | Optional. Shelfmark remembers batch ids it has added, so it can say when a link is opened twice. The script makes one from the content |
-| `books[]` | The books, in shelf order |
+| `books[]` | The books, in shelf order. Up to 3,000: Shelfmark takes the first 3,000 and says how many more there were, so put the rest in another batch |
 
 Each book:
 

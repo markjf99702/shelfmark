@@ -83,6 +83,8 @@ If it prints warnings, read them: a dropped ISBN or a double usually means one m
 
 Links are compressed, so a few shelves' worth makes a link of a few thousand characters. For a few hundred books or more, lead with the file; the script says so when a link gets too long to pass around safely.
 
+Shelfmark takes 3,000 books at a time. For more, the script writes numbered files (`…-1.shelfmark.json`, `…-2.shelfmark.json` and so on), each a batch of its own and none with a link: hand over all of them, and say to open them in Shelfmark one after another.
+
 Without code tools, write the JSON by hand in the same shape, wrapped as `{"shelfmark": 1, "batch": {…}}`, and give it as text to paste into Shelfmark (**Import** › paste box). The link needs the script.
 
 ## 4. Hand it over

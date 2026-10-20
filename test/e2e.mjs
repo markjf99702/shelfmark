@@ -277,6 +277,18 @@ step('changing only the room on the review screen keeps each book\'s own shelf',
   } finally { await ctx.close(); }
 });
 
+step('a batch of more than 3,000 books says how many didn\'t fit and what to do', async () => {
+  const ctx = await context();
+  try {
+    const books = Array.from({ length: 3002 }, (_, i) => ({ title: 'Book ' + (i + 1) }));
+    const page = await open(ctx, base + '#s1z' + deflateRawSync(Buffer.from(JSON.stringify({ shelfmark: 1, batch: { id: 'big', name: 'Goodreads export', books } }))).toString('base64url'));
+    await page.waitForSelector('#rv-add', { timeout: 60000 });
+    assert.equal(await page.textContent('.lede'), 'Goodreads export · 3,000 books. 2 more didn’t fit. Shelfmark takes 3,000 at a time — ask Claude to put the rest in another file.');
+    assert.equal(await page.textContent('#rv-add'), 'Add 3,000 books');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a link cut short says so, and a hand-written link with a % opens', async () => {
   const ctx = await context();
   try {

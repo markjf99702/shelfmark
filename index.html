@@ -531,19 +531,23 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function findDup(ix, b) { var k = dupKeys(b); for (var i = 0; i < k.length; i++) if (ix[k[i]]) return ix[k[i]]; return null; }
 
   // A batch is what Claude hands over: {shelfmark: 1, batch: {id, name, made, room, shelf, books: [...]}}.
-  // A book's "unsure" note becomes its "check" flag, so it can be looked at later.
+  // A book's "unsure" note becomes its "check" flag, so it can be looked at later. A phone can review only so many
+  // at once: the first 3,000 books come through, and more says how many others the batch had.
+  var BATCH_MAX = 3000;
   function cleanBatch(o) {
     var b = o && o.batch ? o.batch : o;
     if (Array.isArray(b)) b = { books: b };
     if (!b || typeof b !== 'object' || !Array.isArray(b.books)) return null;
-    var books = b.books.slice(0, 3000).map(function (x) {
-      if (!x || typeof x !== 'object') return null;
-      return cleanBook(Object.assign({}, x, { id: 'n', t: 0, del: 0, check: x.unsure || x.check || '' }));
-    }).filter(Boolean);
-    books.forEach(function (x) { delete x.id; delete x.t; });
+    var books = [], more = 0;
+    b.books.forEach(function (x) {
+      if (!x || typeof x !== 'object') return;
+      if (books.length >= BATCH_MAX) { if (str(x.title, 300)) more++; return; }
+      var c = cleanBook(Object.assign({}, x, { id: 'n', t: 0, del: 0, check: x.unsure || x.check || '' }));
+      if (c) { delete c.id; delete c.t; books.push(c); }
+    });
     return {
       id: str(b.id, 80).replace(/[^\w.-]/g, '') || 'x' + hash(JSON.stringify(books)).toString(36),
-      name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books
+      name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books, more: more
     };
   }
   // Where a book from a batch goes. The review screen's "Shelve them in" fields start out as the batch's own room
@@ -1147,8 +1151,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     var seenAt = DOC.seen[batch.id], bulk = { room: batch.room, shelf: batch.shelf };
     var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.b.check; }).length;
+    // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
+    function num(n) { return n.toLocaleString('en-US'); }
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
-      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'book') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
+      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
+      (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' +
       (seenAt ? '<p class="flag"><span>You added from this link ' + esc(ago(seenAt)) + '. Books you already have are unticked.</span></p>' : '') +
       '<div class="bulk"><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p></div>' +
@@ -1166,8 +1173,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
       datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })));
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
-      $('rv-add').textContent = n ? 'Add ' + plural(n, 'book') : 'Add'; $('rv-add').disabled = !n;
-      $('rv-n').textContent = n === rows.length ? '' : (rows.length - n) + ' left out';
+      $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
+      $('rv-n').textContent = n === rows.length ? '' : num(rows.length - n) + ' left out';
     }
     $('rv').addEventListener('change', function (e) {
       var li = e.target.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
