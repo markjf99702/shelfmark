@@ -111,13 +111,24 @@ Book fields are as above, plus `added` (date) and `check` (an unresolved flag). 
 
 ## Imports from other services
 
-For a Goodreads or LibraryThing export (CSV), map the columns onto batch fields and run the script. It's the same path as photos:
-- **Goodreads:**
-  - `ISBN13` or `ISBN` (strip the `="…"` wrapper), `Title`, `Author` and `Additional Authors`, `Publisher`, `Year Published`, `Number of Pages`.
-  - `My Rating` → `rating` (0 means none).
-  - `Exclusive Shelf` → `status` (read, currently-reading, to-read).
-  - `Bookshelves` → `tags`.
-  - `My Review` or `Private Notes` → `notes`.
-- **LibraryThing:** `Title`, `Primary Author`, `ISBN` (one ISBN in brackets; pass it as it is), `Publication`, `Date`, `Tags`, `Collections`, `Comments`.
+For a Goodreads or LibraryThing export, let the script read it rather than mapping the columns yourself:
 
-These are usually large, so hand over the file rather than the link, and say how many books came through.
+```
+python3 scripts/make_shelfmark.py goodreads_library_export.csv --import goodreads --out /mnt/user-data/outputs
+python3 scripts/make_shelfmark.py librarything_export.tsv --import librarything --out /mnt/user-data/outputs
+```
+
+It reads CSV or tab-separated files in any of the encodings these exports and spreadsheets save in, and does the mechanical part:
+- **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned").
+- **Takes the series off Goodreads titles,** so "The Name of the Wind (The Kingkiller Chronicle, #1)" matches the same book read from a spine.
+- **Turns `<br/>` in reviews into line breaks,** and keeps both the review and any private notes.
+- **Keeps reading shelves out of tags:** read, currently-reading and to-read (and LibraryThing's Your library, Wishlist and the like) become the book's status or nothing. Shelves and collections the person made become tags.
+- **Turns LibraryThing's names round:** "Le Guin, Ursula K." becomes "Ursula K. Le Guin".
+
+If it left books out, ask once, with the count: "212 are on your to-read shelf with no copy owned — leave them out?" Leaving them out is the default, so don't hold things up: hand over the file, and if they want those books too, run it again with `--keep-unowned` and hand over the new file instead.
+
+Exports are usually large, so hand over the file rather than the link, and say how many books came through. Over 3,000, the script writes numbered files.
+
+Without code tools, map the columns by hand the same way:
+- **Goodreads:** `Title` (without the series in brackets), `Author` and `Additional Authors`, `ISBN13` or `ISBN` (strip the `="…"` wrapper), `Publisher`, `Year Published`, `Number of Pages`, `My Rating` → `rating` (0 means none), `Exclusive Shelf` → `status`, `Bookshelves` (less the reading shelves) → `tags`, `My Review` and `Private Notes` → `notes`.
+- **LibraryThing:** `Title`, `Primary Author` (turned round), `ISBN` (pass it as it is), `Publication` (the publisher before the bracket), `Date`, `Rating`, `Tags` plus the person's own `Collections` → `tags`, `Review`, `Comment` and `Private Comment` → `notes`.

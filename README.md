@@ -95,12 +95,13 @@ Then open **Settings › Connect Google Drive** on each device you use. The copy
 2. checks each ISBN's check digit, so a misread ISBN is dropped and flagged rather than guessed;
 3. hands the books to Shelfmark as a link and a `.shelfmark.json` file.
 
-It can also convert a Goodreads or LibraryThing export. With a Google Drive connector, it can answer questions about your library by reading the library file, which it never changes.
+It can also convert a Goodreads or LibraryThing export, leaving out the books on your to-read shelf or wishlist that aren't in the house (it asks first). With a Google Drive connector, it can answer questions about your library by reading the library file, which it never changes.
 
 To use it, zip the `shelfmark-cataloger` folder and upload it as a skill in claude.ai; it needs code execution turned on. Its script also runs on its own:
 
 ```
 python3 skill/shelfmark-cataloger/scripts/make_shelfmark.py books.json
+python3 skill/shelfmark-cataloger/scripts/make_shelfmark.py goodreads_library_export.csv --import goodreads
 ```
 
 ## Opening books from a link
@@ -137,7 +138,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open.
-- **The skill's script:** its link and file open in the page with every field intact. This runs when `python3` is available.
+- **The skill's script:** its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
 - **What to read next:** which books can be suggested, that each lean pulls the way it says, the reasons given, and that every match comes up before any repeats.
 

@@ -322,6 +322,59 @@ function randomDoc(r, n) {
       eq(new Set(parts.map(p => p.id)).size, 3, 'each part has a batch id of its own');
       eq([parts[1].books[0].title, parts[2].books[0].title], ['Book 3001', 'Book 6001'], 'the parts keep the list in order');
       check(/Shelfmark takes 3,000 books at a time, so these are in 3 numbered files/.test(said) && /File 3 of 3 \(1 book\): /.test(said) && !/Link:/.test(said), 'the script says so, and hands over the files without a link');
+
+      // Exports from Goodreads and LibraryThing, read by the script itself, the way they come: a byte-order mark,
+      // CRLF line ends, quoted line breaks and a short row; LibraryThing's tab-separated file in UTF-16.
+      const cellq = v => /[",\r\n\t]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      const table = (rows, sep) => rows.map(r => r.map(cellq).join(sep)).join('\r\n') + '\r\n';
+      const GR = ['Book Id', 'Title', 'Author', 'Author l-f', 'Additional Authors', 'ISBN', 'ISBN13', 'My Rating', 'Average Rating', 'Publisher', 'Binding', 'Number of Pages', 'Year Published',
+        'Original Publication Year', 'Date Read', 'Date Added', 'Bookshelves', 'Bookshelves with positions', 'Exclusive Shelf', 'My Review', 'Spoiler', 'Private Notes', 'Read Count', 'Owned Copies'];
+      const LT = ['Book Id', 'Title', 'Sort Character', 'Primary Author', 'Primary Author Role', 'Secondary Author', 'Secondary Author Roles', 'Publication', 'Date', 'Review', 'Rating',
+        'Comment', 'Private Comment', 'Summary', 'Media', 'Physical Description', 'Page Count', 'Tags', 'Collections', 'ISBN', 'ISBNs'];
+      const row = (cols, o) => cols.map(h => o[h] == null ? '' : String(o[h]));
+      const grIn = path.join(tmp, 'goodreads_library_export.csv'), ltIn = path.join(tmp, 'librarything_export.tsv');
+      fs.writeFileSync(grIn, '﻿' + table([GR,
+        row(GR, { Title: 'The Name of the Wind (The Kingkiller Chronicle, #1)', Author: 'Patrick Rothfuss', ISBN: '="075640407X"', ISBN13: '="9780756404079"', 'My Rating': 5, 'Exclusive Shelf': 'read',
+          Bookshelves: 'fantasy, read', 'My Review': 'Wow.<br/><br/>Kvothe, "the" Arcane.\nSecond line', 'Private Notes': 'Lent to Sam once', 'Owned Copies': 1 }),
+        row(GR, { Title: 'Mort (Discworld, #4; Death, #1)', Author: 'Terry Pratchett', ISBN: '=""', ISBN13: '=""', 'My Rating': 0, 'Exclusive Shelf': 'currently-reading', Bookshelves: 'currently-reading, humor', 'Owned Copies': 0 }),
+        row(GR, { Title: 'Wishful Thinking (Some Series, #2)', Author: 'Ann Wish', ISBN: '=""', ISBN13: '=""', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read', 'Owned Copies': 0 }),
+        row(GR, { Title: 'Bought, Not Read Yet', Author: 'Bo Owner', 'Additional Authors': 'Kurt Vonnegut, Jr., Neil Gaiman', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read, classics', 'Owned Copies': 1 }),
+        ['99', 'A Short Row'],
+      ], ','));
+      fs.writeFileSync(ltIn, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(table([LT,
+        row(LT, { Title: 'The Hobbit', 'Primary Author': 'Tolkien, J. R. R.', Publication: 'Houghton Mifflin (2002), Paperback, 366 pages', Date: '1937', Rating: '4.5', Comment: 'Read aloud<br>twice',
+          Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300' }),
+        row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading' }),
+        row(LT, { Title: 'Le Petit Prince', 'Primary Author': 'Saint-Exupéry, Antoine de', Collections: 'Wishlist' }),
+      ], '\t'), 'utf16le')]));
+      const imported = async (file, kind, ...more) => {
+        const dir = fs.mkdtempSync(path.join(tmp, 'import-'));
+        const said = execFileSync('python3', [py, file, '--import', kind, '--out', dir, '--no-link', ...more], { encoding: 'utf8' });
+        const f = fs.readdirSync(dir).find(f => f.endsWith('.shelfmark.json'));
+        return { said, batch: (await S.parseIncoming(fs.readFileSync(path.join(dir, f), 'utf8'))).batch };
+      };
+      const grOut = await imported(grIn, 'goodreads');
+      const byTitle = Object.fromEntries(grOut.batch.books.map(b => [b.title, b]));
+      eq(grOut.batch.books.map(b => b.title), ['The Name of the Wind', 'Mort', 'Bought, Not Read Yet', 'A Short Row'], 'a Goodreads import leaves out the to-read shelf with no copy owned, and takes the series off titles');
+      eq(byTitle['The Name of the Wind'], { title: 'The Name of the Wind', authors: ['Patrick Rothfuss'], isbn: '9780756404079', status: 'read', rating: 5, tags: ['fantasy'],
+        notes: 'Wow.\n\nKvothe, "the" Arcane.\nSecond line\n\nLent to Sam once' }, 'its <br/> become line breaks, the review and private notes both kept, and the read shelf is a status, not a tag');
+      eq([byTitle.Mort.status, byTitle.Mort.tags, byTitle.Mort.isbn, byTitle.Mort.check], ['reading', ['humor'], undefined, undefined], 'currently-reading is a status, and empty ="" cells are no ISBN');
+      eq([byTitle['Bought, Not Read Yet'].status, byTitle['Bought, Not Read Yet'].tags, byTitle['Bought, Not Read Yet'].authors], [undefined, ['classics'], ['Bo Owner', 'Kurt Vonnegut, Jr.', 'Neil Gaiman']],
+        'a to-read book with a copy owned comes in unread, its additional authors whole');
+      check(/Left out: 1 on the to-read shelf with no copy owned\. To add them too, run again with --keep-unowned\./.test(grOut.said), 'the script says how many it left out, and how to add them');
+      const grAll = await imported(grIn, 'goodreads', '--keep-unowned');
+      eq([grAll.batch.books.length, grAll.batch.books[2].title, /Left out/.test(grAll.said)], [5, 'Wishful Thinking', false], 'with --keep-unowned they come in too');
+      const ltOut = await imported(ltIn, 'librarything');
+      eq(ltOut.batch.books, [
+        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, rating: 5, tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice' },
+        { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', status: 'reading' },
+      ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist and keeps its own collections out of tags');
+      check(/Left out: 1 in Wishlist or Read but unowned and not in Your library/.test(ltOut.said), 'and says what it left out');
+      // The point of it all: imported books are found as books already on the shelves.
+      const shelves = S.dupIndex(S.cleanDoc({ books: [{ id: 'w', t: 1, title: 'The Name of the Wind', authors: ['Patrick Rothfuss'] }, { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] }] }));
+      eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');
+      let wrong = ''; try { execFileSync('python3', [py, ltIn, '--import', 'goodreads', '--out', tmp], { encoding: 'utf8', stdio: 'pipe' }); } catch (e) { wrong = String(e.stderr); }
+      check(/looks like a LibraryThing one, so use --import librarything/.test(wrong), 'the wrong --import says which to use');
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');

@@ -2,6 +2,7 @@
 """Turn a list of books into a Shelfmark batch: a link that opens it in Shelfmark, and a file.
 
     python3 make_shelfmark.py books.json [--out DIR] [--base URL] [--no-link]
+    python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--out DIR]
 
 books.json (every field but "title" is optional; "authors" may be a list or one string):
 
@@ -22,8 +23,12 @@ It checks every ISBN's check digit (a misread one is dropped and flagged, never 
 common words for format, condition and status onto Shelfmark's, flags likely doubles in the list,
 and exits 1 (printing why) if the input can't be used. Shelfmark takes 3,000 books at a time, so a
 longer list is written as numbered files of up to 3,000 each, to open one after another.
+
+With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
+aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
+given --keep-unowned. It says how many it left out.
 """
-import argparse, base64, datetime, hashlib, json, re, sys, zlib
+import argparse, base64, csv, datetime, hashlib, io, json, re, sys, zlib
 from pathlib import Path
 
 DEFAULT_BASE = 'https://shelfmark.junkdrawer.works/'
@@ -162,6 +167,155 @@ def clean(b, i, warn):
     return {k: v for k, v in out.items() if v not in ('', 0, False, None, [], {})}
 
 
+# ---------- Goodreads and LibraryThing exports ----------
+# --import reads the export itself and does the mechanical part here rather than by hand: it leaves out books that
+# aren't in the house (on the to-read shelf with no copy owned, or only wished for), takes "(Series, #2)" off titles
+# so they match the same book read from a spine, turns <br/> into line breaks, keeps reading shelves out of tags and
+# turns LibraryThing's "Le Guin, Ursula K." round.
+
+SUFFIX = re.compile(r'^(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$', re.I)
+GR_SHELVES = {'read', 'currently-reading', 'to-read'}  # Goodreads's own shelves, which say where a book is in the reading
+LT_SHELVES = {'your library', 'wishlist', 'currently reading', 'to read', 'read but unowned'}  # LibraryThing's own collections
+LT_UNOWNED = {'wishlist', 'read but unowned'}
+
+
+def read_table(path):
+    """An export's rows as dicts keyed by its header, lower-cased: CSV or tab-separated, UTF-8 (BOM or not),
+    UTF-16, or a Windows code page from a spreadsheet's Save As."""
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as e:
+        raise SystemExit(f'error: can’t read {path}: {e}')
+    if raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        text = raw.decode('utf-16')
+    elif b'\x00' in raw[:400]:
+        text = raw.decode('utf-16-le' if raw[1:2] == b'\x00' else 'utf-16-be', errors='replace')
+    else:
+        try:
+            text = raw.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            text = raw.decode('cp1252', errors='replace')
+    text = text.lstrip('﻿')
+    head = text.split('\n', 1)[0]
+    sep = max((',', '\t', ';'), key=head.count)
+    rows = csv.reader(io.StringIO(text, newline=''), delimiter=sep)
+    header = [h.strip().strip('\'"').lower() for h in next(rows, [])]  # older LibraryThing files say 'TITLE'
+    return header, [dict(zip(header, r)) for r in rows if any(c.strip() for c in r)]
+
+
+def cell(r, *names):
+    for n in names:
+        v = re.sub(r'^="(.*)"$', r'\1', (r.get(n) or '').strip()).strip()  # Goodreads writes ISBNs as ="0618260307"
+        if v:
+            return v
+    return ''
+
+
+def split_names(v):
+    """'Neil Gaiman, Kurt Vonnegut, Jr.' → ['Neil Gaiman', 'Kurt Vonnegut, Jr.']"""
+    out = []
+    for x in (p.strip() for p in v.split(',')):
+        if out and SUFFIX.match(x):
+            out[-1] += ', ' + x
+        elif x:
+            out.append(x)
+    return out
+
+
+def turned(name):
+    """LibraryThing's 'Le Guin, Ursula K.' → 'Ursula K. Le Guin'; 'Vonnegut, Kurt, Jr.' → 'Kurt Vonnegut, Jr.'"""
+    p = [x.strip() for x in name.split(',')]
+    if len(p) == 2 and all(p):
+        return f'{p[1]} {p[0]}'
+    if len(p) == 3 and all(p) and SUFFIX.match(p[2]):
+        return f'{p[1]} {p[0]}, {p[2]}'
+    return name
+
+
+def series_off(title):
+    """'The Name of the Wind (The Kingkiller Chronicle, #1)' → 'The Name of the Wind'"""
+    t = re.sub(r'\s*\((?=[^()]*#\s*\d)[^()]*\)\s*$', '', title)
+    return t or title
+
+
+def lines(*texts):
+    """Reviews and notes, with Goodreads's <br/> as line breaks, each kept, a blank line apart."""
+    return '\n\n'.join(t for t in (re.sub(r'<br\s*/?>', '\n', x, flags=re.I).strip() for x in texts) if t)
+
+
+def stars(v):
+    try:
+        return int(float(v) + 0.5)  # LibraryThing gives half stars; 3.5 → 4, as Shelfmark rounds
+    except (ValueError, OverflowError):
+        return 0
+
+
+def from_goodreads(rows, keep):
+    books, left = [], 0
+    for r in rows:
+        shelf = cell(r, 'exclusive shelf').lower()
+        if shelf == 'to-read' and not whole(cell(r, 'owned copies'), 0, 9999) and not keep:
+            left += 1
+            continue
+        books.append({
+            'title': series_off(cell(r, 'title')),
+            'authors': [cell(r, 'author')] + split_names(cell(r, 'additional authors')),
+            'isbn': ', '.join(x for x in (cell(r, 'isbn13'), cell(r, 'isbn')) if x),
+            'publisher': cell(r, 'publisher'), 'year': cell(r, 'year published'), 'pages': cell(r, 'number of pages'),
+            'rating': stars(cell(r, 'my rating')),
+            'status': {'read': 'read', 'currently-reading': 'reading'}.get(shelf, ''),
+            'tags': [t for t in (x.strip() for x in cell(r, 'bookshelves').split(',')) if t and t.lower() not in GR_SHELVES],
+            'notes': lines(cell(r, 'my review'), cell(r, 'private notes')),
+        })
+    return books, (f'{left:,} on the to-read shelf with no copy owned' if left else '')
+
+
+def publisher(v):
+    """LibraryThing's 'Houghton Mifflin (2002), Paperback, 366 pages' → 'Houghton Mifflin'"""
+    v = re.split(r'\s*\(', v)[0]
+    v = re.sub(r',\s*\d{4}\b.*$', '', v)
+    return v.split(' : ')[-1].strip(' .,;')
+
+
+def from_librarything(rows, keep):
+    books, left = [], 0
+    for r in rows:
+        held = [x.strip() for x in cell(r, 'collections').split(',') if x.strip()]
+        low = {x.lower() for x in held}
+        if low & LT_UNOWNED and 'your library' not in low and not keep:
+            left += 1
+            continue
+        books.append({
+            'title': cell(r, 'title'),
+            'authors': [cell(r, 'author (first, last)') or turned(cell(r, 'primary author', 'author (last, first)'))],
+            'isbn': ', '.join(x for x in (cell(r, 'isbn'), cell(r, 'isbns')) if x),
+            'publisher': publisher(cell(r, 'publication')), 'year': cell(r, 'date'), 'pages': cell(r, 'page count'),
+            'rating': stars(cell(r, 'rating')),
+            'status': 'reading' if 'currently reading' in low else '',
+            'tags': [t for t in (x.strip() for x in cell(r, 'tags').split(',')) if t] + [x for x in held if x.lower() not in LT_SHELVES],
+            'notes': lines(cell(r, 'review'), cell(r, 'comment', 'comments'), cell(r, 'private comment', 'private comments')),
+        })
+    return books, (f'{left:,} in Wishlist or Read but unowned and not in Your library' if left else '')
+
+
+IMPORTS = {  # name, a column only that export has (any one of them), and how to read its rows
+    'goodreads': ('Goodreads export', ('exclusive shelf',), from_goodreads),
+    'librarything': ('LibraryThing export', ('primary author', 'author (last, first)', 'author (first, last)'), from_librarything),
+}
+
+
+def from_export(path, kind, keep):
+    """A Goodreads or LibraryThing export → the same {name, books} a list of books from photos is, plus what was
+    left out and why."""
+    name, marks, convert = IMPORTS[kind]
+    header, rows = read_table(path)
+    if 'title' not in header or not set(marks) & set(header):
+        other = next((k for k, (_, m, _) in IMPORTS.items() if k != kind and set(m) & set(header) and 'title' in header), None)
+        raise SystemExit(f'error: {path} isn’t a {name.split()[0]} export' + (f'; it looks like a {IMPORTS[other][0].split()[0]} one, so use --import {other}' if other else f' (it has no "Title" and "{marks[0].title()}" columns)'))
+    books, left = convert(rows, keep)
+    return {'name': name, 'books': books}, left
+
+
 def key(b):
     # Before any colon, plus every number in the title, so "Series: Volume 2" isn't a double of Volume 1.
     t = re.sub(r'[^a-z0-9]+', '', re.sub(r'^(the|a|an)\s+', '', b['title'].lower().split(':')[0]))
@@ -224,23 +378,36 @@ def main():
     ap.add_argument('--out', default='.', help='folder for the .shelfmark.json file')
     ap.add_argument('--base', default=DEFAULT_BASE, help='where Shelfmark lives')
     ap.add_argument('--no-link', action='store_true')
+    ap.add_argument('--import', dest='kind', choices=sorted(IMPORTS), help='read a Goodreads or LibraryThing export (CSV) instead')
+    ap.add_argument('--keep-unowned', action='store_true', help='with --import, keep books that aren’t in the house too')
     a = ap.parse_args()
-    try:
-        doc = json.loads(Path(a.books).read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError) as e:
-        raise SystemExit(f'error: can’t read {a.books}: {e}')
+    left = ''
+    if a.kind:
+        doc, left = from_export(a.books, a.kind, a.keep_unowned)
+        if left and not doc['books']:
+            raise SystemExit(f'error: every book was left out: {left}. To add them, run again with --keep-unowned.')
+    else:
+        try:
+            doc = json.loads(Path(a.books).read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as e:
+            raise SystemExit(f'error: can’t read {a.books}: {e}')
     warn = []
     outs, name = build(doc, warn)
     b = outs[0]['batch']
     books = [x for o in outs for x in o['batch']['books']]
     place = ' › '.join(x for x in (b.get('room'), b.get('shelf')) if x)
     print(f'{name or "Books"}: {len(books):,} book{"s" if len(books) != 1 else ""}' + (f', shelved in {place} unless they say otherwise' if place else ''))
-    for x in books:
+    if left:
+        print(f'Left out: {left}. To add them too, run again with --keep-unowned.')
+    shown = books[:20] if a.kind else books  # an export's whole list is in the file; here it would only be long
+    for x in shown:
         by = ', '.join(x.get('authors', [])) or 'author unknown'
         where = ' › '.join(y for y in (x.get('room'), x.get('shelf')) if y)
         print(f'  {"?" if x.get("unsure") else "-"} {x["title"]} — {by}' + (f' [{x["isbn"]}]' if x.get('isbn') else '') + (f' ({where})' if where else ''))
         if x.get('unsure'):
             print(f'      check: {x["unsure"]}')
+    if len(shown) < len(books):
+        print(f'  … and {len(books) - len(shown):,} more')
     for w in warn:
         print(f'warning: {w}')
     Path(a.out).mkdir(parents=True, exist_ok=True)
