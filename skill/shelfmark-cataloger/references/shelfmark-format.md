@@ -41,8 +41,27 @@ Each book:
 | `tags` | List of short labels |
 | `notes` | Free text, line breaks kept |
 | `unsure` | What to double-check, in a few words. Shows as "Check" in Shelfmark |
+| `kind` | `fiction`, `nonfiction`, `poetry` |
+| `genres` | Up to 4, main one first: `literary`, `classics`, `historical-fiction`, `mystery`, `thriller`, `sf`, `fantasy`, `romance`, `horror`, `short-stories`, `humor`, `comics`, `ya`, `children`, `history`, `biography` (and memoir), `politics`, `economics`, `philosophy`, `science`, `nature` (and gardening), `travel`, `art` (and design, fashion), `food` (and drink), `business`, `self-help`, `society` (and culture), `religion`, `sports`, `true-crime`, `reference` |
+| `moods` | Up to 4, the feel of reading it: `adventurous`, `challenging`, `dark`, `emotional`, `funny`, `hopeful`, `informative`, `inspiring`, `lighthearted`, `mysterious`, `reflective`, `relaxing`, `sad`, `tense` |
+| `pace` | `slow`, `medium`, `fast` |
+| `chapters` | `short`, `medium`, `long`: how long a sitting each chapter or piece is |
+| `way` | `through` (read cover to cover), `dip` (dip in and out: poems, stories, essays, short pieces), `browse` (cookbooks, picture and art books, guides, reference). What to read next leaves out `browse` books unless asked |
+| `blurb` | One line about the book, no spoilers. Up to 300 characters; aim for under 150 |
 
 Shelfmark ignores fields it doesn't know, trims text to the limits above, and drops values that don't fit (an unknown format, a rating of 9), so a slip degrades quietly. Get titles and ISBNs right.
+
+## Reading details (for books already in the library)
+
+```json
+{"shelfmark": 1, "details": {
+  "id": "d20261102-…", "name": "Reading details",
+  "books": [
+    {"id": "b7q2x9m1kd", "title": "Dune", "authors": ["Frank Herbert"], "kind": "fiction", "genres": ["sf"], "moods": ["adventurous"], "pace": "medium", "pages": 600}
+  ]}}
+```
+
+Each entry names its book by `id` (from the library file) and by `title`, `authors` and `isbn`: Shelfmark finds the book with that id, or else every copy with the same ISBN, or the same title and author's surname. It carries any of the reading-detail fields above, and `pages`. Opening it fills in only the details a book doesn't have yet (or replaces them, if the person ticks **Replace**), and a page count only where there is none; nothing else on the book changes. Up to 3,000 entries. `scripts/make_shelfmark.py --details` makes these, and travels in the same links (`#s1z…`).
 
 ## Links
 

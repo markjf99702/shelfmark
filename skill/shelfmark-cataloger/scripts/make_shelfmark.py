@@ -3,6 +3,7 @@
 
     python3 make_shelfmark.py books.json [--out DIR] [--base URL] [--no-link]
     python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--out DIR]
+    python3 make_shelfmark.py details.json --details [--out DIR] [--base URL] [--no-link]
 
 books.json (every field but "title" is optional; "authors" may be a list or one string):
 
@@ -27,6 +28,12 @@ longer list is written as numbered files of up to 3,000 each, to open one after 
 With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
 aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
 given --keep-unowned. It says how many it left out.
+
+With --details it makes reading details for books already in the library instead: what kind of book each is
+and what reading it is like, for What to read next. details.json is {"name": ..., "books": [...]}, each entry
+naming its book by "id" (from the library file) and "title"/"authors", with any of "kind", "genres", "moods",
+"pace", "chapters", "way", "blurb" and "pages". Opening the link or file fills in what each book doesn't have yet.
+Batches of new books can carry the same fields.
 """
 import argparse, base64, csv, datetime, hashlib, io, json, re, sys, zlib
 from pathlib import Path
@@ -48,6 +55,27 @@ STATUSES = {
     'unread': 'unread', 'to read': 'unread', 'to-read': 'unread', 'want to read': 'unread', 'not read': 'unread',
     'reading': 'reading', 'currently reading': 'reading', 'currently-reading': 'reading', 'in progress': 'reading',
     'read': 'read', 'finished': 'read', 'done': 'read',
+}
+
+# Reading details. index.html keeps the same lists (KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES); the test checks they agree.
+KINDS = ['fiction', 'nonfiction', 'poetry']
+WAYS = ['through', 'dip', 'browse']
+PACES = ['slow', 'medium', 'fast']
+CHAPTERS = ['short', 'medium', 'long']
+MOODS = ['adventurous', 'challenging', 'dark', 'emotional', 'funny', 'hopeful', 'informative', 'inspiring', 'lighthearted', 'mysterious',
+         'reflective', 'relaxing', 'sad', 'tense']
+GENRES = ['literary', 'classics', 'historical-fiction', 'mystery', 'thriller', 'sf', 'fantasy', 'romance', 'horror', 'short-stories', 'humor',
+          'comics', 'ya', 'children', 'history', 'biography', 'politics', 'economics', 'philosophy', 'science', 'nature', 'travel', 'art',
+          'food', 'business', 'self-help', 'society', 'religion', 'sports', 'true-crime', 'reference']
+DETAIL_KEYS = ('kind', 'genres', 'moods', 'pace', 'chapters', 'way', 'blurb')
+WORDS = {
+    'non-fiction': 'nonfiction', 'cover to cover': 'through', 'read through': 'through', 'dip in and out': 'dip', 'dip in': 'dip',
+    'literary fiction': 'literary', 'historical fiction': 'historical-fiction', 'mystery and crime': 'mystery', 'crime': 'mystery',
+    'science fiction': 'sf', 'sci-fi': 'sf', 'short stories': 'short-stories', 'humour': 'humor', 'graphic novel': 'comics',
+    'graphic novels': 'comics', 'young adult': 'ya', "children's": 'children', 'children’s': 'children', 'biography and memoir': 'biography',
+    'memoir': 'biography', 'nature and gardening': 'nature', 'gardening': 'nature', 'art and design': 'art', 'design': 'art',
+    'food and drink': 'food', 'cooking': 'food', 'cookbook': 'food', 'self help': 'self-help', 'society and culture': 'society',
+    'true crime': 'true-crime', 'light-hearted': 'lighthearted',
 }
 
 
@@ -118,6 +146,36 @@ def day(v):
         return ''
 
 
+def word(v):
+    w = s(v, 40).lower()
+    return WORDS.get(w, w)
+
+
+def reading(b, title, warn):
+    """The reading details in a book or an entry: each value checked against its list, unknown ones left off with a warning."""
+    out = {}
+    for key, allowed in (('kind', KINDS), ('pace', PACES), ('chapters', CHAPTERS), ('way', WAYS)):
+        v = word(b.get(key))
+        if v and v not in allowed:
+            warn.append(f'“{title}”: {key} “{v}” isn’t one Shelfmark knows ({", ".join(allowed)}); left off')
+        elif v:
+            out[key] = v
+    for key, allowed in (('genres', GENRES), ('moods', MOODS)):
+        vals = b.get(key)
+        vals = vals.split(',') if isinstance(vals, str) else vals if isinstance(vals, list) else []
+        keep = []
+        for v in (word(x) for x in vals):
+            if v and v not in allowed:
+                warn.append(f'“{title}”: {key[:-1]} “{v}” isn’t one Shelfmark knows; left off')
+            elif v and v not in keep:
+                keep.append(v)
+        if len(keep) > 4:
+            warn.append(f'“{title}”: more than four {key}; kept the first four')
+        out[key] = keep[:4]
+    out['blurb'] = s(b.get('blurb'), 300)
+    return out
+
+
 def clean(b, i, warn):
     if not isinstance(b, dict):
         warn.append(f'#{i + 1}: not a book object, left out')
@@ -161,6 +219,7 @@ def clean(b, i, warn):
     out['signed'] = b.get('signed') is True
     out['first'] = b.get('first') is True or b.get('first_edition') is True
     out['added'] = day(b.get('added'))
+    out.update(reading(b, title, warn))
     flag = '; '.join(f for f in flags if f)[:300]
     if flag:
         out['unsure'] = flag
@@ -361,6 +420,67 @@ def build(doc, warn):
     return outs, name
 
 
+def build_details(doc, warn):
+    """Reading details for books already in the library: {"shelfmark": 1, "details": {id, name, made, books}}."""
+    if isinstance(doc, list):
+        doc = {'books': doc}
+    if isinstance(doc, dict) and isinstance(doc.get('details'), dict):
+        doc = doc['details']
+    if not isinstance(doc, dict) or not isinstance(doc.get('books'), list):
+        raise SystemExit('error: the input needs a "books" list')
+    entries = []
+    for i, b in enumerate(doc['books']):
+        if not isinstance(b, dict):
+            warn.append(f'#{i + 1}: not an entry object, left out')
+            continue
+        title, bid = s(b.get('title'), 300), re.sub(r'[^\w-]', '', s(b.get('id'), 40))
+        if not title and not bid:
+            warn.append(f'#{i + 1}: no id or title, so Shelfmark couldn’t tell which book it is; left out')
+            continue
+        e = {'id': bid, 'title': title, 'authors': names(b.get('authors') or b.get('author') or []), 'isbn': first_isbn(s(b.get('isbn'), 200)),
+             'pages': whole(b.get('pages'), 0, 50000)}
+        e.update(reading(b, title or bid, warn))
+        e = {k: v for k, v in e.items() if v not in ('', 0, None, [])}
+        if not any(k in e for k in DETAIL_KEYS + ('pages',)):
+            warn.append(f'“{title or bid}”: no reading details, left out')
+            continue
+        entries.append(e)
+    if not entries:
+        raise SystemExit('error: no usable entries (each needs an id or title, and at least one detail)')
+    if len(entries) > MAX_BOOKS:
+        raise SystemExit(f'error: Shelfmark takes {MAX_BOOKS:,} at a time; split these into smaller files')
+    made = datetime.date.today().isoformat()
+    name = s(doc.get('name'), 120) or 'Reading details'
+    did = 'd' + made.replace('-', '') + '-' + hashlib.sha1((name + json.dumps(entries, ensure_ascii=False, sort_keys=True)).encode()).hexdigest()[:10]
+    return {'shelfmark': 1, 'details': {'id': did, 'name': name, 'made': made, 'books': entries}}, name
+
+
+def details_main(doc, a):
+    warn = []
+    out, name = build_details(doc, warn)
+    books = out['details']['books']
+    kinds = {k: sum(1 for e in books if e.get('kind') == k) for k in KINDS}
+    browse = sum(1 for e in books if e.get('way') == 'browse')
+    print(f'{name}: {len(books):,} book{"s" if len(books) != 1 else ""} (' + ', '.join(f'{n} {k}' for k, n in kinds.items() if n) +
+          (f'; {browse} to browse rather than read' if browse else '') + ')')
+    for e in books:
+        bits = [e.get('kind', ''), ', '.join(e.get('genres', [])), ', '.join(e.get('moods', [])), e.get('pace', '') and e['pace'] + ' pace',
+                e.get('chapters', '') and e['chapters'] + ' chapters', e.get('way', '') if e.get('way') != 'through' else '', e.get('pages') and f'{e["pages"]} pages']
+        print(f'  - {e.get("title") or e["id"]}: ' + ' · '.join(x for x in bits if x))
+    for w in warn:
+        print(f'warning: {w}')
+    Path(a.out).mkdir(parents=True, exist_ok=True)
+    f = Path(a.out) / f'{slug(name)}-{out["details"]["made"]}.details.shelfmark.json'
+    f.write_text(json.dumps(out, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    print(f'\nFile: {f}')
+    if not a.no_link:
+        url = link(out, a.base if a.base.endswith('/') else a.base + '/')
+        if len(url) > 30000:
+            print(f'\nThe link is {len(url):,} characters, too long to pass around safely. Hand over the file instead.')
+        else:
+            print(f'\nLink: {url}')
+
+
 def link(out, base):
     raw = json.dumps(out, ensure_ascii=False, separators=(',', ':')).encode()
     z = zlib.compressobj(9, zlib.DEFLATED, -15)
@@ -380,7 +500,14 @@ def main():
     ap.add_argument('--no-link', action='store_true')
     ap.add_argument('--import', dest='kind', choices=sorted(IMPORTS), help='read a Goodreads or LibraryThing export (CSV) instead')
     ap.add_argument('--keep-unowned', action='store_true', help='with --import, keep books that aren’t in the house too')
+    ap.add_argument('--details', action='store_true', help='make reading details for books already in the library, not a batch of new books')
     a = ap.parse_args()
+    if a.details:
+        try:
+            doc = json.loads(Path(a.books).read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as e:
+            raise SystemExit(f'error: can’t read {a.books}: {e}')
+        return details_main(doc, a)
     left = ''
     if a.kind:
         doc, left = from_export(a.books, a.kind, a.keep_unowned)

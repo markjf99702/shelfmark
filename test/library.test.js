@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -166,7 +166,8 @@ function randomDoc(r, n) {
   eq([S.lengthOf(0), S.lengthOf(249), S.lengthOf(250), S.lengthOf(450), S.lengthOf(451)], ['', 'short', 'medium', 'medium', 'long'], 'length bands go by page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ len: 'Short' }))), ['lg2'], 'a length leaves out books with no page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ tag: 'sf', room: 'Den' }))), ['lg2'], 'tag and room narrow it');
-  eq(S.cleanNext({ len: 'huge', lean: 'Waiting longest', tag: 7, reread: 'yes' }), { len: '', lean: 'oldest', tag: '7', room: '', reread: true }, 'saved choices are cleaned');
+  eq(S.cleanNext({ len: 'huge', lean: 'Waiting longest', tag: 7, reread: 'yes', kind: 'Fiction', moods: ['funny', 'nope', 'Tense'], genre: 'History', pace: 'zippy', short: 1 }),
+    { len: '', lean: 'oldest', tag: '7', room: '', reread: true, kind: 'fiction', moods: ['funny', 'tense'], genre: 'history', pace: '', short: true, browse: false, more: false }, 'saved choices are cleaned');
 
   const d = S.dealNext(lib, base, rng(3), {}, now);
   eq(d.picks.length, 3, 'three picks from four matches');
@@ -217,6 +218,71 @@ function randomDoc(r, n) {
 
 // ---------- batches and links ----------
 (async () => {
+  // ---------- reading details ----------
+  {
+    const b = S.cleanBook({ id: 'r', t: 1, title: 'Dune', kind: 'Fiction', genres: ['Science fiction', 'sf', 'nonsense', 'Classics', 'adventure', 'Fantasy', 'Horror', 'Thriller'],
+      moods: 'adventurous, Tense, bogus', pace: 'Medium', chapters: 'huge', way: 'Cover to cover', blurb: '  A desert   planet. ' });
+    eq([b.kind, b.genres, b.moods, b.pace, b.chapters, b.way, b.blurb], ['fiction', ['sf', 'classics', 'fantasy', 'horror'], ['adventurous', 'tense'], 'medium', undefined, 'through', 'A desert planet.'],
+      'reading details take a value or its label, drop unknown ones, and keep up to four genres');
+    const lib = S.cleanDoc({ books: [
+      { id: 'a1', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Den' },
+      { id: 'a2', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Sunroom' },
+      { id: 'c1', t: 5, title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593', pages: 412, kind: 'fiction', moods: ['tense'] },
+      { id: 'gone', t: 6, del: 1 }
+    ] });
+    const det = S.cleanDetails({ shelfmark: 1, details: { id: 'd1', name: 'Reading details', books: [
+      { id: 'a1', title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', genres: ['biography'], moods: ['inspiring'], pace: 'medium', pages: 448, blurb: 'A former First Lady on growing up and the White House.' },
+      { id: 'zzz', title: 'Dune', authors: ['Frank Herbert'], isbn: '0441013597', kind: 'fiction', genres: ['sf'], moods: ['adventurous'], pages: 600 },
+      { title: 'Becoming', authors: ['Michelle Obama'], way: 'through' },
+      { id: 'gone', title: 'Removed one', kind: 'fiction' },
+      { id: 'x', title: 'Unknown Book', authors: ['Nobody'], kind: 'poetry' },
+      { id: 'y', title: 'No details at all' }, 'junk'
+    ] } });
+    eq([det.id, det.name, det.books.length], ['d1', 'Reading details', 5], 'details keep entries that say something and name a book');
+    const m = S.matchDetails(lib, det);
+    eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a1', 'a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy), and a removed or unknown book by nothing');
+    const a1 = S.withDetails(lib.books.a1, m[0].e, false);
+    eq([a1.kind, a1.genres, a1.pages, a1.room], ['nonfiction', ['biography'], 448, 'Den'], 'details fill in a book, page count included, and leave the rest alone');
+    const dune = S.withDetails(lib.books.c1, m[1].e, false);
+    eq([dune.kind, dune.moods, dune.genres, dune.pages], ['fiction', ['tense'], ['sf'], 412], 'only blanks are filled: details already there and the page count stay');
+    const dune2 = S.withDetails(lib.books.c1, m[1].e, true);
+    eq([dune2.moods, dune2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
+    eq(S.withDetails(Object.assign({}, lib.books.c1, { genres: ['sf'] }), m[1].e, false), null, 'nothing new → no change');
+    const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
+    eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
+    let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
+
+    // An older Shelfmark that doesn't know the reading details drops them without changing the time. Its copy mustn't win.
+  const full = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune', kind: 'fiction', moods: ['tense'] }] }), bare = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune' }] });
+  eq([S.mergeDocs(full, bare).books.o.kind, S.mergeDocs(bare, full).books.o.kind], ['fiction', 'fiction'], 'at the same time, the copy with the reading details wins, whichever way round');
+  eq(S.mergeDocs(full, S.cleanDoc({ books: [{ id: 'o', t: 10, title: 'Dune' }] })).books.o.kind, undefined, 'but a later edit still wins');
+
+  // What to read next, by reading details.
+    const now = new Date('2026-11-02T12:00:00').getTime();
+    const shelf = S.live(S.cleanDoc({ books: [
+      { id: 'f1', t: 1, title: 'Funny Novel', kind: 'fiction', moods: ['funny', 'lighthearted'], chapters: 'short', pace: 'fast', genres: ['humor'] },
+      { id: 'f2', t: 1, title: 'Sad Novel', kind: 'fiction', moods: ['sad', 'reflective'], chapters: 'long', pace: 'slow', genres: ['literary'] },
+      { id: 'n1', t: 1, title: 'History Book', kind: 'nonfiction', moods: ['informative', 'reflective'], genres: ['history'], pace: 'slow' },
+      { id: 'p1', t: 1, title: 'Poems', kind: 'poetry', moods: ['reflective'], way: 'dip' },
+      { id: 'k1', t: 1, title: 'Cookbook', kind: 'nonfiction', genres: ['food'], way: 'browse' },
+      { id: 'u1', t: 1, title: 'Not Described' }
+    ] }));
+    const ids = c => S.nextPool(shelf, S.cleanNext(c)).map(b => b.id).sort();
+    eq(ids({}), ['f1', 'f2', 'n1', 'p1', 'u1'], 'books you browse aren’t suggested unless asked for');
+    eq(ids({ browse: true }).length, 6, 'and are when asked');
+    eq(ids({ kind: 'fiction' }), ['f1', 'f2'], 'fiction or not narrows it');
+    eq(ids({ kind: 'poetry' }), ['p1'], 'poetry is a choice of its own');
+    eq(ids({ moods: ['funny', 'sad'] }), ['f1', 'f2'], 'moods match any of those picked');
+    eq(ids({ short: true }), ['f1', 'p1'], 'short chapters, or a book to dip into');
+    eq(ids({ genre: 'history', pace: 'slow' }), ['n1'], 'genre and pace narrow it too');
+    const reflective = {}; for (let k = 0; k < 400; k++) { const id = S.dealNext(shelf, S.cleanNext({ moods: ['reflective', 'sad'] }), rng(500 + k), {}, now).picks[0].b.id; reflective[id] = (reflective[id] || 0) + 1; }
+    check(reflective.f2 > reflective.n1 && reflective.f2 > reflective.p1, 'a book with more of the moods picked comes up more ' + JSON.stringify(reflective));
+    const picky = S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now);
+    eq([picky.bare, picky.browsed], [1, 1], 'it counts books without details that a choice leaves out, and books you browse');
+    eq(S.dealNext(shelf, S.cleanNext({}), rng(1), {}, now).bare, 0, 'with no details chosen, books without them still come up');
+    check(S.KINDS.length === 3 && S.MOODS.length === 14, 'the lists are there for the script to match');
+  }
+
   const batch = S.cleanBatch({ shelfmark: 1, batch: { id: 'c20260926-abc', name: 'Hall', room: 'Hall', books: [
     { title: 'Middlemarch', authors: ['George Eliot'], unsure: 'spine cut off', id: 'evil', t: 99, del: 1 },
     { title: '' }, 'nonsense'
@@ -384,6 +450,29 @@ function randomDoc(r, n) {
       eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');
       let wrong = ''; try { execFileSync('python3', [py, ltIn, '--import', 'goodreads', '--out', tmp], { encoding: 'utf8', stdio: 'pipe' }); } catch (e) { wrong = String(e.stderr); }
       check(/looks like a LibraryThing one, so use --import librarything/.test(wrong), 'the wrong --import says which to use');
+
+      // Reading details: the script and the page know the same words, and its details link opens in the page.
+      const pyList = n => JSON.parse(('[' + new RegExp('^' + n + ' = \\[([^\\]]*)\\]', 'm').exec(fs.readFileSync(py, 'utf8'))[1] + ']').replace(/'/g, '"').replace(/\s+/g, ' '));
+      for (const [n, list] of Object.entries({ KINDS: S.KINDS, WAYS: S.WAYS, PACES: S.PACES, CHAPTERS: S.CHAPTERS, MOODS: S.MOODS, GENRES: S.GENRES }))
+        eq(pyList(n), list.map(x => x[0]), 'the script’s ' + n + ' match the page’s');
+      const detIn = path.join(tmp, 'details.json');
+      fs.writeFileSync(detIn, JSON.stringify({ name: 'Reading details', books: [
+        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Spice, sand and a prophecy.', pages: 612 },
+        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: 'cooking', way: 'browse' },
+        { title: 'Nothing to say' }
+      ] }));
+      const detSaid = execFileSync('python3', [py, detIn, '--details', '--out', tmp], { encoding: 'utf8' });
+      const detGot = await S.parseIncoming(/Link: (\S+)/.exec(detSaid)[1]);
+      eq(detGot.kind, 'details', 'the script’s details link opens as reading details');
+      eq(detGot.details.books, [
+        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], pages: 612, kind: 'fiction', genres: ['sf', 'classics'], moods: ['adventurous'], pace: 'medium', chapters: 'medium', way: 'through', blurb: 'Spice, sand and a prophecy.' },
+        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: ['food'], way: 'browse' }
+      ], 'every detail comes through, with words mapped onto Shelfmark’s');
+      check(/mood “bogus” isn’t one Shelfmark knows/.test(detSaid) && /“Nothing to say”: no reading details, left out/.test(detSaid), 'and the script says what it left off');
+      const withDet = execFileSync('python3', [py, detIn, '--out', tmp, '--no-link'], { encoding: 'utf8' });
+      const newBooks = (await S.parseIncoming(fs.readFileSync(path.join(tmp, fs.readdirSync(tmp).find(f => /^reading-details-\d{4}-\d\d-\d\d\.shelfmark\.json$/.test(f))), 'utf8'))).batch.books;
+      eq([newBooks[0].genres, newBooks[1].way], [['sf', 'classics'], 'browse'], 'a batch of new books carries reading details too');
+      check(/Reading details: 3 books/.test(withDet), 'as an ordinary batch');
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');

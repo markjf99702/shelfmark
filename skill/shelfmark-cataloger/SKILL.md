@@ -1,6 +1,6 @@
 ---
 name: shelfmark-cataloger
-description: Catalog someone's books into Shelfmark, their home-library app, from photos of shelves, spines, covers, barcodes or copyright pages (or from a typed list or a Goodreads or LibraryThing export), and hand them over as a one-tap link and a file. Use this whenever someone sends photos of books or bookshelves, wants books added to their library or catalog, mentions Shelfmark, or asks about their own library (whether they own a book, where it is, who borrowed it).
+description: Catalog someone's books into Shelfmark, their home-library app, from photos of shelves, spines, covers, barcodes or copyright pages (or from a typed list or a Goodreads or LibraryThing export), and hand them over as a one-tap link and a file. Also adds reading details to books already in it (fiction or not, genres, moods, pace, chapter length, a line about each) so its What to read next can choose by them. Use this whenever someone sends photos of books or bookshelves, wants books added to their library or catalog, mentions Shelfmark, wants help choosing what to read from their own shelves, or asks about their own library (whether they own a book, where it is, who borrowed it).
 ---
 
 # Shelfmark cataloger
@@ -71,6 +71,7 @@ Every field but `title` is optional. The full list is in `references/shelfmark-f
 - `loan`: `{"to", "since"}`.
 - `tags`, `notes`.
 - `unsure`.
+- Reading details (`kind`, `genres`, `moods`, `pace`, `chapters`, `way`, `blurb`), only for books you know well: see **Reading details** below.
 
 The script:
 - cleans every field;
@@ -108,6 +109,39 @@ If a Google Drive connector is available and they ask about their collection ("d
 3. Ignore books with `"del": 1`; they were removed.
 
 Book fields are as above, plus `added` (date) and `check` (an unresolved flag). **Only read this file; never write, move or rename it.** Shelfmark syncs it and manages it. New books go in through a link. Changes to existing books (marking one read, recording a loan) are made in Shelfmark itself.
+
+## Reading details
+
+Shelfmark's **What to read next** can choose by what a book is like: fiction, nonfiction or poetry; mood; genre; pace; short chapters; and whether it's read cover to cover, dipped into, or browsed (a cookbook, a picture book or a reference book, which it doesn't suggest unless asked). These come from you. When someone asks for them ("add details to my library", "help Shelfmark pick what I read next"), or asks you to suggest something from their shelves and the books don't have details yet:
+
+1. Read their library: the Drive file as above, or a backup file they send (**Settings › Download a backup**). Skip removed books.
+2. Write an entry for each book you know, keyed by its `id` from the file, with its `title` and `authors` too (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
+3. Run the script with `--details`, and hand over the link (or the file, when the script says the link is too long).
+
+```
+python3 scripts/make_shelfmark.py details.json --details --out /mnt/user-data/outputs
+```
+
+```json
+{"name": "Reading details", "books": [
+  {"id": "b7q2x9m1kd", "title": "Dune", "authors": ["Frank Herbert"], "kind": "fiction", "genres": ["sf", "classics"],
+   "moods": ["adventurous", "challenging"], "pace": "medium", "chapters": "medium", "way": "through", "pages": 600,
+   "blurb": "A desert planet, the spice everyone wants, and a young duke who may be its messiah."},
+  {"id": "b3n8r5t0pa", "title": "Salt Fat Acid Heat", "authors": ["Samin Nosrat"], "kind": "nonfiction", "genres": ["food"],
+   "moods": ["informative"], "way": "browse", "blurb": "How four elements make food taste good, with recipes to practise them."}
+]}
+```
+
+The words each field takes are in `references/shelfmark-format.md`. How to fill them:
+- **Only what you know.** For a book you know, give everything. For one you don't, give what its title and publisher make plain (a cookbook is nonfiction, food, browse; a museum catalogue is art, browse) and leave the rest out. Never guess a novel's moods from its title alone.
+- **`moods`:** one to three, the feel of reading it, not its subject: a war history is `informative` and maybe `dark`, not `adventurous`.
+- **`genres`:** one or two, the main one first; up to four when they really apply.
+- **`way`:** `through` for novels and narrative nonfiction; `dip` for poetry, short stories, essays, humor collections and books of short pieces; `browse` for cookbooks, picture and art books, guides, reference and yearbooks.
+- **`chapters`:** how long a sitting each chapter or piece is. `short` is a few pages; leave it out for books you browse.
+- **`pages`:** a usual edition's page count, only when you're fairly sure; Shelfmark only uses it to fill a blank.
+- **`blurb`:** one line, under 150 characters, plain, no spoilers, saying what it is rather than praising it.
+
+Opening the link shows the list to review. It fills in only what each book doesn't have yet, unless they tick **Replace**, and never changes anything else. Opening it twice is safe. New books from photos can carry the same fields in their batch, when you know the books well.
 
 ## Imports from other services
 

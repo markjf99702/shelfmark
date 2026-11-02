@@ -78,6 +78,21 @@ function linkTo(batch) {
   }
 }
 
+// A link to reading details for books already in the library, made by the skill's script the same way.
+function detailsLink(books) {
+  try {
+    const tmp = mkdtempSync(join(tmpdir(), 'shelfmark-e2e-'));
+    try {
+      writeFileSync(join(tmp, 'in.json'), JSON.stringify({ name: 'Reading details', books }));
+      const out = execFileSync('python3', [join(root, 'skill/shelfmark-cataloger/scripts/make_shelfmark.py'), join(tmp, 'in.json'), '--details', '--out', tmp, '--base', base], { encoding: 'utf8' });
+      return /Link: (\S+)/.exec(out)[1];
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    return base + '#s1z' + deflateRawSync(Buffer.from(JSON.stringify({ shelfmark: 1, details: { id: 'e2e-d', name: 'Reading details', books } }))).toString('base64url');
+  }
+}
+
 // Open Library, faked: every search finds a work whose cover id counts up from 1001. Searches after the first
 // take `slow` ms to answer, to have lookups on their way at a chosen moment.
 const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -870,6 +885,89 @@ step('a card left open while another device changes the book keeps that change i
     assert.equal((await storedBook(b, 'b03')).rating, 5);
     assert.deepEqual([...a.problems, ...b.problems], []);
   } finally { await a.context().close(); await b.context().close(); }
+});
+
+step('a details link fills in reading details, and a book\'s card shows and changes them', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, { ...CRADLE, kind: 'fiction', moods: ['funny'] }]);
+    await page.goto(detailsLink([
+      { id: 'b03', title: 'Piranesi', authors: ['Susanna Clarke'], kind: 'fiction', genres: ['fantasy'], moods: ['mysterious', 'reflective'], pace: 'medium', chapters: 'short', way: 'through', pages: 272, blurb: 'A man keeps a journal in an endless house of statues and tides.' },
+      { id: 'zz', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'], moods: ['reflective'], pace: 'slow' },
+      { id: 'b05', title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'], kind: 'fiction', moods: ['dark'], genres: ['sf'] },
+      { id: 'b99', title: 'A Book Not Here', authors: ['Nobody'], kind: 'poetry' },
+    ]));
+    await page.waitForSelector('#dtgo');
+    assert.equal(await page.textContent('.lede'), 'Reading details · 4 books · 1 not in your library');
+    assert.equal(await page.textContent('#dtgo'), 'Add details to 3 books');
+    assert.match(await page.textContent('.rv.dt'), /Fiction · Fantasy · Mysterious, reflective · Medium pace · Short chapters · 272 pages/);
+    await page.check('#dtRe');
+    assert.equal(await page.textContent('#dtgo'), 'Add details to 3 books', 'replacing changes Cat’s Cradle’s mood too, still three books');
+    await page.uncheck('#dtRe');
+    await page.click('#dtgo');
+    assert.match(await page.textContent('#toastTx'), /Added reading details to 3 books/);
+    const p = await storedBook(page, 'b03'), m = await storedBook(page, 'b04'), c = await storedBook(page, 'b05');
+    assert.deepEqual([p.kind, p.genres, p.moods, p.chapters, p.pages, p.room, p.notes], ['fiction', ['fantasy'], ['mysterious', 'reflective'], 'short', 272, 'Hall', 'Sam says start here']);
+    assert.deepEqual([m.genres, m.pace], [['classics'], 'slow'], 'Middlemarch was found by its title and author');
+    assert.deepEqual([c.moods, c.genres], [['funny'], ['sf']], 'Cat’s Cradle kept its own mood and gained a genre');
+
+    // The book's card shows them, and a change there is saved.
+    await page.click('#list .bk[data-id="b03"]');
+    assert.equal(await page.textContent('#f-rdsum'), 'Fiction · Fantasy · Mysterious');
+    await page.click('#f-rdsum');
+    assert.equal(await page.getAttribute('#f-chapters button[data-v="short"]', 'aria-pressed'), 'true');
+    await page.click('#f-moods button[data-m="reflective"]');
+    await page.click('#f-moods button[data-m="hopeful"]');
+    await page.selectOption('#f-genre', 'literary');
+    await page.click('#f-kind button[data-v="fiction"]');
+    await page.click('#bkx2');
+    const p2 = await storedBook(page, 'b03');
+    assert.deepEqual([p2.kind, p2.moods, p2.genres], [undefined, ['mysterious', 'hopeful'], ['fantasy', 'literary']], 'tapping the chosen kind again clears it');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('What to read next chooses by fiction or not, mood and chapters, and leaves cookbooks out', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await page.click('#nextBtn');
+    assert.match(await page.textContent('#nxCrit'), /Ask Claude to add reading details/, 'before any book has details, it says how to get them');
+    assert.equal(await page.locator('#nxCrit [data-k="kind"]').count(), 0);
+    await page.click('#nxx');
+    await seed(page, [
+      { ...PIRANESI, kind: 'fiction', moods: ['mysterious', 'reflective'], chapters: 'short', blurb: 'An endless house of statues and tides.' },
+      { ...MIDDLEMARCH, kind: 'fiction', moods: ['reflective'], chapters: 'long' },
+      { id: 'b06', t: 1000, title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', moods: ['inspiring'], genres: ['biography'] },
+      { id: 'b07', t: 1000, title: 'Salt Fat Acid Heat', authors: ['Samin Nosrat'], kind: 'nonfiction', genres: ['food'], way: 'browse' },
+      { id: 'b08', t: 1000, title: 'Not Described', authors: ['Ann Lee'] },
+    ]);
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 4 unread books on hand.', 'the cookbook is left out');
+    await page.click('#nxCrit [data-k="kind"][data-v="fiction"]');
+    await page.click('#nxCrit [data-mood="mysterious"]');
+    assert.equal(await page.textContent('.nx-pick .nx-t'), 'Piranesi');
+    assert.equal(await page.textContent('.nx-pick .nx-blurb'), 'An endless house of statues and tides.');
+    assert.match(await page.textContent('#nxOut > .note'), /From 1 unread book that matches\. 1 book without reading details can’t match/);
+    await page.click('#nxCrit [data-mood="mysterious"]');
+    await page.check('#nxShort');
+    assert.equal(await page.textContent('.nx-pick .nx-t'), 'Piranesi', 'short chapters leave Middlemarch out');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the mood row scrolls inside the sheet, not the page');
+    // The choices are kept for next time; More choices brings the cookbook back.
+    await page.click('#nxx');
+    await page.click('#nextBtn');
+    assert.equal(await page.isChecked('#nxShort'), true);
+    await page.uncheck('#nxShort');
+    await page.click('#nxCrit [data-k="kind"][data-v="nonfiction"]');
+    await page.click('#nxMore summary');
+    await page.check('#nxBrowse');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 2 unread books that match. 1 book without reading details can’t match fiction or not, mood, genre, pace or chapters yet.');
+    assert.match(await page.textContent('#nxMore summary'), /1 set/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
 });
 
 const only = process.argv.slice(2);

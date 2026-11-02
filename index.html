@@ -226,6 +226,12 @@ details.more>summary::-webkit-details-marker{display:none}
 details.more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
 details.more[open]>summary::before{transform:rotate(45deg)}
 details.more .fs{padding:2px 12px 12px}
+.sum-v{margin-left:auto;font:500 12.5px var(--sans);color:var(--ink3);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl>.seg{justify-self:start;max-width:100%}
+.tagpicks.picks{margin-top:0;gap:6px}
+.tagpicks.picks button{padding:5px 11px;font-size:13px}
+.tagpicks button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+#f-genre{justify-self:start;width:auto;max-width:100%;padding:5px 28px 5px 10px;font-size:14px;border-radius:999px}
 .isbnrow{display:flex;gap:8px}
 .isbnrow input{flex:1}
 
@@ -238,6 +244,11 @@ details.more .fs{padding:2px 12px 12px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
 .rv li.off{background:var(--surface2)}
 .rv li.off .rv-main{opacity:.62}
+/* reading details from Claude */
+.rv.dt li{padding:9px 12px}
+.rv-by{font-size:13.5px;color:var(--ink2)}
+.rv-det{font-size:13px;color:var(--ink);margin-top:2px}
+.rv-blurb{font:italic 14px/1.35 var(--serif);color:var(--ink2)}
 /* the tick box answers a tap anywhere along the row's left edge, not just on its own 18px */
 .rv-tick{flex:none;align-self:stretch;display:flex;align-items:flex-start;margin:-9px -10px -9px -10px;padding:15px 10px 9px;cursor:pointer}
 .rv-main{flex:1;min-width:0;display:grid;gap:2px}
@@ -275,6 +286,22 @@ details.more .fs{padding:2px 12px 12px}
 .nx-sel select{flex:1 1 0;padding:6px 28px 6px 12px;font-size:14px;border-radius:999px}
 .nx-range{color:var(--ink2);letter-spacing:.04em}
 .nx-crit .opt{padding:0}
+.nx-moods{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
+.nx-more{border-top:1px solid var(--line);padding-top:10px}
+.nx-more>summary{cursor:pointer;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px}
+.nx-more>summary::-webkit-details-marker{display:none}
+.nx-more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+.nx-more[open]>summary::before{transform:rotate(45deg)}
+.nx-morein{display:grid;gap:14px;padding-top:12px}
+.nx-blurb{font:italic 15px/1.4 var(--serif);color:var(--ink2);margin-top:4px}
+.nx-dl{font-size:13px;color:var(--ink);margin-top:2px}
+.nx-alt .nx-w{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* on a phone the moods are one row to swipe along, edge to edge */
+@media (max-width:640px){
+  .nx-f:has(.nx-moods){justify-items:stretch}
+  .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 16px;max-width:none}
+  .nx-moods::-webkit-scrollbar{display:none}
+}
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
 .nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin-top:2px}
@@ -336,7 +363,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 @media (max-width:340px){
   .two,.loan{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}}
+@media (prefers-reduced-motion:reduce){.nx-more>summary::before{transition:none}.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}}
 </style>
 </head>
 <body>
@@ -385,6 +412,20 @@ body.locked .toast.show{transform:translate(-50%,0)}
   var STATUSES = [['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
   var FORMATS = [['hardcover', 'Hardcover'], ['paperback', 'Paperback'], ['mass-market', 'Mass-market paperback'], ['board', 'Board book'], ['leather', 'Leather-bound'], ['other', 'Other']];
   var CONDITIONS = [['fine', 'Fine'], ['very-good', 'Very good'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor']];
+  // Reading details: what kind of book it is and what reading it is like, for What to read next. Claude fills them in
+  // (the skill's details links), and they can be set on a book's card. The skill's script keeps the same lists.
+  var KINDS = [['fiction', 'Fiction'], ['nonfiction', 'Nonfiction'], ['poetry', 'Poetry']];
+  var WAYS = [['through', 'Cover to cover'], ['dip', 'Dip in and out'], ['browse', 'Browse']];
+  var PACES = [['slow', 'Slow'], ['medium', 'Medium'], ['fast', 'Fast']];
+  var CHAPTERS = [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']];
+  var MOODS = [['adventurous', 'Adventurous'], ['challenging', 'Challenging'], ['dark', 'Dark'], ['emotional', 'Emotional'], ['funny', 'Funny'], ['hopeful', 'Hopeful'], ['informative', 'Informative'],
+    ['inspiring', 'Inspiring'], ['lighthearted', 'Lighthearted'], ['mysterious', 'Mysterious'], ['reflective', 'Reflective'], ['relaxing', 'Relaxing'], ['sad', 'Sad'], ['tense', 'Tense']];
+  var GENRES = [['literary', 'Literary fiction'], ['classics', 'Classics'], ['historical-fiction', 'Historical fiction'], ['mystery', 'Mystery and crime'], ['thriller', 'Thriller'],
+    ['sf', 'Science fiction'], ['fantasy', 'Fantasy'], ['romance', 'Romance'], ['horror', 'Horror'], ['short-stories', 'Short stories'], ['humor', 'Humor'], ['comics', 'Comics'],
+    ['ya', 'Young adult'], ['children', 'Children’s'], ['history', 'History'], ['biography', 'Biography and memoir'], ['politics', 'Politics'], ['economics', 'Economics'],
+    ['philosophy', 'Philosophy'], ['science', 'Science'], ['nature', 'Nature and gardening'], ['travel', 'Travel'], ['art', 'Art and design'], ['food', 'Food and drink'],
+    ['business', 'Business'], ['self-help', 'Self-help'], ['society', 'Society and culture'], ['religion', 'Religion'], ['sports', 'Sports'], ['true-crime', 'True crime'], ['reference', 'Reference']];
+  var DETAILS = ['kind', 'genres', 'moods', 'pace', 'chapters', 'way', 'blurb'];
   var CLOTH = ['#7A2E26', '#2E4A62', '#35573F', '#86662A', '#4F3B63', '#5E584C', '#8A4A2F', '#2F5C5C', '#6B2F4A', '#3F4B2E', '#23364A', '#7B5A3A'];
   var NOROOM = ' none';  // room names are trimmed, so none can start with a space
 
@@ -404,6 +445,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function pick(v, list) { v = str(v, 40).toLowerCase(); for (var i = 0; i < list.length; i++) if (list[i][0] === v || list[i][1].toLowerCase() === v) return list[i][0]; return ''; }
   function label(v, list) { for (var i = 0; i < list.length; i++) if (list[i][0] === v) return list[i][1]; return ''; }
+  function labels(vs, list) { return (vs || []).map(function (v) { return label(v, list); }); }
   function uid() {
     var a = new Uint8Array(9), s = 'b';
     (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function (_, i) { a[i] = Math.random() * 256; });
@@ -451,6 +493,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     a.forEach(function (x) { x = str(x, each); var k = fold(x); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });
     return out.slice(0, n);
   }
+  // Several values from one of the lists above, in the order given, each once.
+  function picks(v, from, n) { var out = []; list(v, 40, 40).forEach(function (x) { var k = pick(x, from); if (k && out.indexOf(k) < 0) out.push(k); }); return out.slice(0, n); }
   // Every book that comes in — from storage, Drive, a file or a link — goes through here, so the rest of
   // the page can trust its shape. Empty fields are dropped to keep the library file small.
   function cleanBook(o) {
@@ -469,7 +513,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
       room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
       edition: str(o.edition, 120), signed: !!o.signed, first: !!o.first, condition: pick(o.condition, CONDITIONS),
-      added: day(o.added), check: str(o.check, 300)
+      added: day(o.added), check: str(o.check, 300),
+      kind: pick(o.kind, KINDS), genres: picks(o.genres, GENRES, 4), moods: picks(o.moods, MOODS, 4), pace: pick(o.pace, PACES),
+      chapters: pick(o.chapters, CHAPTERS), way: pick(o.way, WAYS), blurb: str(o.blurb, 300)
     };
     if (b.status === 'unread') b.status = '';
     Object.keys(b).forEach(function (k) { var v = b[k]; if (k !== 't' && (v === '' || v === 0 || v === false || v === null || Array.isArray(v) && !v.length)) delete b[k]; });
@@ -485,7 +531,12 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (src.seen && typeof src.seen === 'object') Object.keys(src.seen).forEach(function (k) { var id = str(k, 80), v = +src.seen[k]; if (id && v > 0) seen[id] = Math.floor(v); });
     return { books: sortObj(books), seen: sortObj(seen) };
   }
-  function newer(x, y) { return x.t > y.t || x.t === y.t && JSON.stringify(x) > JSON.stringify(y); }
+  // At the same time, the copy with more fields wins: an older Shelfmark (a tab left open, say) that doesn't know a field,
+  // such as the reading details, drops it from every book without changing its time. Then the text decides.
+  function newer(x, y) {
+    var a = Object.keys(x).length, b = Object.keys(y).length;
+    return x.t > y.t || x.t === y.t && (a > b || a === b && JSON.stringify(x) > JSON.stringify(y));
+  }
   // Book by book, the most recently changed copy wins. Merging is order-free and repeatable, so every
   // device that syncs ends up with the same library.
   function mergeDocs(a, b) {
@@ -558,6 +609,49 @@ body.locked .toast.show{transform:translate(-50%,0)}
       name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books, more: more
     };
   }
+  // Reading details for books already in the library, from Claude: {shelfmark: 1, details: {id, name, books: [...]}}.
+  // Each entry names its book by id (from the library file) and by title, authors and ISBN, so it finds the book in a
+  // copy where the id is different. Only reading details and a page count come in; entries with neither are dropped.
+  function cleanDetails(o) {
+    var d = o && o.details;
+    if (!d || typeof d !== 'object' || !Array.isArray(d.books)) return null;
+    var books = [];
+    d.books.slice(0, BATCH_MAX).forEach(function (x) {
+      if (!x || typeof x !== 'object') return;
+      var src = { title: str(x.title, 300) || '?', authors: x.authors || x.author, isbn: x.isbn, pages: x.pages }, e = { id: str(x.id, 40).replace(/[^\w-]/g, '') };
+      DETAILS.forEach(function (k) { src[k] = x[k]; });
+      var c = cleanBook(src);
+      if (str(x.title, 300)) ['title', 'authors', 'isbn'].forEach(function (k) { if (c[k]) e[k] = c[k]; });
+      if (!e.id && !e.title) return;
+      ['pages'].concat(DETAILS).forEach(function (k) { if (c[k] != null) e[k] = c[k]; });
+      if (e.pages || DETAILS.some(function (k) { return k in e; })) books.push(e);
+    });
+    return { id: str(d.id, 80).replace(/[^\w.-]/g, '') || 'd' + hash(JSON.stringify(books)).toString(36), name: str(d.name, 120), books: books, more: Math.max(0, d.books.length - BATCH_MAX) };
+  }
+  // The books each entry is for: the book with its id, or else every copy with the same ISBN, or title and author.
+  function matchDetails(doc, det) {
+    var ix = {};
+    live(doc).forEach(function (b) { dupKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
+    return det.books.map(function (e) {
+      var own = e.id && doc.books[e.id], hit = null, k = e.title ? dupKeys(e) : [];
+      if (own && !own.del) return { e: e, bs: [own] };
+      for (var i = 0; i < k.length && !hit; i++) hit = ix[k[i]];
+      return { e: e, bs: hit || [] };
+    });
+  }
+  // A book with an entry's details put in, or null if nothing would change. Details fill blanks, or replace what the
+  // book has when replace is set. A page count only fills a blank: the book's own is for the copy on the shelf.
+  function withDetails(b, e, replace) {
+    var n = Object.assign({}, b), changed = false;
+    DETAILS.forEach(function (k) {
+      if (e[k] == null || !replace && n[k] != null || JSON.stringify(n[k]) === JSON.stringify(e[k])) return;
+      n[k] = e[k]; changed = true;
+    });
+    if (e.pages && !n.pages) { n.pages = e.pages; changed = true; }
+    return changed ? n : null;
+  }
+  function hasDetails(b) { return DETAILS.some(function (k) { return b[k] != null; }); }
+
   // A spreadsheet export, from Goodreads, LibraryThing or Shelfmark itself: a header row with a Title column, in any of
   // the encodings these come in. Shelfmark can't read one, but the skill for Claude can.
   function isSheet(t) {
@@ -593,7 +687,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function byLine(b) { return (b.authors || []).join(', '); }
 
   // ---------- spreadsheet export ----------
-  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check'];
+  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
+    'kind', 'genres', 'moods', 'pace', 'chapters', 'how_read', 'blurb'];
   function csvCell(v) {
     v = v == null ? '' : String(v);
     if (/^[=+@\t\r]/.test(v)) v = "'" + v;
@@ -602,7 +697,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function toCsv(d) {
     var rows = live(d).sort(authorOrder).map(function (b) {
       return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(b.status || 'unread', STATUSES), b.rating,
-        b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check].map(csvCell).join(',');
+        b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check,
+        label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), labels(b.moods, MOODS).join(', '), label(b.pace, PACES), label(b.chapters, CHAPTERS), label(b.way, WAYS), b.blurb].map(csvCell).join(',');
     });
     return '﻿' + [CSV_COLS.join(',')].concat(rows).join('\r\n') + '\r\n';
   }
@@ -618,7 +714,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
       t: b.t,
       title: fold(b.title).replace(/^(the|a|an)\s+/, ''),
       author: a ? fold(surname(a) + ' ' + a) : '￿',
-      hay: fold([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to].join(' \u0001 '))
+      hay: fold([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to,
+        label(b.kind, KINDS), labels(b.genres, GENRES).join(' '), labels(b.moods, MOODS).join(' '), b.blurb].join(' \u0001 '))
     };
     return c;
   }
@@ -632,20 +729,28 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- what to read next ----------
   // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
-  // rereads of four- and five-star books when asked. Length, tag and room narrow them; then up to three are drawn
-  // at random, weighted toward what the person leans to. Length goes by page count, so a book without one only
-  // comes up under Any.
+  // rereads of four- and five-star books when asked. Books you browse rather than read (cookbooks, picture books,
+  // reference) are left out unless asked for. Length, tag, room and the reading details narrow them; then up to three
+  // are drawn at random, weighted toward what the person leans to and the moods they picked. Length goes by page
+  // count and the rest by reading details, so a book without them only comes up while those are left at Any.
   var LENGTHS = [['', 'Any'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']];
   var LEANS = [['', 'Surprise me'], ['oldest', 'Waiting longest'], ['newest', 'Newest arrivals'], ['loved', 'Favorite authors']];
   function lengthOf(pages) { return !pages ? '' : pages < 250 ? 'short' : pages <= 450 ? 'medium' : 'long'; }
   function cleanNext(o) {
     o = o && typeof o === 'object' ? o : {};
-    return { len: pick(o.len, LENGTHS), lean: pick(o.lean, LEANS), tag: str(o.tag, 40), room: str(o.room, 60), reread: !!o.reread };
+    return { len: pick(o.len, LENGTHS), lean: pick(o.lean, LEANS), tag: str(o.tag, 40), room: str(o.room, 60), reread: !!o.reread,
+      kind: pick(o.kind, KINDS), moods: picks(o.moods, MOODS, MOODS.length), genre: pick(o.genre, GENRES), pace: pick(o.pace, PACES),
+      short: !!o.short, browse: !!o.browse, more: !!o.more };
   }
-  function onHand(all, reread) { return all.filter(function (b) { return !b.loan && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
+  function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
+  var ANY_DETAILS = { kind: '', moods: [], genre: '', pace: '', short: false };
+  function picky(c) { return !!(c.kind || c.moods.length || c.genre || c.pace || c.short); }
+  function moodsMet(b, c) { return (b.moods || []).filter(function (m) { return c.moods.indexOf(m) >= 0; }).length; }
   function nextPool(all, c) {
-    return onHand(all, c.reread).filter(function (b) {
-      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room);
+    return onHand(all, c.reread, c.browse).filter(function (b) {
+      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room) &&
+        (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
+        (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
     });
   }
   function authorKey(a) { return fold(a).replace(/[^\p{L}\p{N}]+/gu, ''); }
@@ -670,7 +775,12 @@ body.locked .toast.show{transform:translate(-50%,0)}
     (b.authors || []).forEach(function (a) { var x = fans[authorKey(a)]; if (x && fondness(x) > fondness(top)) top = x; });
     return top;
   }
+  // A book that has more of the moods asked for counts for more.
   function nextWeights(pool, c, fans) {
+    var w = leanWeights(pool, c, fans);
+    return c.moods.length ? w.map(function (x, i) { return x * moodsMet(pool[i], c); }) : w;
+  }
+  function leanWeights(pool, c, fans) {
     if (c.lean === 'oldest' || c.lean === 'newest') {
       var seen = {}; pool.forEach(function (b) { if (b.added) seen[b.added] = 1; });
       var days = Object.keys(seen).sort();
@@ -726,6 +836,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
       pool: pool.length, fresh: fresh, even: w.every(function (x) { return x === w[0]; }),
       fans: pool.filter(function (b) { return fanOf(b, fans); }).length,
       noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' })).filter(function (b) { return !b.pages; }).length : 0,
+      // Books left out for want of reading details, and the ones you browse, which are left out unless asked for.
+      bare: picky(c) ? nextPool(all, Object.assign({}, c, ANY_DETAILS)).filter(function (b) { return !hasDetails(b); }).length : 0,
+      browsed: c.browse ? 0 : onHand(all, c.reread, true).filter(function (b) { return b.way === 'browse'; }).length,
       picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, oldest) }; })
     };
   }
@@ -860,7 +973,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var sort = UI.sort || PREF.sort;
     $('sortSel').value = sort;
     $('tools').hidden = !all.length;
-    $('nextBtn').hidden = !onHand(all, true).length;
+    $('nextBtn').hidden = !onHand(all, true, true).length;
 
     var L = $('list');
     if (!all.length) {
@@ -968,7 +1081,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- the catalog card: one book, to add or edit ----------
   function bookSheet(b, isNew) {
-    var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '' };
+    var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
+      moods: (b.moods || []).slice(), genres: (b.genres || []).slice() };
+    function seg(k, name, from) {
+      return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    }
     // Tags used on other books, to add with a tap; those this book has already aren't offered.
     var own = (b.tags || []).map(fold), tagList = distinct(function (x) { return x.tags; }).filter(function (t) { return own.indexOf(fold(t)) < 0; });
     var panel = openSheet(
@@ -989,6 +1106,12 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
       '<label class="fl"><span>Notes</span><textarea id="f-notes" rows="3">' + esc(b.notes) + '</textarea></label>' +
+      '<details class="more"><summary>Reading details<span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
+      seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS) + seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
+      '<div class="fl"><span>Moods</span><div class="tagpicks picks" id="f-moods" role="group" aria-label="Moods">' + MOODS.map(function (m) { return '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="fl"><span>Genres</span><div class="tagpicks picks" id="f-genres"></div><select id="f-genre" aria-label="Add a genre"></select></div>' +
+      '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
+      '</div></details>' +
       '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
       '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" autocomplete="off"></label>' +
       '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="numeric" value="' + esc(b.isbn) + '" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
@@ -1012,7 +1135,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
         title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
         format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
         room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, loan: to ? { to: to, since: v('f-since') } : null,
-        tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check
+        tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check,
+        kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods, genres: st.genres, blurb: $('f-blurb').value
       }));
     }
     // shown is what the form held when the card opened or last saved. A save puts only the fields changed since
@@ -1037,11 +1161,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
     // hasn't touched since the card opened or last saved. What they're typing stays, and wins when it's saved.
     var FIELDS = ['title', 'sub', 'authors', 'isbn', 'publisher', 'year', 'pages', 'format', 'condition', 'edition', 'signed', 'first',
-      'room', 'shelf', 'status', 'rating', 'loan', 'tags', 'notes', 'added', 'check'];
+      'room', 'shelf', 'status', 'rating', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
     function put(k, x) {
       if (k === 'status') st.status = x || 'unread';
       else if (k === 'rating') st.rating = x || 0;
       else if (k === 'check') st.check = x || '';
+      else if (k === 'kind' || k === 'way' || k === 'pace' || k === 'chapters') st[k] = x || '';
+      else if (k === 'moods' || k === 'genres') st[k] = (x || []).slice();
       else if (k === 'loan') { $('f-lent').value = x ? x.to : ''; $('f-since').value = x && x.since || ''; }
       else if (k === 'signed' || k === 'first') $('f-' + k).checked = !!x;
       else if (k === 'authors') $('f-authors').value = byLine({ authors: x });
@@ -1069,6 +1195,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
       panel.querySelectorAll('#f-rating button').forEach(function (x) { x.classList.toggle('on', +x.dataset.v <= st.rating); x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
       $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim();
+      ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
+      panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });
+      $('f-genres').innerHTML = st.genres.map(function (g) { return '<button type="button" data-g="' + g + '" aria-pressed="true" aria-label="' + esc(label(g, GENRES)) + ', remove">' + esc(label(g, GENRES)) + ' ×</button>'; }).join('');
+      $('f-genres').hidden = !st.genres.length;
+      $('f-genre').innerHTML = '<option value="">Add a genre…</option>' + GENRES.filter(function (g) { return st.genres.indexOf(g[0]) < 0; }).map(function (g) { return '<option value="' + g[0] + '">' + esc(g[1]) + '</option>'; }).join('');
+      $('f-genre').hidden = st.genres.length >= 4;
+      $('f-rdsum').textContent = [label(st.kind, KINDS), label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
     }
     panel.addEventListener('input', function (e) {
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
@@ -1080,6 +1213,18 @@ body.locked .toast.show{transform:translate(-50%,0)}
     panel.querySelectorAll('#f-status button').forEach(function (x) { x.addEventListener('click', function () { st.status = x.dataset.v; drawState(); later(); }); });
     panel.querySelectorAll('#f-rating button').forEach(function (x) { x.addEventListener('click', function () { st.rating = st.rating === +x.dataset.v ? 0 : +x.dataset.v; drawState(); later(); }); });
     $('f-ok').addEventListener('click', function () { st.check = ''; drawState(); later(); });
+    // Reading details: tapping the chosen one again clears it. Up to four moods and four genres.
+    ['kind', 'way', 'pace', 'chapters'].forEach(function (k) {
+      panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.addEventListener('click', function () { st[k] = st[k] === x.dataset.v ? '' : x.dataset.v; drawState(); later(); }); });
+    });
+    $('f-moods').addEventListener('click', function (e) {
+      var x = e.target.closest('button'); if (!x) return;
+      var i = st.moods.indexOf(x.dataset.m);
+      if (i >= 0) st.moods.splice(i, 1); else if (st.moods.length < 4) st.moods.push(x.dataset.m); else { toast('Up to four moods. Tap one to take it off.'); return; }
+      drawState(); later();
+    });
+    $('f-genres').addEventListener('click', function (e) { var x = e.target.closest('button'); if (!x) return; st.genres = st.genres.filter(function (g) { return g !== x.dataset.g; }); drawState(); later(); });
+    $('f-genre').addEventListener('change', function () { if (this.value && st.genres.length < 4) st.genres.push(this.value); drawState(); later(); });
     $('f-back').addEventListener('click', function () { $('f-lent').value = ''; $('f-since').value = ''; drawState(); later(); if (!isNew) toast('Back on the shelf'); });
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
@@ -1144,12 +1289,13 @@ body.locked .toast.show{transform:translate(-50%,0)}
       return Promise.resolve(m ? decodeURIComponent(m[1].replace(/%(?![0-9A-Fa-f]{2})/g, '%25')) : null);
     } catch (e) { return Promise.reject(e); }
   }
-  // Text from a link, a file or the paste box → {kind: 'batch' | 'library', …}. A pasted Shelfmark link can be
+  // Text from a link, a file or the paste box → {kind: 'batch' | 'library' | 'details', …}. A pasted Shelfmark link can be
   // anywhere in the text: after "Link:", inside a markdown link, with a full stop after it, or broken over lines
   // by a mail app, whose pieces are joined back (the longest join that reads wins).
   function parseIncoming(t) {
     function read(o) {
       if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
+      if (o && o.details) { var d = cleanDetails(o); if (!d || !d.books.length) throw new Error('empty'); return { kind: 'details', details: d }; }
       var b = cleanBatch(o);
       if (!b || !b.books.length) throw new Error('empty');
       return { kind: 'batch', batch: b };
@@ -1174,7 +1320,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     return Promise.resolve().then(function () { return read(json === undefined ? JSON.parse(t) : json); });
   }
   function takeIncoming(p) {
-    return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else reviewSheet(r.batch); })
+    return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch); })
       .catch(function (e) { toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
   }
   function checkLink() {
@@ -1257,6 +1403,56 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); persist(); closeSheet(); render(); toast('Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')'); });
   }
 
+  // The reading details on a book, in a line: "Nonfiction · History · Informative, reflective · Slow · Short chapters".
+  function detailLine(b) {
+    var moods = labels(b.moods, MOODS).join(', ').toLowerCase();
+    return [label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), moods && moods.charAt(0).toUpperCase() + moods.slice(1),
+      b.pace ? label(b.pace, PACES) + ' pace' : '', b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', b.way && b.way !== 'through' ? label(b.way, WAYS) : ''].filter(Boolean).join(' · ');
+  }
+  function detailsSheet(det) {
+    var rows = matchDetails(DOC, det), found = rows.filter(function (r) { return r.bs.length; }), lost = rows.length - found.length, replace = false;
+    var had = found.filter(function (r) { return r.bs.some(hasDetails); }).length, seenAt = DOC.seen[det.id];
+    function changes() { var n = 0; found.forEach(function (r) { r.bs.forEach(function (b) { if (withDetails(DOC.books[b.id] || b, r.e, replace)) n++; }); }); return n; }
+    openSheet('<div class="hd"><h2 id="sheetTitle">Reading details from Claude</h2><button class="btn sm quiet" type="button" id="dtx">Not now</button></div><div class="bd">' +
+      '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
+      (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' +
+      (seenAt ? '<p class="flag"><span>You added these ' + esc(ago(seenAt)) + '.</span></p>' : '') +
+      '<p class="note">Fiction or not, genres, moods, pace, chapter length, how it reads and a line about it, plus a page count where a book has none. Nothing else on your books changes. You can change any of it on a book’s card.</p>' +
+      (had ? '<label class="opt"><input type="checkbox" id="dtRe"><span>Replace details ' + plural(had, 'book', 'books') + ' already ' + (had === 1 ? 'has' : 'have') + '</span></label>' : '') +
+      '<ul class="rv dt">' + found.map(function (r) {
+        var b = r.bs[0], e = r.e;
+        return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (byLine(b) ? '<span class="rv-by">' + esc(byLine(b)) + (r.bs.length > 1 ? ' · ' + r.bs.length + ' copies' : '') + '</span>' : '') +
+          (detailLine(e) ? '<span class="rv-det">' + esc(detailLine(e)) + (e.pages && !b.pages ? ' · ' + plural(e.pages, 'page') : '') + '</span>' : '') +
+          (e.blurb ? '<span class="rv-blurb">' + esc(e.blurb) + '</span>' : '') + '</div></li>';
+      }).join('') +
+      rows.filter(function (r) { return !r.bs.length; }).map(function (r) {
+        return '<li class="off"><div class="rv-main"><span class="rt">' + esc(r.e.title || r.e.id) + '</span><span class="rv-dup">Not in your library, so it’s left out.</span></div></li>';
+      }).join('') + '</ul></div>' +
+      '<div class="ft"><span class="note grow" id="dt-n"></span><button class="btn primary" type="button" id="dtgo">Add details</button></div>');
+    function count() {
+      var n = changes();
+      $('dtgo').textContent = n ? 'Add details to ' + plural(n, 'book') : 'Add details'; $('dtgo').disabled = !n;
+      $('dt-n').textContent = n ? '' : found.length ? 'Your books already have these.' : '';
+    }
+    $('dtx').addEventListener('click', closeSheet);
+    if ($('dtRe')) $('dtRe').addEventListener('change', function () { replace = this.checked; count(); });
+    $('dtgo').addEventListener('click', function () {
+      var now = Date.now(), n = 0;
+      found.forEach(function (r) {
+        r.bs.forEach(function (b) {
+          var cur = DOC.books[b.id], x = cur && !cur.del && withDetails(cur, r.e, replace);
+          if (!x) return;
+          x = cleanBook(stamp(x, cur)); if (x) { DOC.books[x.id] = x; n++; }
+        });
+      });
+      if (!n) return;
+      DOC.seen[det.id] = DOC.seen[det.id] || now;
+      persist(); closeSheet(); render();
+      toast('Added reading details to ' + plural(n, 'book'));
+    });
+    count();
+  }
+
   function importSheet() {
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
       '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.</span></li><li><span>Claude reads them and gives you a <b>Shelfmark link</b>. Open it and you’ll see the list here to check before anything is added.</span></li><li><span>For a big batch Claude may give you a <b>file</b> instead. Open it below.</span></li></ol>' +
@@ -1282,19 +1478,53 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>');
     function meta(b) { return [byLine(b), b.year, b.pages ? plural(b.pages, 'page') : ''].filter(Boolean).join(' · '); }
+    function seg(k, name, from) {
+      return '<div class="nx-f"><span class="lbl">' + name + '</span><div class="seg" role="group" aria-label="' + name + '">' + [['', 'Any']].concat(from).map(function (o) { return '<button type="button" data-k="' + k + '" data-v="' + o[0] + '" aria-pressed="' + (c[k] === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    }
+    function select(id, name, any, vals, cur) {
+      return '<label class="sr" for="' + id + '">' + name + '</label><select id="' + id + '"><option value="">' + any + '</option>' + vals.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
+    }
+    // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
     function drawCrit() {
-      var all = live(DOC), base = onHand(all, true), tags = {}, rooms = {};
-      base.forEach(function (b) { (b.tags || []).forEach(function (t) { tags[t] = 1; }); if (b.room) rooms[b.room] = 1; });
+      var all = live(DOC), base = onHand(all, true, true), tags = {}, rooms = {}, has = {};
+      base.forEach(function (b) {
+        (b.tags || []).forEach(function (t) { tags[t] = 1; }); if (b.room) rooms[b.room] = 1;
+        if (b.kind) has.kind = 1; if (b.pace) has.pace = 1;
+        (b.moods || []).forEach(function (m) { has['m' + m] = 1; }); (b.genres || []).forEach(function (g) { has['g' + g] = 1; });
+        if (b.chapters === 'short' || b.way === 'dip') has.short = 1;
+        if (b.way === 'browse') has.browse = 1;
+      });
+      var moods = MOODS.filter(function (m) { return has['m' + m[0]]; }), genres = GENRES.filter(function (g) { return has['g' + g[0]]; });
       if (c.tag && !tags[c.tag]) c.tag = '';
       if (c.room && !rooms[c.room]) c.room = '';
+      if (c.genre && !has['g' + c.genre]) c.genre = '';
+      if (!has.kind) c.kind = ''; if (!has.pace) c.pace = ''; if (!has.short) c.short = false;
+      c.moods = c.moods.filter(function (m) { return has['m' + m]; });
       var tk = Object.keys(tags).sort(COLL.compare), rk = Object.keys(rooms).sort(COLL.compare), favs = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
-      $('nxCrit').innerHTML =
+      var html = (has.kind ? seg('kind', 'Fiction or not', KINDS) : '') +
+        (moods.length ? '<div class="nx-f"><span class="lbl">In the mood for' + (c.moods.length > 1 ? '<span class="nx-range"> · any of these</span>' : '') + '</span>' +
+          '<div class="nx-moods" role="group" aria-label="In the mood for">' + moods.map(function (m) { return '<button class="chip" type="button" data-mood="' + m[0] + '" aria-pressed="' + (c.moods.indexOf(m[0]) >= 0) + '">' + m[1] + '</button>'; }).join('') + '</div></div>' : '') +
         '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + LENGTHS.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-        '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + LEANS.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-        (tk.length || rk.length ? '<div class="nx-sel">' +
-          (tk.length ? '<label class="sr" for="nxTag">Tag</label><select id="nxTag"><option value="">Any tag</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '"' + (t === c.tag ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' : '') +
-          (rk.length ? '<label class="sr" for="nxRoom">Room</label><select id="nxRoom"><option value="">Any room</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '"' + (r === c.room ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select>' : '') + '</div>' : '') +
+        (has.short ? '<label class="opt"><input type="checkbox" id="nxShort"' + (c.short ? ' checked' : '') + '><span>Short chapters, or easy to dip into</span></label>' : '') +
+        '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + LEANS.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+      var more = (genres.length ? '<div class="nx-sel">' + select('nxGenre', 'Genre', 'Any genre', genres, c.genre) + '</div>' : '') +
+        (has.pace ? seg('pace', 'Pace', PACES) : '') +
+        (tk.length || rk.length ? '<div class="nx-sel">' + (tk.length ? select('nxTag', 'Tag', 'Any tag', tk.map(function (t) { return [t, t]; }), c.tag) : '') + (rk.length ? select('nxRoom', 'Room', 'Any room', rk.map(function (r) { return [r, r]; }), c.room) : '') + '</div>' : '') +
+        (has.browse ? '<label class="opt"><input type="checkbox" id="nxBrowse"' + (c.browse ? ' checked' : '') + '><span>Include books you browse: cookbooks, picture books, reference</span></label>' : '') +
         (favs ? '<label class="opt"><input type="checkbox" id="nxRe"' + (c.reread ? ' checked' : '') + '><span>Include rereads of 4- and 5-star books</span></label>' : '');
+      var set = [c.genre, c.pace, c.tag, c.room, c.browse && has.browse, c.reread && favs].filter(Boolean).length;
+      if (more) html += '<details class="nx-more" id="nxMore"' + (c.more ? ' open' : '') + '><summary>More choices' + (set ? '<span class="nx-range"> · ' + set + ' set</span>' : '') + '</summary><div class="nx-morein">' + more + '</div></details>';
+      if (!has.kind && !moods.length) html += '<p class="note">Ask Claude to add <b>reading details</b> to your Shelfmark library, and you can choose by fiction or not, mood, genre, pace and chapter length here.</p>';
+      // Drawn again after each change: the mood row keeps its place (or opens at the first mood chosen), and the
+      // keyboard stays on the choice it was on.
+      var box = $('nxCrit'), row = box.querySelector('.nx-moods'), left = row ? row.scrollLeft : -1, a = document.activeElement, focus = '';
+      if (a && box.contains(a)) focus = a.id ? '#' + a.id : ['k', 'v', 'len', 'lean', 'mood'].filter(function (d) { return a.dataset[d] != null; }).map(function (d) { return '[data-' + d + '="' + a.dataset[d] + '"]'; }).join('');
+      box.innerHTML = html;
+      row = box.querySelector('.nx-moods');
+      if (row) { var on = row.querySelector('[aria-pressed="true"]'); row.scrollLeft = left >= 0 ? left : on ? on.offsetLeft - row.offsetLeft - 16 : 0; }
+      if (focus && box.querySelector(focus)) try { box.querySelector(focus).focus({ preventScroll: true }); } catch (e) { }
+      // A details element's toggle doesn't bubble, so it's listened for here, each time the choices are drawn.
+      if ($('nxMore')) $('nxMore').addEventListener('toggle', function () { c.more = this.open; PREF.next = c; savePrefs(); });
     }
     function dealNow() {
       deal = dealNext(live(DOC), c, Math.random, seen, Date.now()); top = 0;
@@ -1303,45 +1533,52 @@ body.locked .toast.show{transform:translate(-50%,0)}
       deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
       drawOut();
     }
+    function bareNote() { return deal.bare ? plural(deal.bare, 'book', 'books') + ' without reading details can’t match fiction or not, mood, genre, pace or chapters yet.' : ''; }
     function drawOut() {
       var o = $('nxOut'), p = deal.picks;
       $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool < 2;
       if (!p.length) {
-        var any = onHand(live(DOC), c.reread).length, favs = !c.reread && $('nxRe');
+        var any = onHand(live(DOC), c.reread, c.browse).length, favs = !c.reread && $('nxRe');
         o.innerHTML = '<div class="nx-none">' + (any
-          ? '<h3>Nothing matches all of these</h3><p>' + (deal.noPages ? plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + (deal.noPages === 1 ? 'it only comes' : 'they only come') + ' up under Any length. You can add one in a book’s Edition and details.' : 'Try fewer of them.') + '</p><button class="btn" type="button" id="nxClear">Clear length, tag and room</button>'
-          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out.' + (favs ? ' Tick <b>Include rereads</b> above for an old favorite.' : '') + '</p>') + '</div>';
-        if ($('nxClear')) $('nxClear').addEventListener('click', function () { c.len = ''; c.tag = ''; c.room = ''; changed(); });
+          ? '<h3>Nothing matches all of these</h3><p>' + [deal.noPages ? plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + (deal.noPages === 1 ? 'it only comes' : 'they only come') + ' up under Any length.' : '', bareNote()].filter(Boolean).join(' ') + (deal.noPages || deal.bare ? '' : 'Try fewer of them.') + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>'
+          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
+        if ($('nxClear')) $('nxClear').addEventListener('click', function () { Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' }); changed(); });
         return;
       }
-      var t = p[top], b = t.b, notes = [];
-      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
+      var t = p[top], b = t.b, notes = [], dl = detailLine(b);
+      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room || picky(c) ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
       if (lap) notes.push('You’ve seen every one, so these are repeats.');
       else if (c.lean === 'loved' && !deal.fans) notes.push('None of them are by authors you’ve read yet, so this is a random pick.');
       else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) notes.push('They were all added on the same day, so this is a random pick.');
+      if (bareNote()) notes.push(bareNote());
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
         '<span class="nx-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
+        (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
+        (dl ? '<span class="nx-dl">' + esc(dl) + '</span>' : '') +
         (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
         '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span></div></div>' +
         (p.length > 1 ? '<div class="nx-alts"><span class="lbl">Or one of these</span>' + p.map(function (x, i) {
           if (i === top) return '';
+          var w = x.b.blurb || x.why[0];
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
-            (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (x.why[0] ? '<span class="nx-w">' + esc(x.why[0]) + '</span>' : '') + '</span></button>';
+            (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
         '<p class="note">' + notes.join(' ') + '</p>';
     }
     function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
     $('nxCrit').addEventListener('click', function (e) {
-      var x = e.target.closest('[data-len],[data-lean]'); if (!x) return;
-      if (x.dataset.len != null) c.len = x.dataset.len; else c.lean = x.dataset.lean;
+      var x = e.target.closest('[data-len],[data-lean],[data-k],[data-mood]'); if (!x) return;
+      if (x.dataset.len != null) c.len = x.dataset.len;
+      else if (x.dataset.lean != null) c.lean = x.dataset.lean;
+      else if (x.dataset.k) c[x.dataset.k] = x.dataset.v;
+      else { var i = c.moods.indexOf(x.dataset.mood); if (i >= 0) c.moods.splice(i, 1); else c.moods.push(x.dataset.mood); }
       changed();
     });
     $('nxCrit').addEventListener('change', function (e) {
-      if (e.target.id === 'nxTag') c.tag = e.target.value;
-      else if (e.target.id === 'nxRoom') c.room = e.target.value;
-      else if (e.target.id === 'nxRe') c.reread = e.target.checked;
-      else return;
+      var id = e.target.id, k = { nxTag: 'tag', nxRoom: 'room', nxGenre: 'genre', nxRe: 'reread', nxShort: 'short', nxBrowse: 'browse' }[id];
+      if (!k) return;
+      c[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       changed();
     });
     $('nxOut').addEventListener('click', function (e) { var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut(); });

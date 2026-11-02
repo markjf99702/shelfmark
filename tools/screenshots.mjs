@@ -51,11 +51,40 @@ const SAMPLE = [
   ['The Name of the Wind', 'Patrick Rothfuss', 'Bedroom', 'Nightstand', { pages: 662, tags: ['fantasy'], check: 'spine cut off at the top; could be the second book' }],
   ['War and Peace', 'Leo Tolstoy', 'Living room', 'Tall bookcase', { pages: 1225 }],
 ];
+// Reading details, as Claude would add them: [kind, genres, moods, pace, chapters, blurb].
+const DETAILS = {
+  'To Kill a Mockingbird': ['fiction', 'classics', 'emotional hopeful', 'medium', 'medium', 'A small-town lawyer defends a Black man in 1930s Alabama, seen through his daughter’s eyes.'],
+  'The Road': ['fiction', 'literary', 'dark sad tense', 'fast', 'short', 'A father and son walk south through a burned, empty America.'],
+  'Middlemarch': ['fiction', 'classics', 'reflective', 'slow', 'long', 'Lives, marriages and ambitions in a provincial English town in the 1830s.'],
+  'The Remains of the Day': ['fiction', 'literary', 'reflective sad', 'slow', 'medium', 'An English butler looks back on his years of service on a drive through the West Country.'],
+  'Station Eleven': ['fiction', 'sf literary', 'reflective hopeful', 'medium', 'short', 'A troupe of actors travels the Great Lakes twenty years after a flu ends the world as it was.'],
+  'Jane Eyre': ['fiction', 'classics romance', 'emotional mysterious', 'medium', 'medium', 'An orphaned governess falls for her employer, who is hiding something in the attic.'],
+  'A Wizard of Earthsea': ['fiction', 'fantasy', 'adventurous reflective', 'medium', 'medium', 'A proud young wizard lets loose a shadow and must hunt it across the islands.'],
+  'Gilead': ['fiction', 'literary', 'reflective hopeful', 'slow', 'short', 'An old preacher in 1950s Iowa writes a long letter to his young son.'],
+  'The Hobbit': ['fiction', 'fantasy', 'adventurous lighthearted', 'medium', 'medium', 'A comfortable hobbit is swept off on a quest to win back a dragon’s hoard.'],
+  'The Count of Monte Cristo': ['fiction', 'classics', 'adventurous tense', 'medium', 'medium', 'A wronged sailor escapes prison, finds a fortune and takes his revenge.'],
+  'Dune': ['fiction', 'sf classics', 'adventurous challenging', 'medium', 'medium', 'A desert planet, the spice everyone wants, and a young duke who may be its messiah.'],
+  'Moby-Dick': ['fiction', 'classics', 'adventurous challenging', 'slow', 'short', 'Captain Ahab hunts the white whale that took his leg.'],
+  'Beloved': ['fiction', 'literary', 'dark emotional', 'slow', 'medium', 'A woman who escaped slavery is haunted by the daughter she lost.'],
+  'Piranesi': ['fiction', 'fantasy', 'mysterious reflective', 'medium', 'short', 'A man keeps a journal in an endless house of statues and tides.'],
+  'Housekeeping': ['fiction', 'literary', 'reflective sad', 'slow', 'medium', 'Two sisters are raised by their drifting aunt in a lakeside town in Idaho.'],
+  'The Dispossessed': ['fiction', 'sf', 'reflective challenging', 'slow', 'medium', 'A physicist leaves his anarchist moon for the rich planet it broke away from.'],
+  'Cien años de soledad': ['fiction', 'classics', 'reflective emotional', 'slow', 'medium', 'Seven generations of the Buendía family in the town of Macondo.'],
+  'Pride and Prejudice': ['fiction', 'classics romance', 'funny lighthearted', 'medium', 'short', 'Elizabeth Bennet and Mr Darcy get each other wrong, then right.'],
+  'Never Let Me Go': ['fiction', 'literary sf', 'sad reflective', 'medium', 'medium', 'Three friends from an English boarding school slowly learn what they are for.'],
+  'The Left Hand of Darkness': ['fiction', 'sf', 'reflective adventurous', 'slow', 'medium', 'An envoy to a winter planet, whose people are neither male nor female, crosses the ice with a banished lord.'],
+  'Matilda': ['fiction', 'children', 'funny lighthearted', 'fast', 'short', 'A brilliant girl with awful parents finds she can move things with her mind.'],
+  'Charlotte’s Web': ['fiction', 'children', 'emotional hopeful', 'fast', 'short', 'A spider writes words in her web to save a pig.'],
+  'The Name of the Wind': ['fiction', 'fantasy', 'adventurous', 'medium', 'medium', 'A legendary hero tells the true story of his life, beginning with a troupe of travelling players.'],
+  'War and Peace': ['fiction', 'classics historical-fiction', 'reflective challenging', 'slow', 'short', 'Russian families in love and war through Napoleon’s invasion of 1812.'],
+};
 const ADDED = ['2026-10-11', '2026-08-30', '2026-06-14', '2025-12-02', '2025-04-19', '2024-09-07']; // four books each
 const books = {};
 SAMPLE.forEach(([title, author, room, shelf, more], i) => {
   const id = 'sample' + String(i + 1).padStart(2, '0');
-  books[id] = { id, t: NOW.getTime() - 86400000 - i * 60000, title, authors: [author], room, shelf, added: ADDED[Math.floor(i / 4)], ...more };
+  const [kind, genres, moods, pace, chapters, blurb] = DETAILS[title];
+  books[id] = { id, t: NOW.getTime() - 86400000 - i * 60000, title, authors: [author], room, shelf, added: ADDED[Math.floor(i / 4)], ...more,
+    kind, genres: genres.split(' '), moods: moods.split(' '), pace, chapters, blurb };
 });
 const LIBRARY = JSON.stringify({ shelfmark: 1, library: { books, seen: {} } });
 
@@ -102,8 +131,13 @@ const settle = page => page.evaluate(() => new Promise(r => { document.activeEle
   await page.waitForTimeout(500); // a tap just after a sheet closes is ignored
 
   await page.click('#nextBtn');
+  await page.click('[data-k="kind"][data-v="fiction"]');
+  await page.click('[data-mood="reflective"]');
   await page.click('[data-lean="loved"]');
   await settle(page);
+  // Scrolled so the choices made and the book suggested both show.
+  await page.evaluate(() => { const bd = document.querySelector('.panel .bd'); bd.scrollTop = document.querySelector('.nx-moods').closest('.nx-f').offsetTop - bd.offsetTop - 12; });
+  await page.waitForTimeout(100);
   await page.screenshot({ path: join(root, 'docs/phone-next.png') });
   await page.context().close();
 }

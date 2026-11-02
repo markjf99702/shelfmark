@@ -9,7 +9,7 @@
   &nbsp;
   <img src="docs/phone-review.png" alt="Add books from Claude: five books from a photo of the hall console table, to be shelved in Hall › Console table, with The Overstory flagged to check for glare over the author and Piranesi unticked because it's already in the library" width="250">
   &nbsp;
-  <img src="docs/phone-next.png" alt="What to read next, leaning toward favorite authors: try Gilead by Marilynne Robinson, because you gave Housekeeping 5 stars and your note says to read it slowly, or The Left Hand of Darkness, or To Kill a Mockingbird, a new arrival" width="250">
+  <img src="docs/phone-next.png" alt="What to read next, for fiction in a reflective mood, leaning toward favorite authors: try Gilead by Marilynne Robinson, an old preacher in 1950s Iowa writing a long letter to his young son; literary fiction, reflective and hopeful, slow, with short chapters; because you gave Housekeeping 5 stars and your note says to read it slowly. Or War and Peace." width="250">
 </p>
 
 ## How it works
@@ -29,11 +29,13 @@
   - see books you already own, which are unticked;
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right.
-- **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books are left out), with two more to choose from.
-  - Narrow it by length (short is under 250 pages, long over 450), tag or room.
+- **Reading details.** Claude can add what each book is like: fiction, nonfiction or poetry; genres; moods (funny, tense, reflective…); pace; chapter length; whether it's read cover to cover, dipped into, or browsed (cookbooks, picture books, reference); a line about it; and a page count where there's none. Ask Claude with the Shelfmark skill, and it reads your library (from Drive, or a backup you send) and hands back a link. Opening it shows the list, then fills in only what each book doesn't have yet. Each book's card has a **Reading details** section to change them by hand.
+- **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books, and books you browse rather than read, are left out), with two more to choose from.
+  - With reading details, choose fiction, nonfiction or poetry, the moods you're in for (any of those picked), and short chapters or something to dip into. **More choices** has genre, pace, tag, room, and books you browse.
+  - Narrow it by length (short is under 250 pages, long over 450).
   - Lean it toward books **waiting longest**, the **newest arrivals**, or **favorite authors** (ones whose books you've read and rated highly). **Surprise me** is a plain random pick.
   - Tick **Include rereads** to bring back books you gave four or five stars.
-  - Each suggestion says why, in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
+  - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
   - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
 - **Backups.** Download the whole library as a file, open it on any device (it merges), or download a spreadsheet (CSV).
@@ -130,7 +132,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 
 ### Tests
 
-`npm test` runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright), and nothing in it reaches the internet. It opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways and nothing loaded from elsewhere. It also has two tabs, and two devices sharing a stand-in Google Drive, change the same book; and it checks the review screen's shelving and order, batches too big to take at once, links that are cut short, spreadsheets opened by mistake, erasing a device, signing back in to Google, the Back button, contrast, and the keyboard and screen readers in the sheets.
+`npm test` runs two tests. `node test/e2e.mjs` uses the real page in Chromium (it needs Playwright), and nothing in it reaches the internet. It opens a link made by the skill's script, adds the books, edits one, and checks it all survives a reload and a reload offline, at phone size, with nothing scrolling sideways and nothing loaded from elsewhere. It also has two tabs, and two devices sharing a stand-in Google Drive, change the same book; and it checks the review screen's shelving and order, batches too big to take at once, links that are cut short, spreadsheets opened by mistake, reading details coming in from a link and changed on a book's card, What to read next choosing by them, erasing a device, signing back in to Google, the Back button, contrast, and the keyboard and screen readers in the sheets.
 
 `node test/library.test.js` has no dependencies. It reads the logic straight out of `index.html` and checks:
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
@@ -140,7 +142,8 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **Links:** compressed, uncompressed, hand-written and pasted links all open.
 - **The skill's script:** its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
-- **What to read next:** which books can be suggested, that each lean pulls the way it says, the reasons given, and that every match comes up before any repeats.
+- **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
+- **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, ISBN or title and author, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.
 
 ### Files
 
