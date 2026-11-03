@@ -827,6 +827,35 @@ step('on a phone, a narrow one too, the menus and the search box show their word
   }
 });
 
+step('on a phone, every field in a sheet is 16px or more, so Safari on an iPhone doesn\'t zoom in on it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    // Safari zooms the page in when a field with text under 16px gets focus, and leaves it zoomed. Checkboxes don't count.
+    const small = () => page.$$eval('#sheet input, #sheet select, #sheet textarea', els => els.filter(e => e.type !== 'checkbox' && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden')
+      .map(e => [e.id || e.dataset.f || e.className, getComputedStyle(e).fontSize]).filter(x => parseFloat(x[1]) < 16));
+    const lib = [{ ...PIRANESI, tags: ['sf'], kind: 'fiction', genres: ['fantasy'], moods: ['mysterious'], pace: 'medium' }, { ...MIDDLEMARCH, tags: ['classics'], kind: 'fiction', genres: ['classics'], pace: 'slow' }];
+    await seed(page, lib);
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('details.more > summary >> nth=0');
+    await page.click('details.more > summary >> nth=1');
+    assert.deepEqual(await small(), [], 'the card');
+    await page.click('#bkx');
+    await wait(450); // Import is near Done, and a tap there just after a sheet closes is taken for a second tap
+    await page.click('#importBtn');
+    assert.deepEqual(await small(), [], 'Import');
+    await page.click('#imx');
+    await page.click('#nextBtn');
+    await page.click('#nxMore summary');
+    assert.deepEqual(await small(), [], 'What to read next');
+    await page.click('#nxx');
+    await page.goto(linkTo({ name: 'Den', books: [{ title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await small(), [], 'the review');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {

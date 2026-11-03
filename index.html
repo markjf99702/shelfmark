@@ -238,7 +238,7 @@ details.more .fs{padding:2px 12px 12px}
 .tagpicks.picks{margin-top:0;gap:6px}
 .tagpicks.picks button{padding:5px 11px;font-size:13px}
 .tagpicks button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
-#f-genre{justify-self:start;width:auto;max-width:100%;padding:5px 28px 5px 10px;font-size:14px;border-radius:999px}
+#f-genre{justify-self:start;width:auto;max-width:100%;padding:5px 28px 5px 10px;font-size:16px;border-radius:999px}
 .isbnrow{display:flex;gap:8px}
 .isbnrow input{flex:1}
 
@@ -259,7 +259,7 @@ details.more .fs{padding:2px 12px 12px}
 /* the tick box answers a tap anywhere along the row's left edge, not just on its own 18px */
 .rv-tick{flex:none;align-self:stretch;display:flex;align-items:flex-start;margin:-9px -10px -9px -10px;padding:15px 10px 9px;cursor:pointer}
 .rv-main{flex:1;min-width:0;display:grid;gap:2px}
-.rv-main input{padding:3px 7px;margin-left:-8px;width:calc(100% + 8px);font-size:15px;border-color:transparent;background:transparent}
+.rv-main input{padding:3px 7px;margin-left:-8px;width:calc(100% + 8px);font-size:16px;border-color:transparent;background:transparent}
 .rv-main input:hover{border-color:var(--line2)}
 .rv-main input:focus{border-color:var(--line2);background:var(--surface)}
 .rv-main .rt{font:500 17px var(--serif)}
@@ -268,7 +268,7 @@ details.more .fs{padding:2px 12px 12px}
 .rv-dup{font-size:13px;color:var(--ink2)}
 .rv-dup b{font-weight:600}
 .pastebox{margin-top:14px}
-.pastebox textarea{font:13px/1.4 var(--mono);min-height:90px}
+.pastebox textarea{font:16px/1.4 var(--mono);min-height:90px}
 .opt{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
 .opt input{margin-top:2px}
 .sect{padding:0 0 16px;margin:0 0 16px;border-bottom:1px solid var(--line)}
@@ -290,7 +290,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-f{display:grid;gap:6px;justify-items:start;min-width:0}
 .nx-chips{display:flex;flex-wrap:wrap;gap:6px}
 .nx-sel{display:flex;gap:8px}
-.nx-sel select{flex:1 1 0;padding:6px 28px 6px 12px;font-size:14px;border-radius:999px}
+.nx-sel select{flex:1 1 0;padding:6px 28px 6px 12px;font-size:16px;border-radius:999px}
 .nx-range{color:var(--ink2);letter-spacing:.04em}
 .nx-crit .opt{padding:0}
 .nx-moods{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
@@ -364,6 +364,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   /* narrower still, the sort menu goes on a row of its own */
   .selects{flex-wrap:wrap}
   #sortSel{flex:1 1 100%}
+}
+/* Safari on an iPhone zooms the page in on a field with text under 16px, and leaves it zoomed, so there the list's menus
+   keep 16px, and on a phone the sort menu takes a row of its own when the tag menu is showing too */
+@supports (-webkit-touch-callout:none){
+  .selects select{font-size:16px}
+  @media (max-width:400px){
+    .selects:has(#tagSel:not([hidden])){flex-wrap:wrap}
+    .selects:has(#tagSel:not([hidden])) #sortSel{flex:1 1 100%}
+  }
 }
 @media (max-width:420px){
   .brand b{font-size:21px}
