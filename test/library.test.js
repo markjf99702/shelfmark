@@ -378,7 +378,7 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
   check(kept, 'and without Replace leave the details a book has');
 
   // Details find every copy they're for, and never a removed book.
-  const SHELF = [['Dune', 'Frank Herbert', '9780441013593'], ['The Republic', 'Plato', ''], ['Becoming', 'Michelle Obama', '9781524763138'], ['Walden', 'Henry David Thoreau', '']];
+  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Republic', 'Plato', ''], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
   let never = true, every = true;
   for (let k = 0; k < 300; k++) {
     const books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const [title, who, isbn] = any(SHELF);
@@ -460,9 +460,9 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     // Entries whose ids aren't in this library (made from another copy of it, or from an older backup) find books by
     // ISBN and by title and author both, and so every copy.
     const matched = (books, entries) => S.matchDetails(S.cleanDoc({ books }), S.cleanDetails({ details: { books: entries } })).map(r => r.bs.map(b => b.id));
-    const dunes = [{ id: 'd1', t: 1, title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593' }, { id: 'd2', t: 1, title: 'Dune', authors: ['Frank Herbert'] }];
-    eq(matched(dunes, [{ id: 'old', title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593', kind: 'fiction' }]), [['d1', 'd2']], 'an entry with an ISBN finds the copy without one too');
-    eq(matched(dunes, [{ title: 'Dune', authors: ['Frank Herbert'], kind: 'fiction' }]), [['d1', 'd2']], 'as an entry without one does');
+    const eliots = [{ id: 'd1', t: 1, title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549' }, { id: 'd2', t: 1, title: 'Middlemarch', authors: ['George Eliot'] }];
+    eq(matched(eliots, [{ id: 'old', title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', kind: 'fiction' }]), [['d1', 'd2']], 'an entry with an ISBN finds the copy without one too');
+    eq(matched(eliots, [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }]), [['d1', 'd2']], 'as an entry without one does');
     // Two translations: the same title and first author, but each entry is for one of them.
     const republics = [{ id: 'r1', t: 1, title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], room: 'Den' }, { id: 'r2', t: 1, title: 'The Republic', authors: ['Plato', 'Allan Bloom'], room: 'Study' }];
     const tr = S.cleanDetails({ details: { books: [
@@ -476,11 +476,11 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     eq(matched(republics, [{ id: 'r1', title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }, { title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }]), [['r1'], ['r2']],
       'a copy one entry names by id is left out of another entry’s title match');
     // Two copies, two entries without ids: each entry finds both, and each book counts once.
-    const becomings = S.cleanDoc({ books: [{ id: 'a1', t: 1, title: 'Becoming', authors: ['Michelle Obama'] }, { id: 'a2', t: 1, title: 'Becoming', authors: ['Michelle Obama'] }] });
-    const twice = S.matchDetails(becomings, S.cleanDetails({ details: { books: [{ title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', pace: 'medium' }, { title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', pace: 'fast' }] } }));
+    const waldens = S.cleanDoc({ books: [{ id: 'a1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }, { id: 'a2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }] });
+    const twice = S.matchDetails(waldens, S.cleanDetails({ details: { books: [{ title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pace: 'medium' }, { title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pace: 'fast' }] } }));
     eq(twice.map(r => r.bs.map(b => b.id)), [['a1', 'a2'], ['a1', 'a2']], 'two entries for a book with two copies find both');
-    eq([Object.keys(S.detailChanges(becomings, twice, false)).length, Object.keys(S.detailChanges(becomings, twice, true)).length], [2, 2], 'and change two books, not four');
-    eq(S.detailChanges(becomings, twice, false).a1.pace, 'medium', 'filling in, the first entry’s details stay');
+    eq([Object.keys(S.detailChanges(waldens, twice, false)).length, Object.keys(S.detailChanges(waldens, twice, true)).length], [2, 2], 'and change two books, not four');
+    eq(S.detailChanges(waldens, twice, false).a1.pace, 'medium', 'filling in, the first entry’s details stay');
     const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
     eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
