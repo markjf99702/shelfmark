@@ -530,6 +530,7 @@ step('erasing with changes that haven\'t reached Drive says so before they\'re l
     assert.match(await page.textContent('#stEraseNote'), /Your latest changes here haven’t reached Drive yet\. Tap Sync now first, or they’ll be lost\./);
     await page.click('#stErase');
     assert.equal(await page.textContent('#stErase'), 'Tap again to erase, changes not in Drive included');
+    assert.equal(await page.evaluate(() => document.getElementById('stErase').getBoundingClientRect().right <= innerWidth - 16), true, 'the button runs off the side of a phone');
     assert.equal(await storedBook(page, 'b03').then(b => b.status), 'read', 'the first tap erased something');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
