@@ -443,13 +443,24 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function str(v, n) { return typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim().slice(0, n) : ''; }
   function para(v, n) { return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, n) : ''; }
-  // A whole number in range. A plain number in text, decimals and all ("3.5", "1999.0"), is rounded; anything else
-  // keeps just its digits ("1,024", "c. 1937").
-  function int(v, lo, hi) {
-    var x = typeof v === 'number' ? v : String(v == null ? '' : v).trim();
-    if (typeof x === 'string') x = /^-?(\d+\.?\d*|\.\d+)$/.test(x) ? parseFloat(x) : parseInt(x.replace(/[^\d-]/g, ''), 10);
+  // A whole number in range, from a number or from text as it's printed. A plain number, decimals and all ("3.5",
+  // "1999.0"), is rounded half up. Otherwise digit groups are joined first ("1,024", "1 024"), and then a year is the
+  // first four-digit number ("1937–40", "2nd ed. 1999", "©1951, 1979"), a page count the largest number ("2 vols, 880")
+  // and anything else the first ("4.5 out of 5"). The skill's script reads numbers the same way (whole()).
+  function int(v, lo, hi, how) {
+    var x = typeof v === 'number' ? v : String(v == null ? '' : v).trim(), ns, i;
+    if (typeof x === 'string') {
+      if (/^-?(\d+\.?\d*|\.\d+)$/.test(x)) x = parseFloat(x);
+      else {
+        ns = x.replace(/(\d)[, \u00a0\u2009\u202f](?=\d{3}(?!\d))/g, '$1').match(/\d+(\.\d+)?/g) || [];
+        for (i = 0; how === 'year' && i < ns.length && !/^\d{4}(\.|$)/.test(ns[i]); i++) { }
+        x = !ns.length ? 0 : how === 'most' ? Math.max.apply(null, ns.map(Number)) : +(ns[i < ns.length ? i : 0]);
+      }
+    }
     return isFinite(x) ? Math.max(lo, Math.min(hi, Math.round(x))) : 0;
   }
+  // Signed, first edition: yes only for true, 1, or "true", "yes" or "1" in any case, so "false" and "no" are no.
+  function yes(v) { return v === true || v === 1 || typeof v === 'string' && /^(true|yes|1)$/i.test(v.trim()); }
   function day(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
@@ -519,10 +530,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (loan && !loan.since) delete loan.since;
     var b = {
       id: id || uid(), t: t, title: title, sub: str(o.sub, 300), authors: list(o.authors || o.author, 12, 120, true),
-      isbn: isbn, publisher: str(o.publisher, 120), year: int(o.year, 0, 2200), format: pick(o.format, FORMATS), pages: int(o.pages, 0, 50000),
+      isbn: isbn, publisher: str(o.publisher, 120), year: int(o.year, 0, 2200, 'year'), format: pick(o.format, FORMATS), pages: int(o.pages, 0, 50000, 'most'),
       room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
-      edition: str(o.edition, 120), signed: !!o.signed, first: !!o.first, condition: pick(o.condition, CONDITIONS),
+      edition: str(o.edition, 120), signed: yes(o.signed), first: yes(o.first), condition: pick(o.condition, CONDITIONS),
       added: day(o.added), check: str(o.check, 300),
       kind: pick(o.kind, KINDS), genres: picks(o.genres, GENRES, 4), moods: picks(o.moods, MOODS, 4), pace: pick(o.pace, PACES),
       chapters: pick(o.chapters, CHAPTERS), way: pick(o.way, WAYS), blurb: str(o.blurb, 300)

@@ -5,7 +5,8 @@
     python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--out DIR]
     python3 make_shelfmark.py details.json --details [--out DIR] [--base URL] [--no-link]
 
-books.json (every field but "title" is optional; "authors" may be a list or one string):
+books.json (every field but "title" is optional; "authors" and "tags" may be a list or one string, which is split
+on commas and semicolons, and authors on " & " too, as Shelfmark splits them):
 
 {
   "name": "Living room, tall bookcase",          # shown when the batch is opened
@@ -35,7 +36,7 @@ naming its book by "id" (from the library file) and "title"/"authors", with any 
 "pace", "chapters", "way", "blurb" and "pages". Opening the link or file fills in what each book doesn't have yet.
 Batches of new books can carry the same fields.
 """
-import argparse, base64, csv, datetime, hashlib, io, json, re, sys, zlib
+import argparse, base64, csv, datetime, hashlib, io, json, math, re, sys, unicodedata, zlib
 from pathlib import Path
 
 DEFAULT_BASE = 'https://shelfmark.junkdrawer.works/'
@@ -79,10 +80,22 @@ WORDS = {
 }
 
 
-def s(v, n):
-    if isinstance(v, bool) or v is None:
+# What JavaScript calls white space (its \s and trim()), so text is cleaned here as Shelfmark cleans it: Python's own
+# \s also takes \x1c-\x1f and \x85, and leaves out the byte-order mark.
+WS = '\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
+
+
+def text(v):
+    """A string or number as Shelfmark's page sees it: anything else (true, a list, an object) is no text."""
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
         return ''
-    return re.sub(r'\s+', ' ', str(v)).strip()[:n]
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() else repr(v) if math.isfinite(v) else ''
+    return str(v)
+
+
+def s(v, n):
+    return re.sub(f'[{WS}]+', ' ', text(v)).strip(WS)[:n]
 
 
 def isbn13(v):
@@ -115,27 +128,66 @@ def first_isbn(v):
     return ''
 
 
-def names(v, n=12):
+def fold(t):
+    """For telling two values apart the way Shelfmark does: accents off, lower case."""
+    return re.sub(r'[\u0300-\u036f]', '', unicodedata.normalize('NFD', t)).lower()
+
+
+def items(v, n, each, names=False):
+    """Several values in one field, as Shelfmark reads them (list() in index.html): a list, or text split on commas and
+    semicolons, so "Arts & crafts" stays one tag. Names (authors) also split on " & ", not on "and", and keep a "Jr." or
+    "III" with the name before it ("Kurt Vonnegut, Jr."). Each value up to `each` characters, each once, `n` in all."""
     if isinstance(v, str):
-        v = re.split(r'\s*;\s*|\s+&\s+|\s+and\s+', v)
+        v = re.split(r'\s*[,;]\s*|\s+&\s+' if names else r'\s*[,;]\s*', v)
+    elif not isinstance(v, list):
+        v = [v] if v else []
+    if names:
+        r = []
+        for x in v:
+            y, p = s(x, each), s(r[-1], each) if r else ''
+            if p and SUFFIX.match(y):
+                r[-1] = p + ', ' + y
+            else:
+                r.append(x)
+        v = r
     out, seen = [], set()
-    for x in v if isinstance(v, list) else []:
-        x = s(x, 120)
-        if x and x.lower() not in seen:
-            seen.add(x.lower())
+    for x in v:
+        x = s(x, each)
+        if x and fold(x) not in seen:
+            seen.add(fold(x))
             out.append(x)
     return out[:n]
 
 
-def whole(v, lo, hi):
+def names(v, n=12):
+    return items(v, n, 120, True)
+
+
+def whole(v, lo, hi, how='first'):
+    """A whole number in range, read as Shelfmark reads it (int() in index.html). A plain number, decimals and all, is
+    rounded half up (3.5 → 4, where Python's round() gives 4 and 2.5 → 2). Otherwise digit groups are joined ("1,024")
+    and a year is the first four-digit number ("2nd ed. 1999"), a page count the largest ("2 vols, 880") and anything
+    else the first."""
     if isinstance(v, bool):
         return 0
     if isinstance(v, (int, float)):
-        x = int(round(v))
+        x = v
     else:
-        m = re.search(r'-?\d+', str(v or ''))
-        x = int(m[0]) if m else 0
-    return max(lo, min(hi, x))
+        t = text(v).strip(WS)
+        if re.fullmatch(r'-?([0-9]+\.?[0-9]*|\.[0-9]+)', t):
+            x = float(t)
+        else:
+            ns = re.findall(r'[0-9]+(?:\.[0-9]+)?', re.sub(r'([0-9])[, \u00a0\u2009\u202f](?=[0-9]{3}(?![0-9]))', r'\1', t))
+            four = [x for x in ns if re.match(r'[0-9]{4}(\.|$)', x)] if how == 'year' else []
+            x = 0 if not ns else max(float(x) for x in ns) if how == 'most' else float((four or ns)[0])
+    if not math.isfinite(x):
+        return 0
+    return max(lo, min(hi, math.floor(x + 0.5)))
+
+
+def yes(v):
+    """Signed, first edition: yes only for true, 1, or "true", "yes" or "1" in any case, as Shelfmark reads them."""
+    return v is True or (isinstance(v, (int, float)) and not isinstance(v, bool) and v == 1) or (isinstance(v, str) and re.fullmatch(r'(?i)true|yes|1', v.strip(WS)) is not None)
 
 
 def day(v):
@@ -162,7 +214,7 @@ def reading(b, title, warn):
             out[key] = v
     for key, allowed in (('genres', GENRES), ('moods', MOODS)):
         vals = b.get(key)
-        vals = vals.split(',') if isinstance(vals, str) else vals if isinstance(vals, list) else []
+        vals = re.split(r'\s*[,;]\s*', vals) if isinstance(vals, str) else vals if isinstance(vals, list) else []
         keep = []
         for v in (word(x) for x in vals):
             if v and v not in allowed:
@@ -195,8 +247,8 @@ def clean(b, i, warn):
             flags.append(f'ISBN read as {raw[:40]} fails its check digit, so it was left off')
             warn.append(f'“{title}”: ISBN {raw[:40]} fails its check digit; dropped and flagged')
     out['publisher'] = s(b.get('publisher'), 120)
-    out['year'] = whole(b.get('year'), 0, 2200)
-    out['pages'] = whole(b.get('pages'), 0, 50000)
+    out['year'] = whole(b.get('year'), 0, 2200, 'year')
+    out['pages'] = whole(b.get('pages'), 0, 50000, 'most')
     for key, table, what in (('format', FORMATS, 'format'), ('condition', CONDITIONS, 'condition'), ('status', STATUSES, 'status')):
         v = s(b.get(key), 40).lower()
         if v and v not in table:
@@ -212,12 +264,11 @@ def clean(b, i, warn):
         out['loan'] = {'to': s(loan.get('to'), 80)}
         if day(loan.get('since')):
             out['loan']['since'] = day(loan.get('since'))
-    tags = b.get('tags')
-    out['tags'] = names(tags.split(',') if isinstance(tags, str) else tags or [], 20)
+    out['tags'] = items(b.get('tags'), 20, 40)
     out['notes'] = str(b.get('notes') or '').strip()[:4000]
     out['edition'] = s(b.get('edition'), 120)
-    out['signed'] = b.get('signed') is True
-    out['first'] = b.get('first') is True or b.get('first_edition') is True
+    out['signed'] = yes(b.get('signed'))
+    out['first'] = yes(b.get('first')) or yes(b.get('first_edition'))
     out['added'] = day(b.get('added'))
     out.update(reading(b, title, warn))
     flag = '; '.join(f for f in flags if f)[:300]
@@ -438,7 +489,7 @@ def build_details(doc, warn):
             warn.append(f'#{i + 1}: no id or title, so Shelfmark couldn’t tell which book it is; left out')
             continue
         e = {'id': bid, 'title': title, 'authors': names(b.get('authors') or b.get('author') or []), 'isbn': first_isbn(s(b.get('isbn'), 200)),
-             'pages': whole(b.get('pages'), 0, 50000)}
+             'pages': whole(b.get('pages'), 0, 50000, 'most')}
         e.update(reading(b, title or bid, warn))
         e = {k: v for k, v in e.items() if v not in ('', 0, None, [])}
         if not any(k in e for k in DETAIL_KEYS + ('pages',)):

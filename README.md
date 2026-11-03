@@ -140,7 +140,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).
-- **The skill's script:** its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
+- **The skill's script:** it reads numbers as printed ("2 vols, 880", "2nd ed. 1999"), yes or no, authors and tags just as the page does, its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
 - **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
 - **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, or else every copy with its ISBN or title and author (two translations each get their own), count each book once, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.

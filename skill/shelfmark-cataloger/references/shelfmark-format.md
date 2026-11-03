@@ -29,7 +29,7 @@ Each book:
 | `sub` | Subtitle |
 | `authors` | List of names as printed, up to 12 |
 | `isbn` | ISBN-10 or ISBN-13, any punctuation. Shelfmark stores valid ones as ISBN-13; given several ("0618260307, 9780618260300"), it keeps the first valid one |
-| `publisher`, `year`, `pages` | As printed |
+| `publisher`, `year`, `pages` | As printed. A year is read as its first four-digit number ("1937–40" is 1937, "2nd ed. 1999" is 1999) and a page count as its largest number ("2 vols, 880" is 880, "1,024" is 1024) |
 | `format` | `hardcover`, `paperback`, `mass-market`, `board`, `leather`, `other` |
 | `edition` | Free text: "2nd printing", "book club edition" |
 | `signed`, `first` | `true` for a signed copy / a first edition |

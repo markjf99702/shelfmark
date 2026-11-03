@@ -57,6 +57,18 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(S.cleanBook({ title: '' }), null, 'no title → not a book');
   { const n = S.cleanBook({ id: 'a', title: 'T', rating: '3.5', year: '1999.0', pages: '320.0' }); eq([n.rating, n.year, n.pages], [4, 1999, 320], 'numbers written with a decimal point are rounded, not run together'); }
   eq([S.cleanBook({ id: 'a', title: 'T', pages: '1,024' }).pages, S.cleanBook({ id: 'a', title: 'T', pages: '320 pages', year: ' 2001 ' }).year], [1024, 2001], 'a grouped number or one with words around it keeps its digits');
+  // Numbers as they're printed: a year with a range, a reprint or a copyright line; pages over two volumes.
+  const year = v => S.cleanBook({ id: 'a', title: 'T', year: v }).year, pages = v => S.cleanBook({ id: 'a', title: 'T', pages: v }).pages, stars = v => S.cleanBook({ id: 'a', title: 'T', rating: v }).rating;
+  eq(['1937–40', '1925/1953', '©1951, 1979', '2nd ed. 1999', '1999 (2003 printing)', '1937/1951', 'c. 1937', 1999.5, '1999.0'].map(year), [1937, 1925, 1951, 1999, 1999, 1937, 1937, 2000, 1999],
+    'a year as printed is its first four-digit number');
+  eq(['2 vols, 880', '1,024', '1 024', '1\u2009024', 'xii, 320 p.', '320 pages', 412, '320.0'].map(pages), [880, 1024, 1024, 1024, 320, 320, 412, 320], 'a page count as printed is its largest number, with digit groups joined');
+  eq([4.5, 2.5, '3.5', '4 stars', '4.5 out of 5', 0.4, 9].map(stars), [5, 3, 4, 4, 5, undefined, 5], 'a rating rounds half up and takes the first number');
+  {
+    const yesno = [true, 1, 'true', 'Yes', ' YES ', '1', false, 0, 'false', 'no', '0', 'n', null, {}, 2];
+    const want = [true, true, true, true, true, true, false, false, false, false, false, false, false, false, false];
+    eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', signed: v }).signed), want, 'signed is yes only for true, 1, "true", "yes" or "1"');
+    eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', first: v }).first), want, 'and so is first edition');
+  }
   eq(S.cleanBook({ id: 'x1', t: 9, del: 1, title: 'gone' }), { id: 'x1', t: 9, del: 1 }, 'a removed book keeps only id and time');
   eq(S.cleanBook({ id: '123', title: 'T' }).id, 'b123', 'numeric ids get a letter so key order stays stable');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
@@ -423,6 +435,26 @@ function randomDoc(r, n) {
       const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
       eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
+
+      // The script reads numbers, yes/no and lists the way the page does: each book it writes is the page's own reading
+      // of the same input.
+      const odd = [
+        { title: 'Two Authors', authors: 'Neil Gaiman, Terry Pratchett', pages: '1,024', rating: 4.5, tags: 'classics; fantasy', signed: 'yes', first: 'no' },
+        { title: 'Reprint', authors: 'Ann Lee and Bo Chen', year: '2nd ed. 1999', pages: '2 vols, 880', rating: 2.5, signed: 'false', first: 1, moods: 'funny; tense', genres: 'History; Science' },
+        { title: 'Copyright Line', authors: 'Kurt Vonnegut, Jr. & Ann Lee', year: '©1951, 1979', rating: '3.5', signed: 1, first: 'TRUE', tags: ['a'.repeat(45), 'Arts & crafts'], pages: 312.5 },
+        { title: 'Range', authors: ['Leo Tolstoy'], year: '1865–69', pages: '1 225', rating: '4 stars', signed: 0, first: 'No', tags: 'war, Russia; War' },
+      ];
+      const sorted = o => Object.fromEntries(Object.keys(o).sort().map(k => [k, o[k]]));
+      const oddIn = path.join(tmp, 'odd.json'), oddDir = fs.mkdtempSync(path.join(tmp, 'odd-'));
+      fs.writeFileSync(oddIn, JSON.stringify({ books: odd }));
+      const oddSaid = execFileSync('python3', [py, oddIn, '--out', oddDir, '--no-link'], { encoding: 'utf8' });
+      const oddOut = JSON.parse(fs.readFileSync(path.join(oddDir, fs.readdirSync(oddDir)[0]), 'utf8')).batch.books;
+      odd.forEach((x, i) => { const c = S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 })); delete c.id; delete c.t; eq(sorted(oddOut[i]), sorted(c), 'the script reads “' + x.title + '” as the page does'); });
+      check(!/isn’t one Shelfmark knows/.test(oddSaid), 'moods and genres split on semicolons are known words to the script');
+      const oddDet = path.join(tmp, 'odd-details.json');
+      fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
+      const oddDetOut = JSON.parse(fs.readFileSync(/File: (\S+)/.exec(execFileSync('python3', [py, oddDet, '--details', '--out', oddDir, '--no-link'], { encoding: 'utf8' }))[1], 'utf8')).details.books;
+      eq(oddDetOut.map(sorted), S.cleanDetails({ details: { books: [{ id: 'b1', title: 'Reprint', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] } }).books.map(sorted), 'and its reading details as the page does');
 
       // More books than Shelfmark takes at once: numbered files of up to 3,000, each a batch of its own.
       const bigIn = path.join(tmp, 'big.json'), bigOut = path.join(tmp, 'big');
