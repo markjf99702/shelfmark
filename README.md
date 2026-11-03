@@ -32,8 +32,8 @@
 - **Reading details.** Claude can add what each book is like: fiction, nonfiction or poetry; genres; moods (funny, tense, reflective…); pace; chapter length; whether it's read cover to cover, dipped into, or browsed (cookbooks, picture books, reference); a line about it; and a page count where there's none. Ask Claude with the Shelfmark skill, and it reads your library (from Drive, or a backup you send) and hands back a link. Opening it shows the list, then fills in only what each book doesn't have yet. Each book's card has a **Reading details** section to change them by hand.
 - **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books, and books you browse rather than read, are left out), with two more to choose from.
   - With reading details, choose fiction, nonfiction or poetry, the moods you're in for (any of those picked), and short chapters or something to dip into. **More choices** has genre, pace, tag, room, and books you browse.
-  - Narrow it by length (short is under 250 pages, long over 450).
-  - Lean it toward books **waiting longest**, the **newest arrivals**, or **favorite authors** (ones whose books you've read and rated highly). **Surprise me** is a plain random pick.
+  - Narrow it by length (short is under 250 pages, long over 450), once some of your books have a page count.
+  - Lean it toward books **waiting longest** or the **newest arrivals**, once books were added on different days, or toward **favorite authors** (ones whose books you've read and rated highly), once one of theirs is waiting unread. **Surprise me** is a plain random pick. Only the choices that would change something are offered.
   - Tick **Include rereads** to bring back books you gave four or five stars.
   - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
   - Your choices are remembered on each device.

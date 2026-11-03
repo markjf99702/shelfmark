@@ -883,6 +883,33 @@ step('What to read next counts one match in the singular', async () => {
   } finally { await ctx.close(); }
 });
 
+step('What to read next offers only choices that can change something', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    // Catalogued in one go over two years ago, nothing read, no page counts: Length and the leans couldn't change a
+    // thing, and when each was added tells them apart not at all. A lean saved before goes back to Surprise me.
+    const batch = ['Middlemarch', 'Walden', 'Persuasion', 'Ivanhoe'].map((title, i) => ({ id: 'o' + i, t: 1000, title, authors: ['Ann Lee'], added: '2024-01-01', room: 'Den' }));
+    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { lean: 'oldest', len: 'short' } })));
+    await seed(page, batch);
+    await page.click('#nextBtn');
+    assert.equal(await page.locator('#nxCrit [data-lean]').count(), 0, 'Lean toward is offered');
+    assert.equal(await page.locator('#nxCrit [data-len]').count(), 0, 'Length is offered');
+    for (let k = 0; k < 4; k++) {
+      assert.doesNotMatch(await page.textContent('#nxOut'), /In your library since|New arrival|random pick/);
+      await page.click('#nxAgain');
+    }
+    assert.match(await page.textContent('#nxOut > .note'), /^From 4 unread books on hand\./);
+    // Another day's books, a page count and a book read by one of the authors bring them back.
+    await page.click('#nxx');
+    await seed(page, [...batch, { ...PIRANESI, status: 'read', authors: ['Ann Lee'] }, { ...CRADLE, pages: 304, added: '2026-10-01' }]);
+    await page.click('#nextBtn');
+    assert.deepEqual(await page.$$eval('#nxCrit [data-lean]', els => els.map(e => e.textContent)), ['Surprise me', 'Waiting longest', 'Newest arrivals', 'Favorite authors']);
+    assert.equal(await page.locator('#nxCrit [data-len]').count(), 4);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('junk in the saved covers and settings doesn\'t stop covers or sorting', async () => {
   const ctx = await context();
   const ol = await fakeOpenLibrary(ctx);

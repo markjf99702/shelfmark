@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -242,8 +242,32 @@ function randomDoc(r, n) {
   eq(why('', 'nop'), [], 'nothing special to say → no reasons');
   for (const hour of ['00:30', '09:00', '15:00', '23:30']) {
     const at = new Date('2026-10-13T' + hour + ':00').getTime();
-    const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }] })), base, rng(1), {}, at).picks[0].why[0];
+    const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }, { id: 'o', t: 1, title: 'O', added: '2020-01-01' }] })), base, rng(1), { o: 1 }, at).picks[0].why[0];
     eq([said('2026-10-13'), said('2026-10-12'), said('2026-10-01')], ['New arrival: added today', 'New arrival: added yesterday', 'New arrival: added 12 days ago'], 'new arrivals count calendar days, at ' + hour);
+  }
+  {
+    // A library catalogued in one go: when a book was added tells it from none of the others, so no reason says it.
+    const oneDay = added => S.live(S.cleanDoc({ books: ['A', 'B', 'C'].map(t => ({ id: t, t: 1, title: t, added })) }));
+    const reasons = (lib, lean) => { const out = new Set(); for (let k = 0; k < 20; k++) S.dealNext(lib, S.cleanNext({ lean }), rng(k), {}, now).picks.forEach(p => p.why.forEach(w => out.add(w))); return [...out]; };
+    eq([reasons(oneDay('2024-01-01'), 'newest'), reasons(oneDay('2024-01-01'), ''), reasons(oneDay('2026-10-04'), ''), reasons(oneDay('2026-10-04'), 'oldest')], [[], [], [], []],
+      'books all added the same day get no "In your library since" or "New arrival", under any lean');
+    // Two batches this month: only the later one's books are new arrivals.
+    const twoBatches = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-09-26' }, { id: 'b', t: 1, title: 'B', added: '2026-09-26' }, { id: 'c', t: 1, title: 'C', added: '2026-10-04' }] }));
+    const whyOf = id => S.dealNext(twoBatches, base, rng(1), { a: id !== 'a', b: 1, c: id !== 'c' }, now).picks[0].why;
+    eq([whyOf('a'), whyOf('c')], [[], ['New arrival: added 2 days ago']], 'a book from the first batch isn’t a new arrival, one from a later batch is');
+  }
+  {
+    // Only the choices that can change something are offered.
+    const leans = lib => S.nextOffers(S.live(S.cleanDoc({ books: lib }))).leans.map(l => l[0]);
+    const one = [{ id: 'a', t: 1, title: 'A', authors: ['Ann Lee'], added: '2026-09-26' }, { id: 'b', t: 1, title: 'B', authors: ['Bo Chen'], added: '2026-09-26' }];
+    eq([leans(one), !!S.nextOffers(S.live(S.cleanDoc({ books: one }))).len], [[''], false], 'one batch with no page counts, nothing read: no Length, and only Surprise me to lean on');
+    eq(leans(one.concat({ id: 'c', t: 1, title: 'C', added: '2025-01-01' })), ['', 'oldest', 'newest'], 'books added on two days can lean to the oldest or newest');
+    eq(leans(one.concat({ id: 'r', t: 1, title: 'R', authors: ['Ann Lee'], status: 'read', added: '2026-09-26' })), ['', 'loved'], 'an unread book by an author you’ve read can lean to favorite authors');
+    eq(leans(one.concat({ id: 'r', t: 1, title: 'R', authors: ['Cy Dee'], status: 'read', rating: 5, added: '2026-09-26' })), [''], 'but not when you’ve read none of the authors on hand');
+    eq(leans(one.concat({ id: 'l', t: 1, title: 'L', added: '2020-01-01', loan: { to: 'Sam' } })), [''], 'a book lent out doesn’t count: it isn’t on hand');
+    eq(!!S.nextOffers(S.live(S.cleanDoc({ books: one.concat({ id: 'p', t: 1, title: 'P', pages: 300 }) }))).len, true, 'one book with a page count is enough for Length');
+    const c = S.fitNext(S.cleanNext({ len: 'short', lean: 'oldest', tag: 'gone', room: 'Hall', moods: ['funny'] }), S.nextOffers(S.live(S.cleanDoc({ books: one }))));
+    eq([c.len, c.lean, c.tag, c.room, c.moods], ['', '', '', '', []], 'a saved length, lean, tag, room or mood that isn’t offered goes back to Any');
   }
   const reread = S.dealNext(lib, S.cleanNext({ reread: true, len: 'medium' }), rng(1), {}, now).picks;
   eq(reread.map(p => p.b.id).sort(), ['lg1', 'new'], 'medium length with rereads');

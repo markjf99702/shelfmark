@@ -295,6 +295,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-crit .opt{padding:0}
 .nx-moods{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
 .nx-more{border-top:1px solid var(--line);padding-top:10px}
+.nx-more:first-child{border-top:0;padding-top:0}
 .nx-more>summary{cursor:pointer;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px}
 .nx-more>summary::-webkit-details-marker{display:none}
 .nx-more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
@@ -864,8 +865,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return pool.map(function () { return 1; });
   }
   function monthOf(d) { var p = d.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
-  // Plain reasons for a suggestion, the one that fits the lean first.
-  function nextWhy(b, c, fans, now, oldest) {
+  // Plain reasons for a suggestion, the one that fits the lean first. span is what dealNext knows of the pool's dates:
+  // first, the earliest; oldest, the one book added before all the others, if there is one; same, when they all share
+  // one date (a library catalogued in one go), and then when a book was added tells it from none of the others.
+  function nextWhy(b, c, fans, now, span) {
     var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0];
     if (b.status === 'read') fan = 'A reread: you gave it ' + plural(b.rating, 'star');
     else if (f && (c.lean === 'loved' || fondness(f) >= 3)) {
@@ -873,11 +876,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (f.best && f.best.rating >= 4) fan = (f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who + ' and gave ' : 'You gave ') + '“' + f.best.title + '” ' + plural(f.best.rating, 'star');
       else fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who : 'You’ve read “' + f.one.title + '”, also by ' + who;
     }
-    if (b.added) {
+    if (b.added && !span.same) {
       // Whole calendar days between the day it was added and today, wherever in the day "now" falls.
       var p = b.added.split('-'), d = new Date(now), age = Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(+p[0], p[1] - 1, +p[2])) / 864e5);
-      if (b.added === oldest && c.lean === 'oldest') when = 'Waiting longest of these: in your library since ' + monthOf(b.added);
-      else if (age >= 0 && age <= 30) when = 'New arrival: added ' + (age < 1 ? 'today' : age < 2 ? 'yesterday' : age + ' days ago');
+      if (b.added === span.oldest && c.lean === 'oldest') when = 'Waiting longest of these: in your library since ' + monthOf(b.added);
+      else if (b.added > span.first && age >= 0 && age <= 30) when = 'New arrival: added ' + (age < 1 ? 'today' : age < 2 ? 'yesterday' : age + ' days ago');
       else if (c.lean === 'oldest' || c.lean === 'newest' || age >= 730) when = 'In your library since ' + monthOf(b.added);
     }
     var why = c.lean === 'oldest' || c.lean === 'newest' ? [when, fan] : [fan, when];
@@ -888,8 +891,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // fresh says how many were new; none means every match has been shown.
   function dealNext(all, c, rnd, skip, now) {
     var pool = nextPool(all, c), fans = authorFans(all), w = nextWeights(pool, c, fans), left = pool.map(function (_, i) { return i; }), picks = [], fresh = 0;
-    // The one book added before all the others, if there is one (a shelf catalogued in one go shares a date).
-    var days = pool.map(function (b) { return b.added || ''; }).filter(Boolean).sort(), oldest = days.length > 1 && days[0] !== days[1] ? days[0] : '';
+    // The pool's dates: the earliest, the one book added before all the others if there is one (a shelf catalogued in one
+    // go shares a date), and whether they're all the same.
+    var days = pool.map(function (b) { return b.added || ''; }).filter(Boolean).sort();
+    var span = { first: days[0] || '', oldest: days.length > 1 && days[0] !== days[1] ? days[0] : '', same: !days.length || days[0] === days[days.length - 1] };
     function draw(ok) {
       var cand = left.filter(ok), tot = 0, r;
       cand.forEach(function (i) { tot += w[i]; });
@@ -910,8 +915,37 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       // Books left out for want of reading details, and the ones you browse, which are left out unless asked for.
       bare: picky(c) ? nextPool(all, Object.assign({}, c, ANY_DETAILS)).filter(function (b) { return !hasDetails(b); }).length : 0,
       browsed: c.browse ? 0 : onHand(all, c.reread, true).filter(function (b) { return b.way === 'browse'; }).length,
-      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, oldest) }; })
+      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span) }; })
     };
+  }
+
+  // What What to read next offers, from the books on hand (rereads and books you browse included): only the choices that
+  // can change something. Length needs page counts; Waiting longest and Newest arrivals need books added on two or more
+  // days; Favorite authors needs an unread book by an author you've read; moods, genres and the rest need reading details.
+  function nextOffers(all) {
+    var fans = authorFans(all), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null) }, days = Object.create(null);
+    onHand(all, true, true).forEach(function (b) {
+      (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[b.room] = 1;
+      if (b.kind) o.kind = 1; if (b.pace) o.pace = 1; if (b.pages) o.len = 1; if (b.added) days[b.added] = 1;
+      (b.moods || []).forEach(function (m) { o.moods[m] = 1; }); (b.genres || []).forEach(function (g) { o.genres[g] = 1; });
+      if (b.chapters === 'short' || b.way === 'dip') o.short = 1;
+      if (b.way === 'browse') o.browse = 1;
+      if (!b.status && fanOf(b, fans)) o.loved = 1;
+    });
+    var many = Object.keys(days).length > 1;
+    o.leans = LEANS.filter(function (l) { return !l[0] || (l[0] === 'loved' ? o.loved : many); });
+    o.reread = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
+    return o;
+  }
+  // A choice saved before that's no longer offered goes back to Any, so it can't narrow the pick out of sight.
+  function fitNext(c, o) {
+    if (c.tag && !o.tags[c.tag]) c.tag = '';
+    if (c.room && !o.rooms[c.room]) c.room = '';
+    if (c.genre && !o.genres[c.genre]) c.genre = '';
+    if (!o.kind) c.kind = ''; if (!o.pace) c.pace = ''; if (!o.short) c.short = false; if (!o.len) c.len = '';
+    if (!o.leans.some(function (l) { return l[0] === c.lean; })) c.lean = '';
+    c.moods = c.moods.filter(function (m) { return o.moods[m]; });
+    return c;
   }
 
   // ---------- state ----------
@@ -1679,27 +1713,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
     function drawCrit() {
-      var all = live(DOC), base = onHand(all, true, true), tags = Object.create(null), rooms = Object.create(null), has = {};
-      base.forEach(function (b) {
-        (b.tags || []).forEach(function (t) { tags[t] = 1; }); if (b.room) rooms[b.room] = 1;
-        if (b.kind) has.kind = 1; if (b.pace) has.pace = 1;
-        (b.moods || []).forEach(function (m) { has['m' + m] = 1; }); (b.genres || []).forEach(function (g) { has['g' + g] = 1; });
-        if (b.chapters === 'short' || b.way === 'dip') has.short = 1;
-        if (b.way === 'browse') has.browse = 1;
-      });
-      var moods = MOODS.filter(function (m) { return has['m' + m[0]]; }), genres = GENRES.filter(function (g) { return has['g' + g[0]]; });
-      if (c.tag && !tags[c.tag]) c.tag = '';
-      if (c.room && !rooms[c.room]) c.room = '';
-      if (c.genre && !has['g' + c.genre]) c.genre = '';
-      if (!has.kind) c.kind = ''; if (!has.pace) c.pace = ''; if (!has.short) c.short = false;
-      c.moods = c.moods.filter(function (m) { return has['m' + m]; });
-      var tk = Object.keys(tags).sort(COLL.compare), rk = Object.keys(rooms).sort(COLL.compare), favs = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
+      var has = nextOffers(live(DOC)); fitNext(c, has);
+      var moods = MOODS.filter(function (m) { return has.moods[m[0]]; }), genres = GENRES.filter(function (g) { return has.genres[g[0]]; });
+      var tk = Object.keys(has.tags).sort(COLL.compare), rk = Object.keys(has.rooms).sort(COLL.compare), favs = has.reread;
       var html = (has.kind ? seg('kind', 'Fiction or not', KINDS) : '') +
         (moods.length ? '<div class="nx-f"><span class="lbl">In the mood for' + (c.moods.length > 1 ? '<span class="nx-range"> · any of these</span>' : '') + '</span>' +
           '<div class="nx-moods" role="group" aria-label="In the mood for">' + moods.map(function (m) { return '<button class="chip" type="button" data-mood="' + m[0] + '" aria-pressed="' + (c.moods.indexOf(m[0]) >= 0) + '">' + m[1] + '</button>'; }).join('') + '</div></div>' : '') +
-        '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + LENGTHS.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+        (has.len ? '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + LENGTHS.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '') +
         (has.short ? '<label class="opt"><input type="checkbox" id="nxShort"' + (c.short ? ' checked' : '') + '><span>Short chapters, or easy to dip into</span></label>' : '') +
-        '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + LEANS.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+        (has.leans.length > 1 ? '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + has.leans.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '');
       var more = (genres.length ? '<div class="nx-sel">' + select('nxGenre', 'Genre', 'Any genre', genres, c.genre) + '</div>' : '') +
         (has.pace ? seg('pace', 'Pace', PACES) : '') +
         (tk.length || rk.length ? '<div class="nx-sel">' + (tk.length ? select('nxTag', 'Tag', 'Any tag', tk.map(function (t) { return [t, t]; }), c.tag) : '') + (rk.length ? select('nxRoom', 'Room', 'Any room', rk.map(function (r) { return [r, r]; }), c.room) : '') + '</div>' : '') +
