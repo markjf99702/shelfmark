@@ -215,12 +215,13 @@ a{color:var(--accent)}
 .ft .flag{flex-basis:100%;margin:0}
 /* on a phone, a footer note of more than a few words takes a row of its own, above the button */
 @media (max-width:520px){.ft .note.wide{flex-basis:100%;margin:0}.ft .note.wide~.btn{margin-left:auto}}
-.fs{display:grid;gap:12px}
+/* one column that's never wider than the card, so a long line (the Reading details summary) shrinks to fit instead */
+.fs{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
 .fl{display:grid;gap:4px;min-width:0}
 .fl>span:first-child,.lbl{font:600 11.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--surface)}
-.seg button{background:none;border:0;padding:7px 14px;font:600 13.5px var(--sans);color:var(--ink2)}
+.seg button{background:none;border:0;padding:7px 14px;font:600 13.5px var(--sans);color:var(--ink2);white-space:nowrap}
 .seg button+button{border-left:1px solid var(--line2)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
 .stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
@@ -240,6 +241,7 @@ details.more>summary::-webkit-details-marker{display:none}
 details.more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
 details.more[open]>summary::before{transform:rotate(45deg)}
 details.more .fs{padding:2px 12px 12px}
+.sum-l{flex:none;white-space:nowrap}
 .sum-v{margin-left:auto;font:500 12.5px var(--sans);color:var(--ink3);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fl>.seg{justify-self:start;max-width:100%}
 .tagpicks.picks{margin-top:0;gap:6px}
@@ -385,6 +387,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     .selects:has(#tagSel:not([hidden])) #sortSel{flex:1 1 100%}
   }
 }
+/* "Cover to cover · Dip in and out · Browse" fits a phone on one line each with a little less padding; narrower
+   still, a button's words wrap */
+@media (max-width:400px){.seg button{padding:7px 10px}}
+@media (max-width:340px){.seg button{white-space:normal}}
 @media (max-width:420px){
   .brand b{font-size:21px}
   .brand{gap:7px}
@@ -1287,8 +1293,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function bookSheet(b, isNew) {
     var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
       moods: (b.moods || []).slice(), genres: (b.genres || []).slice() };
-    function seg(k, name, from) {
-      return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    function seg(k, name, from, note) {
+      return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' + (note || '') + '</div>';
     }
     // Tags used on other books, to add with a tap; those this book has already aren't offered.
     var own = (b.tags || []).map(fold), tagList = distinct(function (x) { return x.tags; }).filter(function (t) { return own.indexOf(fold(t)) < 0; });
@@ -1310,8 +1316,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
       '<label class="fl"><span>Notes</span><textarea id="f-notes" rows="3">' + esc(b.notes) + '</textarea></label>' +
-      '<details class="more"><summary>Reading details<span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
-      seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS) + seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
+      '<details class="more"><summary><span class="sum-l">Reading details</span><span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
+      seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS, '<span class="note">Books you browse (cookbooks, reference, picture books) aren’t suggested in What to read next unless you ask for them.</span>') +
+      seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
       '<div class="fl"><span>Moods</span><div class="tagpicks picks" id="f-moods" role="group" aria-label="Moods">' + MOODS.map(function (m) { return '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
       '<div class="fl"><span>Genres</span><div class="tagpicks picks" id="f-genres"></div><select id="f-genre" aria-label="Add a genre"></select></div>' +
       '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
@@ -1405,7 +1412,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('f-genres').hidden = !st.genres.length;
       $('f-genre').innerHTML = '<option value="">Add a genre…</option>' + GENRES.filter(function (g) { return st.genres.indexOf(g[0]) < 0; }).map(function (g) { return '<option value="' + g[0] + '">' + esc(g[1]) + '</option>'; }).join('');
       $('f-genre').hidden = st.genres.length >= 4;
-      $('f-rdsum').textContent = [label(st.kind, KINDS), label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
+      $('f-rdsum').textContent = [label(st.kind, KINDS), st.way === 'dip' || st.way === 'browse' ? label(st.way, WAYS) : '', label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
     }
     panel.addEventListener('input', function (e) {
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
@@ -1738,7 +1745,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!n) return;
       DOC.seen[det.id] = got(DOC.seen, det.id) || now;
       var saved = persist(); closeSheet(); render();
-      toast(saved ? 'Added reading details to ' + plural(n, 'book') : STORE_TOAST[STORE]);
+      // What to read next is where the details count, so the toast offers it.
+      if (!saved) toast(STORE_TOAST[STORE]);
+      else if (onHand(live(DOC), true, true).length) toast('Added reading details to ' + plural(n, 'book'), 'What to read next', nextSheet);
+      else toast('Added reading details to ' + plural(n, 'book'));
     });
     count();
   }

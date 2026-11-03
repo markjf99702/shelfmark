@@ -1526,6 +1526,7 @@ step('a details link fills in reading details, and a book\'s card shows and chan
     await page.uncheck('#dtRe');
     await page.click('#dtgo');
     assert.match(await page.textContent('#toastTx'), /Added reading details to 4 books/);
+    assert.equal(await page.textContent('#toastBtn'), 'What to read next', 'the toast points to where the details are used');
     const p = await storedBook(page, 'b03'), m = await storedBook(page, 'b04'), c = await storedBook(page, 'b05'), m2 = await storedBook(page, 'b06');
     assert.deepEqual([p.kind, p.genres, p.moods, p.chapters, p.pages, p.room, p.notes], ['fiction', ['fantasy'], ['mysterious', 'reflective'], 'short', 272, 'Hall', 'Sam says start here']);
     assert.deepEqual([m.genres, m.pace, m.moods], [['classics'], 'slow', ['reflective']], 'Middlemarch was found by its title and author');
@@ -1545,6 +1546,24 @@ step('a details link fills in reading details, and a book\'s card shows and chan
     const p2 = await storedBook(page, 'b03');
     assert.deepEqual([p2.kind, p2.moods, p2.genres], [undefined, ['mysterious', 'hopeful'], ['fantasy', 'literary']], 'tapping the chosen kind again clears it');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('on a narrow phone the card\'s Reading details keep their words on one line, and say a book you browse isn\'t suggested', async () => {
+  const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'k1', t: 1000, title: 'The Gardener’s Year', authors: ['Karel Čapek'], kind: 'nonfiction', genres: ['nature'], moods: ['reflective', 'funny'], way: 'browse' }]);
+    await page.click('#list .bk[data-id="k1"]');
+    // One line of 14px text is under 28px tall; two are more.
+    assert.ok(await page.$eval('details.more .sum-l', e => e.getBoundingClientRect().height < 2 * parseFloat(getComputedStyle(e).fontSize)), 'the Reading details heading wraps');
+    assert.equal(await page.textContent('#f-rdsum'), 'Nonfiction · Browse · Nature and gardening · Reflective');
+    await page.click('#f-rdsum');
+    assert.ok((await page.$$eval('#f-way button', els => els.map(e => e.getBoundingClientRect().height))).every(h => h < 40), 'a How it reads button wraps onto two lines');
+    assert.match(await page.textContent('#f-way + .note'), /aren’t suggested in What to read next unless you ask/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await page.$eval('#sheet .bd', e => e.scrollWidth <= e.clientWidth), true, 'the card scrolls sideways');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
