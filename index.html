@@ -1335,7 +1335,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   // Text from a link, a file or the paste box → {kind: 'batch' | 'library' | 'details', …}. A pasted Shelfmark link can be
   // anywhere in the text: after "Link:", inside a markdown link, with a full stop after it, or broken over lines
-  // by a mail app, whose pieces are joined back (the longest join that reads wins).
+  // by a mail app, whose pieces are joined back (the longest join that reads wins). Pasted JSON can come with Claude’s
+  // words around it, as a phone copies a whole reply: inside a ```json code block, or after "Here you go:".
   function parseIncoming(t) {
     function read(o) {
       if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
@@ -1360,8 +1361,17 @@ body.locked .toast.show{transform:translate(-50%,0)}
       m = /#(batch=\S+)\s*$/.exec(t);
       if (m) return linkText('#' + m[1]).then(parseIncoming);
       if (isSheet(t)) { var e = new Error('That’s a spreadsheet export. Send it to Claude with the Shelfmark skill and open the file or link it gives you.'); e.say = true; return Promise.reject(e); }
+      // The inside of the first code block, then the text from the first { to the last } and from the first [ to the
+      // last ] (the one that starts first tried first, so a list of books isn’t read as its first book).
+      var tries = [], fence = /```[\w-]*[ \t]*\r?\n([\s\S]*?)```/.exec(t), o = [t.indexOf('{'), t.lastIndexOf('}')], a = [t.indexOf('['), t.lastIndexOf(']')];
+      if (fence) tries.push(fence[1]);
+      (a[0] >= 0 && (o[0] < 0 || a[0] < o[0]) ? [a, o] : [o, a]).forEach(function (x) { if (x[0] >= 0 && x[1] > x[0]) tries.push(t.slice(x[0], x[1] + 1)); });
+      return Promise.resolve().then(function () {
+        for (var i = 0; i < tries.length; i++) try { return read(JSON.parse(tries[i])); } catch (e) { }
+        return read(JSON.parse(t));
+      });
     }
-    return Promise.resolve().then(function () { return read(json === undefined ? JSON.parse(t) : json); });
+    return Promise.resolve().then(function () { return read(json); });
   }
   function takeIncoming(p) {
     return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch); })

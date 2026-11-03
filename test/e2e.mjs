@@ -458,7 +458,7 @@ step('a link cut short says so, and a hand-written link with a % opens', async (
   } finally { await ctx.close(); }
 });
 
-step('a link pasted into Import with a full stop after it opens', async () => {
+step('a link pasted into Import with a full stop after it opens, and so does Claude\'s whole reply with JSON in it', async () => {
   const ctx = await context();
   try {
     const page = await open(ctx);
@@ -467,6 +467,14 @@ step('a link pasted into Import with a full stop after it opens', async () => {
     await page.click('#imgo');
     await page.waitForSelector('#rv-add');
     assert.equal(await page.inputValue('#rv input[data-f="title"]'), 'Middlemarch');
+    await page.click('#rvx');
+    await wait(450);
+    // Without code tools, Claude writes the JSON by hand, in a code block between two lines of its own.
+    await page.click('#importBtn');
+    await page.fill('#impaste', 'Here are the 2 books from the den:\n\n```json\n' + JSON.stringify({ shelfmark: 1, batch: { name: 'Den', books: [{ title: 'Walden', authors: ['Henry David Thoreau'] }, { title: 'Emma', authors: ['Jane Austen'] }] } }, null, 2) + '\n```\n\nPaste it into Shelfmark (Import › paste box).');
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await page.$$eval('#rv input[data-f="title"]', els => els.map(e => e.value)), ['Walden', 'Emma']);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

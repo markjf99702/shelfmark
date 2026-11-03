@@ -343,6 +343,21 @@ function randomDoc(r, n) {
     eq(got, 'Cien años de soledad', 'a pasted link opens ' + what);
   }
   eq((await S.parseIncoming(JSON.stringify({ books: [{ title: 'T', notes: 'from https://x/#s1zAAAA' }] }))).batch.books[0].notes, 'from https://x/#s1zAAAA', 'JSON that mentions a link is still read as JSON');
+  // Claude's whole reply pasted, as a phone copies a message: the JSON in a code block, with words around it.
+  const said = async t => { try { const r = await S.parseIncoming(t); return r.kind === 'details' ? 'details: ' + r.details.books.map(b => b.title).join(', ') : r.batch.books.map(b => b.title).join(', '); } catch (e) { return 'refused'; } };
+  const det = JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'b1', title: 'Walden', kind: 'nonfiction' }] } }, null, 1);
+  const pretty = JSON.stringify(JSON.parse(json), null, 2);
+  for (const [text, want, what] of [
+    ['```json\n' + pretty + '\n```', 'Cien años de soledad', 'JSON in a ```json code block'],
+    ['```\n' + pretty + '\n```', 'Cien años de soledad', 'JSON in a plain code block'],
+    ['Here are the 3 books from your hall shelf:\n\n```json\r\n' + pretty + '\r\n```\n\nPaste this into Shelfmark (Import › paste box).', 'Cien años de soledad', 'a line before the code block and one after'],
+    ['Here you go: ' + json, 'Cien años de soledad', '"Here you go:" and the JSON'],
+    ['Here you go: ' + json + ' Let me know if any are wrong.', 'Cien años de soledad', 'and with words after it too'],
+    ['The books: [{"title": "Walden"}, {"title": "Emma"}]', 'Walden, Emma', 'a bare list of books after a line of text'],
+    ['Reading details for your library:\n```json\n' + det + '\n```', 'details: Walden', 'reading details in a code block'],
+    ['Sorry, I can’t read {the spine} on the left, or [the one] beside it.', 'refused', 'words with braces in them, and no books'],
+    ['```json\n{"books": [{"title": "Unfinished"\n```', 'refused', 'a code block cut short'],
+  ]) eq(await said(text), want, 'a pasted reply opens: ' + what);
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
   // A spreadsheet export can't be read here; it's refused with a word on what to do instead.

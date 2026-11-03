@@ -139,7 +139,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **Cleaning:** every field is trimmed, clamped and mapped.
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
 - **Duplicates:** matched by ISBN, and by title and author surname.
-- **Links:** compressed, uncompressed, hand-written and pasted links all open.
+- **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).
 - **The skill's script:** its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
 - **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
