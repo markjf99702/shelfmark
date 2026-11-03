@@ -216,7 +216,8 @@ a{color:var(--accent)}
 /* the catalog card */
 .card-top{display:flex;gap:14px;align-items:flex-start;padding-bottom:14px;margin-bottom:14px;border-bottom:3px double var(--rule)}
 .card-tt{flex:1;min-width:0;display:grid;gap:8px}
-.card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px}
+/* the title is a box of one line that grows to show a long one whole */
+.card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px;min-height:0;resize:none;overflow:hidden;display:block}
 .flag{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:9px 11px;margin:0 0 14px;font-size:14px}
 .flag span{flex:1;min-width:12em}
 .flag.store{margin:16px 0 0}
@@ -1332,7 +1333,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
-      '<label class="fl"><span>Title</span><input class="ti" id="f-title" value="' + esc(b.title) + '" autocomplete="off"' + (isNew ? ' autofocus' : '') + '></label>' +
+      '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
       '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate several with commas" autocomplete="off"></label></div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
@@ -1423,10 +1424,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (JSON.stringify(now[k]) === was && JSON.stringify(cur[k]) !== was) { put(k, cur[k]); done.push(k); }
       });
       if (!done.length) return;
-      head(); drawState(); drawPicks();
+      head(); grow(); drawState(); drawPicks();
       var after = read(); done.forEach(function (k) { if (k in after) shown[k] = after[k]; else delete shown[k]; });
     }
     function later() { if (isNew || !panel.isConnected) return; clearTimeout(saveT); saveT = setTimeout(flush, 450); }
+    // The title box grows to show the whole title. A title is one line: Enter finishes it, and a line break pasted in
+    // becomes a space.
+    function grow() { var t = $('f-title'); t.style.height = 'auto'; t.style.height = t.scrollHeight + t.offsetHeight - t.clientHeight + 'px'; }
+    $('f-title').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); this.blur(); } });
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
       $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
@@ -1445,6 +1450,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('f-rdsum').textContent = [label(st.kind, KINDS), st.way === 'dip' || st.way === 'browse' ? label(st.way, WAYS) : '', label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
     }
     panel.addEventListener('input', function (e) {
+      if (e.target.id === 'f-title') { if (/[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' '); grow(); }
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
       if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
       if (e.target.id === 'f-tags') drawPicks();
@@ -1497,7 +1503,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy' + (dup.room ? ' in ' + dup.room : '') : 'Added “' + short(n.title) + '”');
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
-    head(); drawState();
+    head(); grow(); drawState();
     if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
   }
 

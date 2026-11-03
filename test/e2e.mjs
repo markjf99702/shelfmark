@@ -959,6 +959,32 @@ step('on a phone the small controls answer a tap around them, without looking an
   } finally { await ctx.close(); }
 });
 
+step('a long title shows whole in the card on a phone, and Enter there finishes it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const long = 'The Hudson Valley in the Age of Steam: Mills, Ferries and River Towns of the Nineteenth Century, Illustrated';
+    await seed(page, [{ id: 'T1', t: 1000, title: long, authors: ['Ann Lee'] }]);
+    await page.click('#list .bk[data-id="T1"]');
+    const shows = () => page.$eval('#f-title', e => [e.value, e.scrollHeight <= e.clientHeight + 1, e.scrollWidth <= e.clientWidth + 1]);
+    assert.deepEqual(await shows(), [long, true, true], 'the title is cut short');
+    await page.click('#f-title');
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type(', Volume 2');
+    await page.keyboard.press('Enter');
+    assert.notEqual(await page.evaluate(() => document.activeElement.id), 'f-title', 'Enter didn\'t finish the title');
+    assert.deepEqual(await shows(), [long + ', Volume 2', true, true]);
+    await page.click('#bkx');
+    assert.equal((await storedBook(page, 'T1')).title, long + ', Volume 2');
+    // A short title is one line, the height of the author field under it.
+    await page.click('#list .bk[data-id="T1"]');
+    await page.fill('#f-title', 'Emma');
+    const [t, a] = await page.evaluate(() => ['#f-title', '#f-authors'].map(q => Math.round(document.querySelector(q).getBoundingClientRect().height)));
+    assert.ok(t <= a + 2, 'a one-line title is ' + t + 'px tall, the author ' + a);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
