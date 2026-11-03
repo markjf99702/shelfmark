@@ -195,6 +195,8 @@ a{color:var(--accent)}
 .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
 .hd h2{margin:0;font:500 21px/1.2 var(--serif);flex:1;min-width:0}
 #sheetTitle{outline:none} /* focused as a sheet opens; it isn't something to press */
+/* Done, Close and the like answer a tap 44px tall, in a header no taller than before */
+.hd .btn{min-height:44px;margin:-7px 0}
 .hd .callno{flex:1;min-width:0;font:500 11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bd{padding:16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 /* a sheet with no footer (Settings, Import) ends clear of an iPhone's home indicator */
@@ -229,7 +231,8 @@ a{color:var(--accent)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
 .stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .stars{display:inline-flex;gap:0}
-.stars button{background:none;border:0;padding:2px 3px;font-size:23px;line-height:1;color:var(--line2)}
+/* each star answers a tap about 39px square; the negative margins keep them where they were */
+.stars button{background:none;border:0;padding:8px;margin:-6px -5px;font-size:23px;line-height:1;color:var(--line2)}
 .stars button.on{color:var(--brass)}
 .loan{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;align-items:end}
 #f-back{justify-self:start}
@@ -304,11 +307,11 @@ details.more .fs{padding:2px 12px 12px}
 .nx-sel{display:flex;gap:8px}
 .nx-sel select{flex:1 1 0;padding:6px 28px 6px 12px;font-size:16px;border-radius:999px}
 .nx-range{color:var(--ink2);letter-spacing:.04em}
-.nx-crit .opt{padding:0}
+.nx-crit .opt{padding:11px 0;margin:-11px 0}
 .nx-moods{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
 .nx-more{border-top:1px solid var(--line);padding-top:10px}
 .nx-more:first-child{border-top:0;padding-top:0}
-.nx-more>summary{cursor:pointer;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px}
+.nx-more>summary{cursor:pointer;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px;padding:12px 0;margin:-12px 0}
 .nx-more>summary::-webkit-details-marker{display:none}
 .nx-more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
 .nx-more[open]>summary::before{transform:rotate(45deg)}
@@ -357,7 +360,7 @@ details.more .fs{padding:2px 12px 12px}
 /* over a sheet, the toast sits just above the sheet's footer, clear of its heading and buttons (--above is how far the
    footer's top is from the bottom, set as the toast shows) */
 body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px)))}
-.toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:0;text-decoration:underline}
+.toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:12px 10px;margin:-12px -10px;text-decoration:underline}
 
 @media (max-width:720px){
   .top-in{gap:6px}

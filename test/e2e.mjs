@@ -917,6 +917,32 @@ step('on a phone To check is in view after a first batch, and the sideways rows 
   }
 });
 
+step('on a phone the small controls answer a tap around them, without looking any bigger', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, kind: 'fiction', moods: ['mysterious'], chapters: 'short', tags: ['sf'] }, { ...MIDDLEMARCH, kind: 'fiction', moods: ['reflective'], chapters: 'long', pages: 880 }]);
+    const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+    await page.click('#list .bk[data-id="b03"]');
+    for (const n of [1, 5]) { const [w, h] = await size('#f-rating button[data-v="' + n + '"]'); assert.ok(w >= 38 && h >= 38, 'star ' + n + ' is ' + w + 'x' + h); }
+    assert.ok((await size('#bkx'))[1] >= 44, 'Done at the top is ' + (await size('#bkx'))[1] + ' tall');
+    // Where the stars and the card's fields are drawn is the same as with the stars' and Done's old, tight boxes.
+    const look = () => page.evaluate(() => [...document.querySelectorAll('#f-rating button')].map(b => { const r = document.createRange(); r.selectNodeContents(b); const g = r.getBoundingClientRect(); return [g.left, g.top]; })
+      .concat([['#sheet .hd', '#f-title', '#f-room'].map(q => document.querySelector(q).getBoundingClientRect().bottom)]));
+    const now = await look(), tight = await page.addStyleTag({ content: '.stars button{padding:2px 3px!important;margin:0!important}.hd .btn{min-height:0!important;margin:0!important}' });
+    assert.deepEqual(now, await look(), 'the stars or the card moved');
+    await tight.evaluate(e => e.remove());
+    await page.click('#f-del');
+    assert.ok((await size('#toastBtn'))[1] >= 40, 'Undo is ' + (await size('#toastBtn'))[1] + ' tall');
+    assert.ok((await size('#toast'))[1] < 60, 'the toast grew');
+    await page.click('#toastBtn');
+    await page.click('#nextBtn');
+    assert.ok((await size('#nxMore > summary'))[1] >= 40, 'More choices is ' + (await size('#nxMore > summary'))[1] + ' tall');
+    assert.ok((await size('#nxCrit .opt'))[1] >= 40, 'Short chapters is ' + (await size('#nxCrit .opt'))[1] + ' tall');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
