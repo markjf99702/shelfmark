@@ -319,7 +319,7 @@ details.more .fs{padding:2px 12px 12px}
 }
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
 .nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin-top:2px}
+.nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin-top:2px;outline:none}
 .nx-t .s{color:var(--ink2);font-weight:400}
 .nx-why{margin:6px 0 6px;padding:0;list-style:none;display:grid;gap:5px}
 .nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
@@ -948,13 +948,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   // The notes under a pick (or under "Nothing matches all of these"), saying what the pick came from and what was left
-  // out, and why. lap: the deal is a repeat of books already shown.
+  // out, and why. again: every match has been shown, so this is a round of repeats.
   var LACKS = { moods: 'moods', genre: 'genre', pace: 'pace', short: 'chapter length' };
-  function nextNotes(deal, c, lap) {
+  function nextNotes(deal, c, again) {
     var n = [], some = deal.picks.length, one = function (k, a, b) { return k === 1 ? a : b; };
     if (some) {
       n.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (narrowed(c) ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
-      if (lap) n.push('You’ve seen every one, so these are repeats.');
+      if (again) n.push('Going round again: you’ve seen ' + (deal.pool === 2 ? 'both' : 'all ' + deal.pool) + '.');
       else if (c.lean === 'loved' && !deal.fans) n.push('None of them are by authors you’ve read yet, so this is a random pick.');
       else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) n.push('They were all added on the same day, so this is a random pick.');
     }
@@ -1763,7 +1763,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
   function nextSheet() {
-    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, lap = false, ask = '';
+    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, round = 0, ask = '';
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>');
@@ -1807,27 +1807,30 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       // A details element's toggle doesn't bubble, so it's listened for here, each time the choices are drawn.
       if ($('nxMore')) $('nxMore').addEventListener('toggle', function () { c.more = this.open; PREF.next = c; savePrefs(); });
     }
+    // Pick again works through every match before repeating one. A deal with nothing new starts a round of repeats
+    // (round counts them), and every deal from then on says so, until a choice changes.
     function dealNow() {
       deal = dealNext(live(DOC), c, Math.random, seen, Date.now()); top = 0;
-      lap = deal.picks.length > 0 && !deal.fresh;
-      if (lap) seen = {};
+      if (deal.picks.length && !deal.fresh) { round++; seen = {}; }
       deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
       drawOut();
     }
     function drawOut() {
       var o = $('nxOut'), p = deal.picks;
-      $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool < 2;
+      // With every match already showing, Pick again would only shuffle them.
+      $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool <= p.length;
+      $('nxAgain').title = p.length && deal.pool <= p.length ? 'These are all the books that match' : '';
       if (!p.length) {
         var any = onHand(live(DOC), c.reread, c.browse).length, favs = !c.reread && $('nxRe');
         o.innerHTML = '<div class="nx-none">' + (any
-          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, lap).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
+          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         if ($('nxClear')) $('nxClear').addEventListener('click', function () { Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' }); changed(); });
         return;
       }
       var t = p[top], b = t.b, dl = detailLine(b);
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
-        '<span class="nx-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
+        '<span class="nx-t" tabindex="-1">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
         (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
         (dl ? '<span class="nx-dl">' + esc(dl) + '</span>' : '') +
@@ -1839,9 +1842,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
             (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
-        '<p class="note">' + esc(nextNotes(deal, c, lap).join(' ')) + '</p>' + ask;
+        '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' + ask;
     }
-    function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
+    function changed() { PREF.next = c; savePrefs(); seen = {}; round = 0; drawCrit(); dealNow(); }
     // After Pick again, a pick drawn where little or none of it shows (More choices open, a small phone, the sheet
     // scrolled past it) is brought up to just under the heading, so the book that changed is in view. A tap on a choice
     // or on one of the others doesn't move the sheet: the person is still choosing there.
@@ -1869,7 +1872,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('nxOut').addEventListener('click', function (e) {
       if (e.target.closest('#nxBackup')) { backup(); return; }
+      // The one tapped becomes the pick, and the keyboard and screen readers go to its title (the button tapped is gone).
       var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut();
+      var t = $('nxOut').querySelector('.nx-t'); if (t) try { t.focus(); } catch (x) { }
     });
     $('nxx').addEventListener('click', closeSheet);
     $('nxAgain').addEventListener('click', function () { dealNow(); showPick(); });

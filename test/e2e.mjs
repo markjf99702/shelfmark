@@ -941,6 +941,7 @@ step('What to read next counts one match in the singular', async () => {
     assert.equal(await page.textContent('#nxOut .note'), 'From 1 unread book that matches. 1 book has no page count, so it only comes up under Any length.');
     await page.click('[data-len=""]');
     assert.equal(await page.textContent('#nxOut .note'), 'From 3 unread books on hand.');
+    assert.equal(await page.isDisabled('#nxAgain'), true, 'Pick again with every match already showing');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -968,6 +969,26 @@ step('What to read next offers only choices that can change something', async ()
     await page.click('#nextBtn');
     assert.deepEqual(await page.$$eval('#nxCrit [data-lean]', els => els.map(e => e.textContent)), ['Surprise me', 'Waiting longest', 'Newest arrivals', 'Favorite authors']);
     assert.equal(await page.locator('#nxCrit [data-len]').count(), 4);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Pick again says it\'s going round again on every repeat, and a tap on another book puts the keyboard on it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, ['Middlemarch', 'Walden', 'Persuasion', 'Ivanhoe', 'Emma'].map((title, i) => ({ id: 'g' + i, t: 1000, title, authors: ['Ann Lee'] })));
+    await page.click('#nextBtn');
+    const note = () => page.textContent('#nxOut > .note');
+    assert.doesNotMatch(await note(), /round again/);
+    await page.click('#nxAgain'); // the two not shown yet, and one again
+    assert.doesNotMatch(await note(), /round again/);
+    for (let k = 0; k < 3; k++) {
+      await page.click('#nxAgain');
+      assert.match(await note(), /Going round again: you’ve seen all 5\./, 'deal ' + (k + 3) + ' is a repeat and doesn\'t say so');
+    }
+    await page.click('.nx-alt >> nth=0');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.className), 'nx-t');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

@@ -521,7 +521,7 @@ function randomDoc(r, n) {
     eq(notes({ kind: 'poetry' }), '2 books without reading details are left out. Try fewer of them.', 'when the choices themselves rule out every book that has the details, it says to try fewer');
     eq(notes({ pace: 'fast' }, honest.filter(b => ['f5', 'u1', 'u2'].includes(b.id))), '3 books with no pace yet are left out.', 'but not when only missing details leave nothing');
     eq(notes({ len: 'long', room: 'Nowhere' }), 'Try fewer of them.', 'nothing left out for want of details: just try fewer');
-    eq(S.nextNotes(S.dealNext(honest, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), true), ['From 8 unread books on hand.', 'You’ve seen every one, so these are repeats.'], 'a repeat round says so');
+    eq(S.nextNotes(S.dealNext(honest, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), true), ['From 8 unread books on hand.', 'Going round again: you’ve seen all 8.'], 'a repeat round says so');
   }
 
   const batch = S.cleanBatch({ shelfmark: 1, batch: { id: 'c20260926-abc', name: 'Hall', room: 'Hall', books: [
