@@ -1739,7 +1739,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function rememberEmail() {
     api('GET', 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)').then(function (r) { return r.json(); }).then(function (j) {
       var g = readShared(), email = str(j && j.user && j.user.emailAddress, 200);
-      if (g && email && g.token === D.token) { g.email = email; try { localStorage.setItem(LSG, JSON.stringify(g)); } catch (e) { } }
+      if (g && email && g.token === D.token) { g.email = email; try { localStorage.setItem(LSG, JSON.stringify(g)); } catch (e) { } renderDrive(); }
     }).catch(function () { }); // only a convenience
   }
   function api(method, url, body, type) {
@@ -1854,6 +1854,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function renderDrive() {
     var s = $('driveSect'); if (!s) return;
+    var g = readShared(), email = g && g.email || '';
     var html = '<h3>Sync with Google Drive</h3>';
     if (!clientId()) {
       html += '<p>Drive sync isn’t set up on this copy of Shelfmark yet. It needs a Google Cloud OAuth client ID for this address (see the <a href="https://github.com/markjf99702/shelfmark#one-time-setup">README</a>). If you have one, paste it here.</p>' +
@@ -1866,7 +1867,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
         offline ? (D.last ? 'Last synced ' + esc(ago(D.last)) + '. ' : '') + 'You’re offline. Changes made here wait on this device and go to Drive when you’re back online.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
         // Offline, Google's sign-in script can't load either, which needs no second message.
         (D.err || gisErr && !offline ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') +
-        '<p>Your library is in <span class="drivepath">My Drive › Shelfmark › Shelfmark library.json</span>. Drive keeps its earlier versions for 30 days (right-click it › File information › Manage versions).</p>' +
+        // The account it saves to, from the email kept with the sign-in, for anyone with more than one Google account.
+        '<p>Your library is in ' + (email ? '<b>' + esc(email) + '</b>’s Google Drive:' : 'your Google Drive:') + '</p><p><span class="drivepath">My Drive › Shelfmark › Shelfmark library.json</span></p>' +
+        // Google Drive Help, "Check activity & file versions": a version may be deleted after 30 days or once there
+        // are 100 newer ones, and Shelfmark writes the file a few seconds after each change.
+        '<p>Drive keeps its earlier versions for 30 days, and only the last 100 (right-click it › File information › Manage versions).</p>' +
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }
     s.innerHTML = html;

@@ -985,6 +985,8 @@ step('signing back in after the hour goes straight to the same Google account', 
     await page.click('#dvGo');
     await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('junkdrawer.google') || '{}').email === 'mark@gmail.com'), 'the account\'s email to be kept with the sign-in');
     assert.ok(g.calls.some(c => c.startsWith('GET /drive/v3/about')), 'the email wasn\'t asked of Drive');
+    await until(() => page.evaluate(() => /Your library is in mark@gmail\.com’s Google Drive:/.test(document.getElementById('driveSect').textContent)), 'Settings to say which account it saves to', 5000);
+    assert.match(await page.textContent('#driveSect'), /Drive keeps its earlier versions for 30 days, and only the last 100/);
     await page.click('#stx');
     // An hour on, Google's sign-in has run out.
     await page.evaluate(() => {

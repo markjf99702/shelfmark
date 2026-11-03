@@ -45,7 +45,7 @@
 
 The [privacy page](https://shelfmark.junkdrawer.works/privacy.html) (`privacy.html`) says this for anyone using it. Your catalog is kept in this browser's local storage and, if you turn on sync, in one file in your own Google Drive. Nothing else stores it: this site is static files, and links from Claude carry their books in the part of the address after `#`, which browsers never send to a server.
 
-Shelfmark asks Google for the narrowest Drive permission there is (`drive.file`). It can see and change only files it made itself, which is one folder, `Shelfmark`, holding `Shelfmark library.json`. It can't see anything else in your Drive. After you sign in it asks Drive for your account's email address, which stays in your browser with the sign-in so that signing back in skips Google's account chooser.
+Shelfmark asks Google for the narrowest Drive permission there is (`drive.file`). It can see and change only files it made itself, which is one folder, `Shelfmark`, holding `Shelfmark library.json`. It can't see anything else in your Drive. After you sign in it asks Drive for your account's email address, which stays in your browser with the sign-in, so that Settings can show which account it saves to and signing back in skips Google's account chooser. Google's sign-in script loads from accounts.google.com when Settings opens (and whenever the page opens with sync on), so that Connect works on the first tap.
 
 ## Sync across devices with Google Drive
 
@@ -64,7 +64,7 @@ Google signs a page like this out after an hour. When that happens the sync butt
 
 The sign-in is kept for the hour under `junkdrawer.google` in localStorage, the same way as the other junkdrawer.works projects, with your account's email address (read from Drive's `about` endpoint after you sign in), so signing back in skips Google's account chooser. Shelfmark has its own address, so it signs in on its own. **Disconnect this device** only stops syncing here; it doesn't revoke Google's permission, which would sign every project out. **Erase this device's copy** removes the sign-in and the email address along with the library, so connecting again on that device asks Google first. To take the permission back, remove junkdrawer.works under Third-party apps & services in your Google Account.
 
-Drive keeps earlier versions of the library file for 30 days (**File information › Manage versions** in Drive). If the file is ever damaged, Shelfmark leaves it alone rather than overwrite it, and says so.
+Drive keeps earlier versions of the library file for 30 days, and only the last 100 (**File information › Manage versions** in Drive). That's from Google's help page [Check activity & file versions](https://support.google.com/drive/answer/2409045): "A version might be permanently deleted after 30 days or if there are 100 newer versions." Shelfmark writes the file a few seconds after each change, so a busy day can use up the 100; download a backup to keep a copy for good. If the file is ever damaged, Shelfmark leaves it alone rather than overwrite it, and says so.
 
 ### One-time setup
 
