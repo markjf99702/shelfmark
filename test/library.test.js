@@ -718,6 +718,10 @@ function randomDoc(r, n) {
   check(csv.includes('"Zed, ""the"" book"') && csv.includes('"line one\nline two"'), 'commas, quotes and line breaks are quoted');
   check(!csv.includes(',c,'), 'removed books are left out');
   eq(S.csvCell('-5'), '-5', 'plain negative numbers are left alone');
+  // OWASP's CSV Injection page (community.owasp.org/attacks/CSV_Injection) lists = + - @, tab, carriage return and line
+  // feed, and their full-width forms, as the starts of a cell to defuse.
+  eq(['- signed on the title page', '-2+3', '-5.5', '＝1+1', '＋1', '－1', '＠SUM(A1)', '\nx', '\tx', '@x'].map(S.csvCell),
+    ["'- signed on the title page", "'-2+3", '-5.5', "'＝1+1", "'＋1", "'－1", "'＠SUM(A1)", '"\'\nx"', "'\tx", "'@x"], 'a cell starting with a dash, a line break or a full-width = + - @ is defused too, a plain number isn’t');
 
   console.log(failed ? `\n${failed} failed, ${passed} passed` : `All ${passed} checks passed`);
   process.exit(failed ? 1 : 0);

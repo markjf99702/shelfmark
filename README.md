@@ -38,7 +38,7 @@
   - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
   - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
-- **Backups.** Download the whole library as a file, open it on any device (it merges, after saying how many books it would add, change or remove), or download a spreadsheet (CSV).
+- **Backups.** Download the whole library as a file, and open it on any device (it merges, after saying how many books it would add, change or remove). There's a spreadsheet (CSV) too, to read or print; it doesn't open back in Shelfmark.
 - No account and no server. Your catalog stays in your browser, and in your Google Drive if you turn on sync. It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; covers and looking up a book's details need a signal.
 
 ## Your data
@@ -142,7 +142,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).
 - **The skill's script:** it reads numbers as printed ("2 vols, 880", "2nd ed. 1999"), yes or no, authors and tags just as the page does, its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
-- **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
+- **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas (those starting with = + - @, a tab or a line break, or a full-width ＝ ＋ － ＠, as OWASP's CSV Injection page lists them), leaving plain numbers alone.
 - **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
 - **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, or else every copy with its ISBN or title and author (two translations each get their own), count each book once, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.
 

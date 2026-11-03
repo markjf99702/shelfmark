@@ -744,9 +744,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // ---------- spreadsheet export ----------
   var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
     'kind', 'genres', 'moods', 'pace', 'chapters', 'how_read', 'blurb'];
+  // A cell a spreadsheet could run as a formula gets a ' in front. OWASP's CSV Injection page lists the starts to defuse:
+  // = + - @, tab, carriage return and line feed, and the full-width ＝ ＋ － ＠. A plain number ("-5") is left alone.
   function csvCell(v) {
     v = v == null ? '' : String(v);
-    if (/^[=+@\t\r]/.test(v)) v = "'" + v;
+    if (/^[=+\-@\t\r\n＝＋－＠]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v)) v = "'" + v;
     return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }
   function toCsv(d) {
@@ -1773,7 +1775,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<section class="sect" id="driveSect"></section>' +
       '<section class="sect"><h3>Covers and details from Open Library</h3>' +
       '<label class="opt"><input type="checkbox" id="stLook"' + (PREF.lookups ? ' checked' : '') + '><span>Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
-      '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device.</p>' +
+      '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device. The spreadsheet is to read or print; it doesn’t open back in Shelfmark.</p>' +
       '<div class="row"><button class="btn" type="button" id="stDl">Download a backup</button><button class="btn" type="button" id="stCsv">Download a spreadsheet (CSV)</button><button class="btn" type="button" id="stOpen">Open a file…</button></div></section>' +
       '<section class="sect"><h3>This device</h3><p id="stEraseNote"></p>' +
       '<div class="row"><button class="btn danger" type="button" id="stErase">Erase this device’s copy</button></div></section></div>');
