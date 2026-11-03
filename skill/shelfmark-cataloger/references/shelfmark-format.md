@@ -26,21 +26,22 @@ Each book:
 | Field | Meaning |
 |---|---|
 | `title` | Required. Up to 300 characters |
-| `sub` | Subtitle |
-| `authors` | List of names as printed, up to 12 |
+| `sub` | Subtitle, up to 300 characters |
+| `authors` | List of names as printed, up to 12, each up to 120 characters |
 | `isbn` | ISBN-10 or ISBN-13, any punctuation. Shelfmark stores valid ones as ISBN-13; given several ("0618260307, 9780618260300"), it keeps the first valid one |
-| `publisher`, `year`, `pages` | As printed. A year is read as its first four-digit number ("1937–40" is 1937, "2nd ed. 1999" is 1999) and a page count as its largest number ("2 vols, 880" is 880, "1,024" is 1024) |
+| `publisher`, `year`, `pages` | As printed: the publisher up to 120 characters, the year 0–2200, pages 0–50,000. A year is read as its first four-digit number ("1937–40" is 1937, "2nd ed. 1999" is 1999) and a page count as its largest number ("2 vols, 880" is 880, "1,024" is 1024) |
 | `format` | `hardcover`, `paperback`, `mass-market`, `board`, `leather`, `other` |
-| `edition` | Free text: "2nd printing", "book club edition" |
-| `signed`, `first` | `true` for a signed copy / a first edition |
+| `edition` | Free text, up to 120 characters: "2nd printing", "book club edition" |
+| `signed`, `first` | `true` for a signed copy / a first edition. `"yes"` and `1` count too; anything else, `"no"` and `"false"` included, is no |
 | `condition` | `fine`, `very-good`, `good`, `fair`, `poor` |
 | `room`, `shelf` | Free text, up to 60 characters each |
 | `status` | `unread` (the default), `reading`, `read` |
-| `rating` | 1–5 |
-| `loan` | `{"to": "Sam", "since": "2026-09-01"}`: lent out, with an optional ISO date |
-| `tags` | List of short labels |
-| `notes` | Free text, line breaks kept |
-| `unsure` | What to double-check, in a few words. Shows as "Check" in Shelfmark |
+| `rating` | 1–5. A half star rounds up: 4.5 is 5 |
+| `loan` | `{"to": "Sam", "since": "2026-09-01"}`: lent out, the borrower up to 80 characters, with an optional ISO date |
+| `tags` | List of short labels, up to 20, each up to 40 characters |
+| `notes` | Free text, line breaks kept, up to 4,000 characters |
+| `added` | The day it joined the library, `YYYY-MM-DD`. Left out, it's the day the books are added in Shelfmark |
+| `unsure` | What to double-check, in a few words, up to 300 characters. Shows as "Check" in Shelfmark |
 | `kind` | `fiction`, `nonfiction`, `poetry` |
 | `genres` | Up to 4, main one first: `literary`, `classics`, `historical-fiction`, `mystery`, `thriller`, `sf`, `fantasy`, `romance`, `horror`, `short-stories`, `humor`, `comics`, `ya`, `children`, `history`, `biography` (and memoir), `politics`, `economics`, `philosophy`, `science`, `nature` (and gardening), `travel`, `art` (and design, fashion), `food` (and drink), `business`, `self-help`, `society` (and culture), `religion`, `sports`, `true-crime`, `reference` |
 | `moods` | Up to 4, the feel of reading it: `adventurous`, `challenging`, `dark`, `emotional`, `funny`, `hopeful`, `informative`, `inspiring`, `lighthearted`, `mysterious`, `reflective`, `relaxing`, `sad`, `tense` |
@@ -49,7 +50,7 @@ Each book:
 | `way` | `through` (read cover to cover), `dip` (dip in and out: poems, stories, essays, short pieces), `browse` (cookbooks, picture and art books, guides, reference). What to read next leaves out `browse` books unless asked |
 | `blurb` | One line about the book, no spoilers. Up to 300 characters; aim for under 150 |
 
-Shelfmark ignores fields it doesn't know, trims text to the limits above, and drops values that don't fit (an unknown format, a rating of 9), so a slip degrades quietly. Get titles and ISBNs right.
+Shelfmark ignores fields it doesn't know, cuts text to the limits above, brings a number into its range (a rating of 9 is 5), and drops a value that doesn't fit (an unknown format or mood), so a slip degrades quietly. Get titles and ISBNs right.
 
 ## Reading details (for books already in the library)
 

@@ -513,6 +513,9 @@ def build_details(doc, warn):
         e = {'id': bid, 'title': title, 'authors': names(b.get('authors') or b.get('author') or []), 'isbn': first_isbn(s(b.get('isbn'), 200)),
              'pages': whole(b.get('pages'), 0, 50000, 'most')}
         e.update(reading(b, title or bid, warn))
+        if e.get('way') == 'browse' and e.get('chapters'):  # a book to browse isn't read chapter by chapter
+            warn.append(f'“{title or bid}”: chapters left off, since it’s a book to browse')
+            e['chapters'] = ''
         e = {k: v for k, v in e.items() if v not in ('', 0, None, [])}
         if not any(k in e for k in DETAIL_KEYS + ('pages',)):
             warn.append(f'“{title or bid}”: no reading details, left out')

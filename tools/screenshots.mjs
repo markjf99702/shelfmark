@@ -63,7 +63,7 @@ const DETAILS = {
   'Gilead': ['fiction', 'literary', 'reflective hopeful', 'slow', 'short', 'An old preacher in 1950s Iowa writes a long letter to his young son.'],
   'The Hobbit': ['fiction', 'fantasy', 'adventurous lighthearted', 'medium', 'medium', 'A comfortable hobbit is swept off on a quest to win back a dragon’s hoard.'],
   'The Count of Monte Cristo': ['fiction', 'classics', 'adventurous tense', 'medium', 'medium', 'A wronged sailor escapes prison, finds a fortune and takes his revenge.'],
-  'Dune': ['fiction', 'sf classics', 'adventurous challenging', 'medium', 'medium', 'A desert planet, the spice everyone wants, and a young duke who may be its messiah.'],
+  'Dune': ['fiction', 'sf classics', 'adventurous challenging', 'medium', 'medium', 'A desert planet, the spice everyone wants, and a duke’s young heir who may be its messiah.'],
   'Moby-Dick': ['fiction', 'classics', 'adventurous challenging', 'slow', 'short', 'Captain Ahab hunts the white whale that took his leg.'],
   'Beloved': ['fiction', 'literary', 'dark emotional', 'slow', 'medium', 'A woman who escaped slavery is haunted by the daughter she lost.'],
   'Piranesi': ['fiction', 'fantasy', 'mysterious reflective', 'medium', 'short', 'A man keeps a journal in an endless house of statues and tides.'],

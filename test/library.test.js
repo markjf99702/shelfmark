@@ -686,7 +686,7 @@ function randomDoc(r, n) {
       const detIn = path.join(tmp, 'details.json');
       fs.writeFileSync(detIn, JSON.stringify({ name: 'Reading details', books: [
         { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Spice, sand and a prophecy.', pages: 612 },
-        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: 'cooking', way: 'browse' },
+        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: 'cooking', way: 'browse', chapters: 'short' },
         { title: 'Nothing to say' }
       ] }));
       const detSaid = execFileSync('python3', [py, detIn, '--details', '--out', tmp], { encoding: 'utf8' });
@@ -697,6 +697,7 @@ function randomDoc(r, n) {
         { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: ['food'], way: 'browse' }
       ], 'every detail comes through, with words mapped onto Shelfmark’s');
       check(/mood “bogus” isn’t one Shelfmark knows/.test(detSaid) && /“Nothing to say”: no reading details, left out/.test(detSaid), 'and the script says what it left off');
+      check(/“Salt Fat Acid Heat”: chapters left off, since it’s a book to browse/.test(detSaid), 'including chapters for a book to browse, which SKILL.md says to leave out');
       const withDet = execFileSync('python3', [py, detIn, '--out', tmp, '--no-link'], { encoding: 'utf8' });
       const newBooks = (await S.parseIncoming(fs.readFileSync(path.join(tmp, fs.readdirSync(tmp).find(f => /^reading-details-\d{4}-\d\d-\d\d\.shelfmark\.json$/.test(f))), 'utf8'))).batch.books;
       eq([newBooks[0].genres, newBooks[1].way], [['sf', 'classics'], 'browse'], 'a batch of new books carries reading details too');

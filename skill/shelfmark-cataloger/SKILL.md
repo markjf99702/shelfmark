@@ -63,13 +63,14 @@ Every field but `title` is optional. The full list is in `references/shelfmark-f
 - `isbn`, `publisher`, `year`, `pages`.
 - `format`: hardcover, paperback, mass-market, board, leather or other.
 - `edition`: text such as "2nd printing".
-- `signed`, `first`: first edition, true or false.
+- `signed` (a signed copy) and `first` (a first edition): true or false.
 - `condition`: fine, very good, good, fair or poor.
 - `room`, `shelf`.
 - `status`: unread, reading or read.
 - `rating`: 1–5.
 - `loan`: `{"to", "since"}`.
 - `tags`, `notes`.
+- `added`: the day it joined the library (YYYY-MM-DD), only if they tell you; otherwise it's the day they add it.
 - `unsure`.
 - Reading details (`kind`, `genres`, `moods`, `pace`, `chapters`, `way`, `blurb`), only for books you know well: see **Reading details** below.
 
@@ -108,7 +109,7 @@ If a Google Drive connector is available and they ask about their collection ("d
 2. Download it, and parse the JSON: `{"shelfmark": 1, "library": {"books": {id: book}, "seen": {…}}}`.
 3. Ignore books with `"del": 1`; they were removed.
 
-Book fields are as above, plus `added` (date) and `check` (an unresolved flag). **Only read this file; never write, move or rename it.** Shelfmark syncs it and manages it. New books go in through a link. Changes to existing books (marking one read, recording a loan) are made in Shelfmark itself.
+Book fields are as above, plus `check` (an unresolved flag). **Only read this file; never write, move or rename it.** Shelfmark syncs it and manages it. New books go in through a link. Changes to existing books (marking one read, recording a loan) are made in Shelfmark itself.
 
 ## Reading details
 
@@ -126,7 +127,7 @@ python3 scripts/make_shelfmark.py details.json --details --out /mnt/user-data/ou
 {"name": "Reading details", "books": [
   {"id": "b7q2x9m1kd", "title": "Dune", "authors": ["Frank Herbert"], "kind": "fiction", "genres": ["sf", "classics"],
    "moods": ["adventurous", "challenging"], "pace": "medium", "chapters": "medium", "way": "through", "pages": 600,
-   "blurb": "A desert planet, the spice everyone wants, and a young duke who may be its messiah."},
+   "blurb": "A desert planet, the spice everyone wants, and a duke's young heir who may be its messiah."},
   {"id": "b3n8r5t0pa", "title": "Salt Fat Acid Heat", "authors": ["Samin Nosrat"], "kind": "nonfiction", "genres": ["food"],
    "moods": ["informative"], "way": "browse", "blurb": "How four elements make food taste good, with recipes to practise them."}
 ]}
