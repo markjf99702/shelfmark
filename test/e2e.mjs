@@ -497,6 +497,22 @@ step('a spreadsheet export, pasted or opened, says to send it to Claude', async 
   } finally { await ctx.close(); }
 });
 
+step('a long list draws rows out of sight only as they come near, and the last one still opens and takes focus back', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, Array.from({ length: 150 }, (_, i) => ({ id: 'n' + i, t: 1000 + i, title: 'Book number ' + (i + 1), authors: ['Ann Lee'], added: '2026-10-01' })));
+    // (Find-in-page can't be tried here: headless Chromium's window.find finds nothing, even on screen.)
+    assert.equal(await page.$eval('#list .bk', e => getComputedStyle(e).contentVisibility), 'auto');
+    const last = page.locator('#list .bk >> nth=-1');
+    await last.click();
+    assert.equal(await sheetOpen(page), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.id), await last.getAttribute('data-id'), 'focus didn\'t come back to the row');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('search finds a book by the ISBN printed on it', async () => {
   const ctx = await context();
   try {

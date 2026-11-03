@@ -142,6 +142,9 @@ a{color:var(--accent)}
 .grp .n{color:var(--ink3)}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
 .bk:hover{border-color:var(--line2)}
+/* rows out of sight aren't laid out until they come near, so a long list redraws quickly on a slow phone; each keeps
+   the height it last had (about a row's to begin with), and find-in-page still finds them */
+.bk{content-visibility:auto;contain-intrinsic-size:auto 92px}
 .bk-tx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;padding-top:1px}
 .bk-t{font:500 17px/1.22 var(--serif);color:var(--ink);overflow-wrap:anywhere}
 .bk-t .s{color:var(--ink2);font-weight:400}
@@ -264,6 +267,7 @@ details.more .fs{padding:2px 12px 12px}
 .bulk .two{margin-top:6px}
 .rv{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
+.rv li{content-visibility:auto;contain-intrinsic-size:auto 100px}
 .rv li.off{background:var(--surface2)}
 .rv li.off .rv-main{opacity:.62}
 /* reading details from Claude */
