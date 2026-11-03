@@ -143,7 +143,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **The skill's script:** its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas.
 - **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
-- **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, ISBN or title and author, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.
+- **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, or else every copy with its ISBN or title and author (two translations each get their own), count each book once, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.
 
 ### Files
 

@@ -638,16 +638,34 @@ body.locked .toast.show{transform:translate(-50%,0)}
     });
     return { id: str(d.id, 80).replace(/[^\w.-]/g, '') || 'd' + hash(JSON.stringify(books)).toString(36), name: str(d.name, 120), books: books, more: Math.max(0, d.books.length - BATCH_MAX) };
   }
-  // The books each entry is for: the book with its id, or else every copy with the same ISBN, or title and author.
+  // The books each entry is for: the book with its id, or else every copy with the same ISBN or the same title and
+  // author's surname. A book another entry names by id is left to that entry, and when the copies found have different
+  // authors (two translations), the ones with all the entry's authors are taken, if any are.
   function matchDetails(doc, det) {
-    var ix = {};
+    var ix = {}, named = {};
+    function own(e) { var b = e.id && doc.books[e.id]; return b && !b.del ? b : null; }
     live(doc).forEach(function (b) { dupKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
+    det.books.forEach(function (e) { var b = own(e); if (b) named[b.id] = 1; });
     return det.books.map(function (e) {
-      var own = e.id && doc.books[e.id], hit = null, k = e.title ? dupKeys(e) : [];
-      if (own && !own.del) return { e: e, bs: [own] };
-      for (var i = 0; i < k.length && !hit; i++) hit = ix[k[i]];
-      return { e: e, bs: hit || [] };
+      var b = own(e), bs = [], seen = {};
+      if (b) return { e: e, bs: [b] };
+      (e.title ? dupKeys(e) : []).forEach(function (k) { (ix[k] || []).forEach(function (x) { if (!seen[x.id] && !named[x.id]) { seen[x.id] = 1; bs.push(x); } }); });
+      var same = bs.filter(function (x) { return authorsKey(x) === authorsKey(e); });
+      return { e: e, bs: bs.length > 1 && same.length ? same : bs };
     });
+  }
+  function authorsKey(b) { return (b.authors || []).map(authorKey).sort().join('|'); }
+  // What a details link would change: each book it finds, with every entry for it put in, in order. A book two entries
+  // find (two copies, both matched by title and author) counts once. {id: the book as it would be}.
+  function detailChanges(doc, rows, replace) {
+    var out = {};
+    rows.forEach(function (r) {
+      r.bs.forEach(function (b) {
+        var cur = out[b.id] || doc.books[b.id], x = cur && !cur.del && withDetails(cur, r.e, replace);
+        if (x) out[b.id] = x;
+      });
+    });
+    return out;
   }
   // A book with an entry's details put in, or null if nothing would change. Details fill blanks, or replace what the
   // book has when replace is set. A page count only fills a blank: the book's own is for the copy on the shelf.
@@ -1529,17 +1547,20 @@ body.locked .toast.show{transform:translate(-50%,0)}
       rows = matchDetails(DOC, det); found = rows.filter(function (r) { return r.bs.length; }); lost = rows.length - found.length;
       had = found.filter(function (r) { return r.bs.some(hasDetails); }).length;
     }
-    function changes() { var n = 0; found.forEach(function (r) { r.bs.forEach(function (b) { if (withDetails(DOC.books[b.id] || b, r.e, replace)) n++; }); }); return n; }
+    function changes() { return Object.keys(detailChanges(DOC, rows, replace)).length; }
     function head() {
       var seenAt = DOC.seen[det.id];
       return '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
         (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added these ' + esc(since(seenAt)) + '.</span></p>' : '');
     }
+    // A title that's here more than once says which copy each is: where it's shelved, or how many copies.
     function items() {
+      var twice = Object.create(null);
+      found.forEach(function (r) { var k = fold(r.bs[0].title); twice[k] = k in twice; });
       return found.map(function (r) {
-        var b = r.bs[0], e = r.e;
-        return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (byLine(b) ? '<span class="rv-by">' + esc(byLine(b)) + (r.bs.length > 1 ? ' · ' + r.bs.length + ' copies' : '') + '</span>' : '') +
+        var b = r.bs[0], e = r.e, by = [byLine(b), r.bs.length > 1 ? r.bs.length + ' copies' : twice[fold(b.title)] ? where(b) : ''].filter(Boolean).join(' · ');
+        return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (by ? '<span class="rv-by">' + esc(by) + '</span>' : '') +
           (detailLine(e) ? '<span class="rv-det">' + esc(detailLine(e)) + (e.pages && !b.pages ? ' · ' + plural(e.pages, 'page') : '') + '</span>' : '') +
           (e.blurb ? '<span class="rv-blurb">' + esc(e.blurb) + '</span>' : '') + '</div></li>';
       }).join('') +
@@ -1569,15 +1590,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('dtx').addEventListener('click', closeSheet);
     $('dtRe').addEventListener('change', function () { replace = this.checked; count(); });
     $('dtgo').addEventListener('click', function () {
-      var now = Date.now(), n = 0;
-      check();
-      found.forEach(function (r) {
-        r.bs.forEach(function (b) {
-          var cur = DOC.books[b.id], x = cur && !cur.del && withDetails(cur, r.e, replace);
-          if (!x) return;
-          x = cleanBook(stamp(x, cur)); if (x) { DOC.books[x.id] = x; n++; }
-        });
-      });
+      var now = Date.now(), n = 0, ch;
+      check(); ch = detailChanges(DOC, rows, replace);
+      Object.keys(ch).forEach(function (id) { var x = cleanBook(stamp(ch[id], DOC.books[id])); if (x) { DOC.books[x.id] = x; n++; } });
       if (!n) return;
       DOC.seen[det.id] = DOC.seen[det.id] || now;
       var saved = persist(); closeSheet(); render();

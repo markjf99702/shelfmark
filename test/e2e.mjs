@@ -1308,25 +1308,29 @@ step('a details link fills in reading details, and a book\'s card shows and chan
   const ctx = await context();
   try {
     const page = await open(ctx);
-    await seed(page, [PIRANESI, MIDDLEMARCH, { ...CRADLE, kind: 'fiction', moods: ['funny'] }]);
+    // Two copies of Middlemarch, one named by id and one found by its title and author.
+    await seed(page, [PIRANESI, MIDDLEMARCH, { ...CRADLE, kind: 'fiction', moods: ['funny'] }, { ...MIDDLEMARCH, id: 'b06', room: 'Study', shelf: 'Desk' }]);
     await page.goto(detailsLink([
       { id: 'b03', title: 'Piranesi', authors: ['Susanna Clarke'], kind: 'fiction', genres: ['fantasy'], moods: ['mysterious', 'reflective'], pace: 'medium', chapters: 'short', way: 'through', pages: 272, blurb: 'A man keeps a journal in an endless house of statues and tides.' },
       { id: 'zz', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'], moods: ['reflective'], pace: 'slow' },
       { id: 'b05', title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'], kind: 'fiction', moods: ['dark'], genres: ['sf'] },
       { id: 'b99', title: 'A Book Not Here', authors: ['Nobody'], kind: 'poetry' },
+      { id: 'b06', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics', 'romance'], pace: 'slow' },
     ]));
     await page.waitForSelector('#dtgo');
-    assert.equal(await page.textContent('.lede'), 'Reading details · 4 books · 1 not in your library');
-    assert.equal(await page.textContent('#dtgo'), 'Add details to 3 books');
+    assert.equal(await page.textContent('.lede'), 'Reading details · 5 books · 1 not in your library');
+    assert.equal(await page.textContent('#dtgo'), 'Add details to 4 books');
     assert.match(await page.textContent('.rv.dt'), /Fiction · Fantasy · Mysterious, reflective · Medium pace · Short chapters · 272 pages/);
+    assert.deepEqual(await page.$$eval('.rv.dt .rv-by', els => els.map(e => e.textContent)), ['Susanna Clarke', 'George Eliot · Den', 'Kurt Vonnegut, Jr.', 'George Eliot · Study › Desk'], 'two Middlemarch rows don\'t say which copy each is');
     await page.check('#dtRe');
-    assert.equal(await page.textContent('#dtgo'), 'Add details to 3 books', 'replacing changes Cat’s Cradle’s mood too, still three books');
+    assert.equal(await page.textContent('#dtgo'), 'Add details to 4 books', 'replacing changes Cat’s Cradle’s mood too, still four books');
     await page.uncheck('#dtRe');
     await page.click('#dtgo');
-    assert.match(await page.textContent('#toastTx'), /Added reading details to 3 books/);
-    const p = await storedBook(page, 'b03'), m = await storedBook(page, 'b04'), c = await storedBook(page, 'b05');
+    assert.match(await page.textContent('#toastTx'), /Added reading details to 4 books/);
+    const p = await storedBook(page, 'b03'), m = await storedBook(page, 'b04'), c = await storedBook(page, 'b05'), m2 = await storedBook(page, 'b06');
     assert.deepEqual([p.kind, p.genres, p.moods, p.chapters, p.pages, p.room, p.notes], ['fiction', ['fantasy'], ['mysterious', 'reflective'], 'short', 272, 'Hall', 'Sam says start here']);
-    assert.deepEqual([m.genres, m.pace], [['classics'], 'slow'], 'Middlemarch was found by its title and author');
+    assert.deepEqual([m.genres, m.pace, m.moods], [['classics'], 'slow', ['reflective']], 'Middlemarch was found by its title and author');
+    assert.deepEqual([m2.genres, m2.moods], [['classics', 'romance'], undefined], 'the copy named by id got the other entry\'s details too');
     assert.deepEqual([c.moods, c.genres], [['funny'], ['sf']], 'Cat’s Cradle kept its own mood and gained a genre');
 
     // The book's card shows them, and a change there is saved.

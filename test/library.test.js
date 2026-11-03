@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -240,7 +240,7 @@ function randomDoc(r, n) {
     ] } });
     eq([det.id, det.name, det.books.length], ['d1', 'Reading details', 5], 'details keep entries that say something and name a book');
     const m = S.matchDetails(lib, det);
-    eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a1', 'a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy), and a removed or unknown book by nothing');
+    eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy another entry doesn’t name by id), and a removed or unknown book by nothing');
     const a1 = S.withDetails(lib.books.a1, m[0].e, false);
     eq([a1.kind, a1.genres, a1.pages, a1.room], ['nonfiction', ['biography'], 448, 'Den'], 'details fill in a book, page count included, and leave the rest alone');
     const dune = S.withDetails(lib.books.c1, m[1].e, false);
@@ -248,6 +248,30 @@ function randomDoc(r, n) {
     const dune2 = S.withDetails(lib.books.c1, m[1].e, true);
     eq([dune2.moods, dune2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
     eq(S.withDetails(Object.assign({}, lib.books.c1, { genres: ['sf'] }), m[1].e, false), null, 'nothing new → no change');
+    // Entries whose ids aren't in this library (made from another copy of it, or from an older backup) find books by
+    // ISBN and by title and author both, and so every copy.
+    const matched = (books, entries) => S.matchDetails(S.cleanDoc({ books }), S.cleanDetails({ details: { books: entries } })).map(r => r.bs.map(b => b.id));
+    const dunes = [{ id: 'd1', t: 1, title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593' }, { id: 'd2', t: 1, title: 'Dune', authors: ['Frank Herbert'] }];
+    eq(matched(dunes, [{ id: 'old', title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593', kind: 'fiction' }]), [['d1', 'd2']], 'an entry with an ISBN finds the copy without one too');
+    eq(matched(dunes, [{ title: 'Dune', authors: ['Frank Herbert'], kind: 'fiction' }]), [['d1', 'd2']], 'as an entry without one does');
+    // Two translations: the same title and first author, but each entry is for one of them.
+    const republics = [{ id: 'r1', t: 1, title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], room: 'Den' }, { id: 'r2', t: 1, title: 'The Republic', authors: ['Plato', 'Allan Bloom'], room: 'Study' }];
+    const tr = S.cleanDetails({ details: { books: [
+      { id: 'x1', title: 'The Republic', authors: ['Plato', 'F.M. Cornford'], blurb: 'Plato’s dialogue on justice, in Cornford’s translation.', pages: 360 },
+      { id: 'x2', title: 'The Republic', authors: ['Plato', 'Allan Bloom'], blurb: 'Plato’s dialogue on justice, in Bloom’s literal translation.', pages: 490 }] } });
+    const lib2 = S.cleanDoc({ books: republics }), tm = S.matchDetails(lib2, tr);
+    eq(tm.map(r => r.bs.map(b => b.id)), [['r1'], ['r2']], 'two translations each get the entry with their own translator');
+    const filled = S.detailChanges(lib2, tm, true);
+    eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Bloom/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
+    eq(matched(republics, [{ title: 'The Republic', authors: ['Plato'], kind: 'nonfiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
+    eq(matched(republics, [{ id: 'r1', title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }, { title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }]), [['r1'], ['r2']],
+      'a copy one entry names by id is left out of another entry’s title match');
+    // Two copies, two entries without ids: each entry finds both, and each book counts once.
+    const becomings = S.cleanDoc({ books: [{ id: 'a1', t: 1, title: 'Becoming', authors: ['Michelle Obama'] }, { id: 'a2', t: 1, title: 'Becoming', authors: ['Michelle Obama'] }] });
+    const twice = S.matchDetails(becomings, S.cleanDetails({ details: { books: [{ title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', pace: 'medium' }, { title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', pace: 'fast' }] } }));
+    eq(twice.map(r => r.bs.map(b => b.id)), [['a1', 'a2'], ['a1', 'a2']], 'two entries for a book with two copies find both');
+    eq([Object.keys(S.detailChanges(becomings, twice, false)).length, Object.keys(S.detailChanges(becomings, twice, true)).length], [2, 2], 'and change two books, not four');
+    eq(S.detailChanges(becomings, twice, false).a1.pace, 'medium', 'filling in, the first entry’s details stay');
     const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
     eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');

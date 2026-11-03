@@ -61,7 +61,7 @@ Shelfmark ignores fields it doesn't know, trims text to the limits above, and dr
   ]}}
 ```
 
-Each entry names its book by `id` (from the library file) and by `title`, `authors` and `isbn`: Shelfmark finds the book with that id, or else every copy with the same ISBN, or the same title and author's surname. It carries any of the reading-detail fields above, and `pages`. Opening it fills in only the details a book doesn't have yet (or replaces them, if the person ticks **Replace**), and a page count only where there is none; nothing else on the book changes. Up to 3,000 entries. `scripts/make_shelfmark.py --details` makes these, and travels in the same links (`#s1z…`).
+Each entry names its book by `id` (from the library file) and by `title`, `authors` and `isbn`: Shelfmark finds the book with that id, or else every copy with the same ISBN or the same title and author's surname, leaving out any copy another entry names by id. When those copies have different authors (two translations, each with its translator), it takes the ones whose authors match the entry's in full, so copy `authors` from the library file as they are. It carries any of the reading-detail fields above, and `pages`. Opening it fills in only the details a book doesn't have yet (or replaces them, if the person ticks **Replace**), and a page count only where there is none; nothing else on the book changes. Up to 3,000 entries. `scripts/make_shelfmark.py --details` makes these, and travels in the same links (`#s1z…`).
 
 ## Links
 
