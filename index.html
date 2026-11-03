@@ -762,6 +762,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- sorting and searching ----------
   var COLL = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  // What a book is sorted and searched by. Search looks in every field a person might type for: the text, the edition's
+  // details ("signed", "first edition", "hardcover"), the Check note, and the reading details in words.
   var KEYS = {};
   function keys(b) {
     var c = KEYS[b.id];
@@ -772,7 +774,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
       title: fold(b.title).replace(/^(the|a|an)\s+/, ''),
       author: a ? fold(surname(a) + ' ' + a) : '￿',
       hay: fold([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to,
-        label(b.kind, KINDS), labels(b.genres, GENRES).join(' '), labels(b.moods, MOODS).join(' '), b.blurb].join(' \u0001 '))
+        label(b.format, FORMATS), label(b.condition, CONDITIONS), b.signed ? 'signed' : '', b.first ? 'first edition' : '', b.check,
+        label(b.kind, KINDS), labels(b.genres, GENRES).join(' '), labels(b.moods, MOODS).join(' '), b.pace ? label(b.pace, PACES) + ' pace' : '',
+        b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', label(b.way, WAYS), b.blurb].join(' \u0001 '))
     };
     return c;
   }

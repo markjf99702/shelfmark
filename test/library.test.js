@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -119,6 +119,14 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
 eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');
 eq(S.searchWords('0261102214'), ['9780261102217'], 'and so does its ISBN-10');
 eq(S.searchWords('Hobbit 1937 9780261'), ['hobbit', '1937', '9780261'], 'other words and numbers are left as they are');
+{
+  // Search looks in every field a person might type for, the edition's details and the reading details included.
+  const finds = (b, q) => S.searchWords(q).every(w => S.keys(b).hay.includes(w));
+  const kept = S.cleanBook({ id: 's1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], format: 'hardcover', condition: 'very-good', signed: true, first: true, check: 'glare over the author', pace: 'slow', chapters: 'short', way: 'dip' });
+  const plain = S.cleanBook({ id: 's2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] });
+  eq(['signed', 'first edition', 'hardcover', 'very good', 'glare', 'slow pace', 'short chapters', 'dip'].map(q => finds(kept, q)), Array(8).fill(true), 'search finds a signed first edition, its format, condition, Check note, pace, chapters and how it reads');
+  eq(['signed', 'first edition', 'hardcover'].map(q => finds(plain, q)), [false, false, false], 'and doesn’t find them in a book without them');
+}
 
 // ---------- merging ----------
 function randomDoc(r, n) {

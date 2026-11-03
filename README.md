@@ -22,7 +22,7 @@
   - who you lent it to, and since when
   - tags and notes
   - edition details: signed, first edition, condition, printing
-- **Find things.** Search matches every field, borrowers included. Filters cover status, lent out, room and tag. Sort by author, title, shelf (grouped under each room and shelf), or newest first.
+- **Find things.** Search matches every field: borrowers, a book's Check note, its edition ("signed", "first edition", "hardcover") and its reading details ("slow pace", "short chapters") included. Filters cover status, lent out, room and tag. Sort by author, title, shelf (grouped under each room and shelf), or newest first.
 - **Add from photos.** Claude reads spines, covers, barcodes and copyright pages and makes a Shelfmark link. Opening it shows the list first. There you can:
   - fix titles and authors;
   - put the whole batch on one shelf;
