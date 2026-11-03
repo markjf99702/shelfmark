@@ -535,6 +535,55 @@ step('erasing with changes that haven\'t reached Drive says so before they\'re l
   } finally { await ctx.close(); }
 });
 
+step('a browser that won\'t let Shelfmark save says so, rather than saying the books were added', async () => {
+  const ctx = await context();
+  // As when the browser blocks site data: every save of Shelfmark's throws.
+  await ctx.addInitScript(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('shelfmark')) throw new DOMException('The operation is insecure.', 'SecurityError'); return set.call(this, k, v); };
+  });
+  try {
+    const page = await open(ctx, linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
+    await page.waitForSelector('#rv-add');
+    const blocked = /This browser isn’t letting Shelfmark save, so books added here will be gone when you close it\./;
+    assert.match(await page.textContent('#sheet .ft'), blocked, 'the review screen doesn\'t say the books won\'t be kept');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Not saved: this browser isn’t letting Shelfmark save. See the note at the top.');
+    assert.equal(await page.locator('#storeNote').isVisible(), true, 'no note above the list');
+    assert.match(await page.textContent('#storeNote'), blocked);
+    await wait(450);
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Walden');
+    await page.click('#f-add');
+    assert.match(await page.textContent('#toastTx'), /^Not saved/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('a browser out of room says so once, not with every save while typing', async () => {
+  const ctx = await context();
+  await ctx.addInitScript(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (window.__full && k === 'shelfmark.library') throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); return set.call(this, k, v); };
+  });
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    assert.equal(await page.locator('#storeNote').isVisible(), false);
+    await page.evaluate(() => {
+      window.__full = true; window.__toasts = [];
+      new MutationObserver(() => window.__toasts.push(document.getElementById('toastTx').textContent)).observe(document.getElementById('toastTx'), { childList: true, characterData: true, subtree: true });
+    });
+    await page.click('#list .bk[data-id="b03"]');
+    for (const word of ['One', ' two', ' three', ' four']) { await page.type('#f-notes', word); await wait(700); }
+    await page.click('#bkx2');
+    const room = await page.evaluate(() => window.__toasts.filter(t => /out of room/.test(t)).length);
+    assert.equal(room, 1, 'said it was out of room ' + room + ' times');
+    assert.match(await page.textContent('#storeNote'), /This browser is out of room/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {

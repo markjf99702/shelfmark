@@ -201,6 +201,8 @@ a{color:var(--accent)}
 .card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px}
 .flag{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:9px 11px;margin:0 0 14px;font-size:14px}
 .flag span{flex:1;min-width:12em}
+.flag.store{margin:16px 0 0}
+.ft .flag{flex-basis:100%;margin:0}
 .fs{display:grid;gap:12px}
 .fl{display:grid;gap:4px;min-width:0}
 .fl>span:first-child,.lbl{font:600 11.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
@@ -381,6 +383,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
 </header>
 <main class="wrap">
   <noscript><div class="empty"><h2>Shelfmark needs JavaScript to keep your catalog.</h2></div></noscript>
+  <p class="flag store" id="storeNote" hidden><span></span></p>
   <div class="tools" id="tools" hidden>
     <label class="search"><span class="sr">Search your library</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="q" type="search" placeholder="Search titles, authors, shelves, tags, borrowers…" autocomplete="off" spellcheck="false"></label>
     <div class="frow">
@@ -855,12 +858,33 @@ body.locked .toast.show{transform:translate(-50%,0)}
   var UI = { q: '', status: '', room: '', tag: '', sort: '' };
   var editSeq = 0, persistAsked = false;
 
+  // Whether this browser lets Shelfmark save: '' it does, 'blocked' when it keeps no site data for the page (blocked
+  // in its settings, say), 'full' when it's out of room. Tried once at the start, and again with every save. Either
+  // way a note stays above the list, and adding books says so instead of saying they were added.
+  var STORE = '', fullTold = false;
+  var STORE_MSG = {
+    blocked: 'This browser isn’t letting Shelfmark save, so books added here will be gone when you close it. Allow site data for this page, or open Shelfmark in your usual browser.',
+    full: 'This browser is out of room, so your latest changes aren’t saved on this device. Download a backup from Settings to keep them.'
+  };
+  // What adding books says instead of saying they were added, with the note above the list right behind it.
+  var STORE_TOAST = { blocked: 'Not saved: this browser isn’t letting Shelfmark save. See the note at the top.', full: 'Not saved: this browser is out of room. See the note at the top.' };
+  function storeFailure(e) { return /quota/i.test(e && e.name || '') ? 'full' : 'blocked'; }
+  try { localStorage.setItem('shelfmark.probe', '1'); localStorage.removeItem('shelfmark.probe'); } catch (e) { STORE = storeFailure(e); }
+  // The note, for the foot of a sheet whose button adds books.
+  function storeFlag() { return STORE ? '<p class="flag"><span>' + STORE_MSG[STORE] + '</span></p>' : ''; }
+  function showStore() { var n = $('storeNote'); n.hidden = !STORE; n.firstChild.textContent = STORE ? STORE_MSG[STORE] : ''; }
+
   function savePrefs() { try { localStorage.setItem(LSP, JSON.stringify(PREF)); } catch (e) { } }
+  // False when the library couldn't be saved (see STORE). A card saves as it's typed in, so running out of room is
+  // told once a visit, and the note above the list says it from then on.
   function persist(fromSync) {
-    try { localStorage.setItem(LS, canon(DOC)); }
-    catch (e) { toast('This browser is out of room to save your library. Download a backup from Settings.'); }
+    var was = STORE;
+    try { localStorage.setItem(LS, canon(DOC)); STORE = ''; } catch (e) { STORE = storeFailure(e); }
+    if (STORE !== was) showStore();
+    if (STORE === 'full' && !fullTold) { fullTold = true; toast(STORE_MSG.full); }
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(function () { }); }
     if (!fromSync) { editSeq++; D.pending = true; saveDrive(); syncSoon(); }
+    return !STORE;
   }
   function stamp(b, old) { b.t = Math.max(Date.now(), old && old.t ? old.t + 1 : 0); return b; }
   function putBook(b) { var c = cleanBook(stamp(b, DOC.books[b.id])); if (!c) return null; DOC.books[c.id] = c; persist(); render(); return c; }
@@ -952,6 +976,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   function render() {
+    showStore();
     var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, rooms = {}, tags = {}, noRoom = 0;
     all.forEach(function (b) {
       counts[b.status || 'unread']++; if (b.loan) counts.lent++; if (b.check) counts.check++;
@@ -1123,7 +1148,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<div class="checks"><label><input type="checkbox" id="f-signed"' + (b.signed ? ' checked' : '') + '> Signed</label><label><input type="checkbox" id="f-first"' + (b.first ? ' checked' : '') + '> First edition</label></div>' +
       '<label class="fl"><span>Added to the library</span><input id="f-added" type="date" value="' + esc(b.added || '') + '"></label>' +
       '</div></details></div></div></div>' +
-      '<div class="ft">' + (isNew ? '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
+      '<div class="ft">' + (isNew ? storeFlag() + '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
         : '<button class="btn danger" type="button" id="f-del">Remove from library</button><span class="grow"></span><button class="btn primary" type="button" id="bkx2">Done</button>') + '</div>' +
       datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
       function () { if (!isNew) flush(); });
@@ -1253,7 +1278,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       if (!n.added) n.added = today();
       var dup = findDup(dupIndex(DOC), n);
       n = putBook(n); closeSheet();
-      toast(dup ? 'Added — you already had a copy on ' + (where(dup) || 'your shelves') : 'Added “' + n.title + '”');
+      toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy on ' + (where(dup) || 'your shelves') : 'Added “' + n.title + '”');
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
     head(); drawState();
@@ -1356,7 +1381,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
           (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
           '</div></li>';
       }).join('') + '</ul></div>' +
-      '<div class="ft"><span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
+      '<div class="ft">' + storeFlag() + '<span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
       datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })));
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
@@ -1383,10 +1408,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
       });
       if (!n) return;
       DOC.seen[batch.id] = DOC.seen[batch.id] || now;
-      DOC = cleanDoc(DOC); persist(); closeSheet();
+      DOC = cleanDoc(DOC); var saved = persist(); closeSheet();
       UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
-      toast('Added ' + plural(n, 'book') + ' — newest first');
+      toast(saved ? 'Added ' + plural(n, 'book') + ' — newest first' : STORE_TOAST[STORE]);
     });
     count();
     return panel;
@@ -1400,7 +1425,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
       '<div class="ft"><span class="grow"></span><button class="btn quiet" type="button" id="lbx2">Cancel</button><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>');
     $('lbx').addEventListener('click', closeSheet); $('lbx2').addEventListener('click', closeSheet);
-    $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); persist(); closeSheet(); render(); toast('Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')'); });
+    $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); var saved = persist(); closeSheet(); render(); toast(saved ? 'Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')' : STORE_TOAST[STORE]); });
   }
 
   // The reading details on a book, in a line: "Nonfiction · History · Informative, reflective · Slow · Short chapters".
@@ -1428,7 +1453,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       rows.filter(function (r) { return !r.bs.length; }).map(function (r) {
         return '<li class="off"><div class="rv-main"><span class="rt">' + esc(r.e.title || r.e.id) + '</span><span class="rv-dup">Not in your library, so it’s left out.</span></div></li>';
       }).join('') + '</ul></div>' +
-      '<div class="ft"><span class="note grow" id="dt-n"></span><button class="btn primary" type="button" id="dtgo">Add details</button></div>');
+      '<div class="ft">' + storeFlag() + '<span class="note grow" id="dt-n"></span><button class="btn primary" type="button" id="dtgo">Add details</button></div>');
     function count() {
       var n = changes();
       $('dtgo').textContent = n ? 'Add details to ' + plural(n, 'book') : 'Add details'; $('dtgo').disabled = !n;
@@ -1447,8 +1472,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
       });
       if (!n) return;
       DOC.seen[det.id] = DOC.seen[det.id] || now;
-      persist(); closeSheet(); render();
-      toast('Added reading details to ' + plural(n, 'book'));
+      var saved = persist(); closeSheet(); render();
+      toast(saved ? 'Added reading details to ' + plural(n, 'book') : STORE_TOAST[STORE]);
     });
     count();
   }
