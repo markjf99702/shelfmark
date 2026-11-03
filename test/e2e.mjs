@@ -1120,6 +1120,19 @@ step('a toast from the last thing done doesn\'t cover the next sheet: Start read
   } finally { await ctx.close(); }
 });
 
+step('a toast quoting a long title stays two lines on a small phone', async () => {
+  const ctx = await context({ ...PHONE, viewport: { width: 320, height: 640 } });
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'L1', t: 1000, title: 'The Captain Is Out to Lunch and the Sailors Have Taken Over the Ship', authors: ['Charles Bukowski'] }]);
+    await page.click('#list .bk[data-id="L1"]');
+    await page.click('#f-del');
+    assert.equal(await page.textContent('#toastTx'), 'Removed “The Captain Is Out to Lunch and the…”');
+    assert.ok((await page.locator('#toast').boundingBox()).height < 60, 'the toast runs to three lines or more');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {

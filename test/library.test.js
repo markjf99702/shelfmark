@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -192,6 +192,13 @@ function randomDoc(r, n) {
   eq(S.findDup(series, { title: 'Heartstopper: Volume 2', authors: ['Alice Oseman'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
   eq((S.findDup(series, { title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }) || {}).id, 'v1', 'but volume 1 again is');
 }
+
+// ---------- titles in a toast ----------
+eq(['Middlemarch', 'Piranesi: A Novel', 'The Captain Is Out to Lunch and the Sailors Have Taken Over the Ship', 'Dr. No', 'A: Life', 'Ab: the rest',
+  'Supercalifragilisticexpialidocious-Antidisestablishmentarianism', '  Gilead  '].map(S.short),
+  ['Middlemarch', 'Piranesi', 'The Captain Is Out to Lunch and the…', 'Dr. No', 'A: Life', 'Ab: the rest', 'Supercalifragilisticexpialidocious-Antid…', 'Gilead'],
+  'a toast quotes a title up to its colon, cut at a word near 40 characters');
+eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
 
 // ---------- what to read next ----------
 {

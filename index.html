@@ -767,6 +767,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function since(ms) { return (Date.now() - ms < 86400e3 ? '' : 'on ') + ago(ms); }
   function where(b) { return [b.room, b.shelf].filter(Boolean).join(' › '); }
   function byLine(b) { return (b.authors || []).join(', '); }
+  // A title short enough to quote in a toast on a phone: the part before a colon (when that's three letters or more),
+  // cut at a word near 40 characters.
+  function short(t) {
+    t = str(t, 300); var i = t.indexOf(':'), w;
+    if (i >= 3) t = t.slice(0, i).trim();
+    if (t.length <= 40) return t;
+    w = t.lastIndexOf(' ', 40);
+    return (w >= 20 ? t.slice(0, w) : cut(t, 40)).replace(/[\s,;:.\u2013\u2014-]+$/, '') + '…';
+  }
 
   // ---------- spreadsheet export ----------
   var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
@@ -1050,7 +1059,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function removeBook(id) {
     var old = DOC.books[id]; if (!old || old.del) return;
     DOC.books[id] = stamp({ id: id, del: 1 }, old); persist(); render();
-    toast('Removed “' + old.title + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); });
+    toast('Removed “' + short(old.title) + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); });
   }
 
   // ---------- covers ----------
@@ -1464,7 +1473,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!n.added) n.added = today();
       var dup = findDup(dupIndex(DOC), n);
       n = putBook(n); closeSheet();
-      toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy on ' + (where(dup) || 'your shelves') : 'Added “' + n.title + '”');
+      toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy' + (dup.room ? ' in ' + dup.room : '') : 'Added “' + short(n.title) + '”');
     });
     else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
     head(); drawState();
@@ -1893,7 +1902,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
       var was = b.status || '';
       putBook(Object.assign({}, b, { status: 'reading' })); closeSheet();
-      toast('Marked “' + b.title + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); });
+      toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); });
     });
     drawCrit(); dealNow();
   }
