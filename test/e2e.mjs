@@ -963,8 +963,8 @@ step('a long title shows whole in the card on a phone, and Enter there finishes 
   const ctx = await context();
   try {
     const page = await open(ctx);
-    const long = 'The Hudson Valley in the Age of Steam: Mills, Ferries and River Towns of the Nineteenth Century, Illustrated';
-    await seed(page, [{ id: 'T1', t: 1000, title: long, authors: ['Ann Lee'] }]);
+    const long = 'The Life and Strange Surprizing Adventures of Robinson Crusoe, of York, Mariner, Who Lived Eight and Twenty Years All Alone';
+    await seed(page, [{ id: 'T1', t: 1000, title: long, authors: ['Daniel Defoe'] }]);
     await page.click('#list .bk[data-id="T1"]');
     const shows = () => page.$eval('#f-title', e => [e.value, e.scrollHeight <= e.clientHeight + 1, e.scrollWidth <= e.clientWidth + 1]);
     assert.deepEqual(await shows(), [long, true, true], 'the title is cut short');
@@ -1207,10 +1207,10 @@ step('a toast quoting a long title stays two lines on a small phone', async () =
   const ctx = await context({ ...PHONE, viewport: { width: 320, height: 640 } });
   try {
     const page = await open(ctx);
-    await seed(page, [{ id: 'L1', t: 1000, title: 'The Captain Is Out to Lunch and the Sailors Have Taken Over the Ship', authors: ['Charles Bukowski'] }]);
+    await seed(page, [{ id: 'L1', t: 1000, title: 'The Interesting Narrative of the Life of Olaudah Equiano, or Gustavus Vassa, the African', authors: ['Olaudah Equiano'] }]);
     await page.click('#list .bk[data-id="L1"]');
     await page.click('#f-del');
-    assert.equal(await page.textContent('#toastTx'), 'Removed “The Captain Is Out to Lunch and the…”');
+    assert.equal(await page.textContent('#toastTx'), 'Removed “The Interesting Narrative of the Life of…”');
     assert.ok((await page.locator('#toast').boundingBox()).height < 60, 'the toast runs to three lines or more');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
