@@ -862,8 +862,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return f;
   }
   // Roughly 0–7: your best rating of an author's books (2 if you read them but didn't rate them), and a half more
-  // for each further one you've read.
-  function fondness(x) { return x ? (x.best ? x.best.rating : 2) + Math.min(x.n - 1, 4) * 0.5 : 0; }
+  // for each further one you've read. An author you gave no more than two stars isn't a favorite, however many of
+  // theirs you've read: 0, so their books get no lift toward favorite authors and no reason saying you read them.
+  function fondness(x) { return !x || x.best && x.best.rating <= 2 ? 0 : (x.best ? x.best.rating : 2) + Math.min(x.n - 1, 4) * 0.5; }
   function fanOf(b, fans) {
     var top = null;
     (b.authors || []).forEach(function (a) { var x = fans[authorKey(a)]; if (x && fondness(x) > fondness(top)) top = x; });
@@ -883,7 +884,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         return Math.exp(4 * (c.lean === 'oldest' ? 1 - p : p));
       });
     }
-    if (c.lean === 'loved') return pool.map(function (b) { var l = fondness(fanOf(b, fans)); return l >= 4 ? 12 : l >= 3 ? 4 : l >= 2 ? 2 : l > 0 ? 0.5 : 1; });
+    if (c.lean === 'loved') return pool.map(function (b) { var l = fondness(fanOf(b, fans)); return l >= 4 ? 12 : l >= 3 ? 4 : l >= 2 ? 2 : 1; });
     return pool.map(function () { return 1; });
   }
   function monthOf(d) { var p = d.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }

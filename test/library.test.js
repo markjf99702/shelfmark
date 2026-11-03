@@ -281,6 +281,16 @@ function randomDoc(r, n) {
     { id: 'b', t: 1, title: 'Breakfast of Champions', authors: ['Kurt Vonnegut, Jr.'], status: 'read', rating: 3 },
     { id: 'c', t: 1, title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'] }] }));
   eq(S.dealNext(jr, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks[0].why, ['You’ve read 2 by Vonnegut and gave “Slaughterhouse-Five” 5 stars'], 'an author with a "Jr." is named by surname, not as "Jr."');
+  {
+    // An author you gave one or two stars isn't a favorite: no lift, no reason, and no Favorite authors to lean on.
+    const meh = S.live(S.cleanDoc({ books: [
+      { id: 'r2', t: 1, title: 'So-so', authors: ['Bo Chen'], status: 'read', rating: 2 }, { id: 'r1', t: 1, title: 'Awful', authors: ['Cy Dee'], status: 'read', rating: 1 },
+      { id: 'b', t: 1, title: 'Another Chen', authors: ['Bo Chen'] }, { id: 'c', t: 1, title: 'Another Dee', authors: ['Cy Dee'] }, { id: 'n', t: 1, title: 'Never Read', authors: ['Di Eng'] }] }));
+    const share = {}; for (let k = 0; k < 900; k++) { const id = S.dealNext(meh, S.cleanNext({ lean: 'loved' }), rng(700 + k), {}, now).picks[0].b.id; share[id] = (share[id] || 0) + 1; }
+    check(['b', 'c', 'n'].every(id => share[id] > 220), 'books by authors you gave one or two stars come up as often as one by an author you haven’t read ' + JSON.stringify(share));
+    eq(S.dealNext(meh, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks.map(p => p.why), [[], [], []], 'and no reason says you read them');
+    eq(S.nextOffers(meh).leans.map(l => l[0]), [''], 'and Favorite authors isn’t offered for them');
+  }
   const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
   check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
