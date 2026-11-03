@@ -138,6 +138,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
 - **Cleaning:** every field is trimmed, clamped and mapped, and a book cleaned again comes out the same (text cut at its limit, emoji, a "Jr." after an empty name, long ids, ids like `constructor`).
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
+- **Random books:** a seeded run over thousands of random books, with text at its limits, emoji, odd white space and names with a "Jr.", checks in about half a second that cleaning a book twice gives the same book, that merging rich books is order-free, that reading details change only the details (and a blank page count) and find every copy and never a removed book, and that What to read next, dealt again and again, shows every match before repeating one and never suggests a book lent out, being read or browsed.
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).
 - **The skill's script:** it reads numbers as printed ("2 vols, 880", "2nd ed. 1999"), yes or no, authors and tags just as the page does, its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.

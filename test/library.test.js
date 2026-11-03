@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -254,6 +254,126 @@ function randomDoc(r, n) {
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
   check(S.dealNext(two, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).even, 'books all added the same day weigh the same');
   eq(S.dealNext(two, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).fans, 0, 'and none by authors you have read is reported');
+}
+
+// ---------- properties, on thousands of random books ----------
+// Seeded, so a failure comes back the same way each run. Books here have near-limit text, odd white space, emoji,
+// names with a "Jr." and empty pieces, numbers as printed, ids like "constructor", and times past the last date.
+{
+  const t0 = Date.now(), r = rng(2026), any = a => a[Math.floor(r() * a.length)];
+  const BITS = ['é', 'e\u0301', ' ', '  ', '\t', '\n', '\n\n\n', '\r\n', '\u00a0', '\u2009', '\ufeff', '😀', ',', ';', ' & ', 'Jr.', 'III', ':', '1'];
+  const words = n => { let x = ''; while (x.length < n) x += r() < 0.75 ? 'abcdefghijklmnop'[Math.floor(r() * 16)] : any(BITS); return x; };
+  // Near its limit, text is a plain run and then a random tail across the limit, where the cut falls.
+  const long = n => 'abcdefgh'.repeat(Math.ceil(n / 8)).slice(0, n - 9 + Math.floor(r() * 6)) + words(8);
+  const text = n => r() < 0.3 ? long(n) : r() < 0.2 ? '' : words(1 + Math.floor(r() * 14));
+  const names = () => r() < 0.5 ? Array.from({ length: Math.floor(r() * 5) }, () => any([text(120), '', ' ', 'Jr', 'Jr.', 'III', 'Ann Lee', 'Bo Chen, PhD']))
+    : Array.from({ length: 1 + Math.floor(r() * 4) }, () => any(['Ann Lee', 'Jr.', '', text(120), 'Kurt Vonnegut'])).join(any([', ', '; ', ' & ', ' and ', ', , ']));
+  const book = () => ({
+    id: any(['', 'a', '123', '1'.repeat(40), '7'.repeat(45), 'constructor', '__proto__', 'toString', 'b' + Math.floor(r() * 9), 'a b-c_d', 'x'.repeat(39) + ' y']),
+    t: any([0, 5, 1e17, -3, '12', 1.5, 8.64e15, undefined]), del: r() < 0.08 ? 1 : 0,
+    title: r() < 0.05 ? ' ' : text(300), sub: text(300), authors: names(),
+    isbn: any(['', '0-14-044913-2', '9780140449137', '12-34', '0618260307, 9780618260300', text(20)]), publisher: text(120),
+    year: any([1999, '1937–40', '©1951, 1979', '2nd ed. 1999', 1999.5, -5, 'x', 3000, '']), pages: any(['2 vols, 880', '1,024', 412, '320.0', 60000, '', '1\u2009024']),
+    format: any(['Hardcover', 'paperback', 'nope', '']), condition: any(['very good', 'Fine', 'x', '']), room: text(60), shelf: text(60),
+    status: any(['read', 'Reading', 'unread', 'x', '']), rating: any([4.5, '3.5', 9, -1, '4 stars', 0, 2.5]),
+    loan: r() < 0.3 ? { to: text(80), since: any(['2026-01-01', 'x', '']) } : null, tags: r() < 0.5 ? Array.from({ length: Math.floor(r() * 24) }, () => text(40)) : text(200),
+    notes: r() < 0.2 ? long(4000) : text(60), edition: text(120), signed: any([true, 'false', 'yes', 1, 0, 'no', 'TRUE']), first: any([true, 'no', '1', 2, false]),
+    added: any(['2026-09-26', '2019-03-04', 'x', '']), check: text(300), unsure: text(300), blurb: text(300),
+    kind: any(['Fiction', 'poetry', 'x', '']), genres: any([['sf', 'Classics', 'x', 'fantasy', 'horror', 'ya'], 'History; Science', '', ['biography']]),
+    moods: any([['funny', 'Tense', 'bogus'], 'dark, sad; hopeful, tense, reflective', '']), pace: any(['slow', 'Fast', '']), chapters: any(['short', 'huge', '']), way: any(['browse', 'Dip in and out', 'through', '']),
+  });
+
+  // Cleaning a clean book gives it back as it was.
+  let bad = null, n = 0;
+  for (let k = 0; k < 2000; k++) {
+    const x = book(), a = S.cleanBook(x); if (!a) continue; n++;
+    const b = S.cleanBook(a);
+    if (JSON.stringify(a) !== JSON.stringify(b)) { bad = bad || [x, a, b]; }
+  }
+  check(!bad && n > 1500, 'cleaning any of ' + n + ' random books twice gives the same book' + (bad ? '\n    ' + JSON.stringify(bad[1]).slice(0, 300) + '\n    ' + JSON.stringify(bad[2]).slice(0, 300) : ''));
+
+  // Merging rich books is order-free, groupable and repeatable, and of two different copies one is always newer.
+  // (What decides a merge is the time, then how many fields a copy has, then its text, so these books have a few
+  // times between them and any number of fields, but short text.)
+  const lite = () => r() < 0.12 ? { id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), del: 1 } : {
+    id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), title: any(['Same', 'Other', 'Dune']), authors: any([[], ['Ann Lee'], ['Ann Lee', 'Bo Chen']]),
+    notes: any(['', 'x', 'line one\nline two']), rating: any([0, 3, 5]), status: any(['', 'read', 'reading']), kind: any(['', 'fiction']), moods: any([[], ['funny'], ['dark', 'sad']]),
+    tags: any([[], ['sf'], ['sf', 'kids']]), loan: any([null, { to: 'Sam' }, { to: 'Sam', since: '2026-01-02' }]), signed: any([false, true]), pages: any([0, 300]) };
+  const doc = () => S.cleanDoc({ books: Array.from({ length: 6 }, lite), seen: { ['c' + Math.floor(r() * 3)]: 1 + Math.floor(r() * 9) } });
+  let laws = true, total = true;
+  for (let k = 0; k < 300; k++) {
+    const a = doc(), b = doc(), c = doc(), m = (x, y) => S.canon(S.mergeDocs(x, y));
+    if (m(a, b) !== m(b, a) || S.canon(S.mergeDocs(S.mergeDocs(a, b), c)) !== S.canon(S.mergeDocs(a, S.mergeDocs(b, c))) || m(a, a) !== S.canon(a)) laws = false;
+    for (const id of Object.keys(a.books)) {
+      const x = a.books[id], y = b.books[id];
+      if (y && JSON.stringify(x) !== JSON.stringify(y) && S.newer(x, y) === S.newer(y, x)) total = false;
+    }
+  }
+  check(laws, 'merging rich random libraries is order-free, groupable and repeatable');
+  check(total, 'of two different copies of a book, exactly one is newer');
+
+  // Reading details touch only the reading details, and a page count only where there was none.
+  let only = true, kept = true;
+  for (let k = 0; k < 400; k++) {
+    const b = S.cleanBook(Object.assign(book(), { id: 'a', del: 0, title: 'T' })), e = S.cleanDetails({ details: { books: [Object.assign(book(), { id: 'a', title: 'T', del: 0 })] } }).books[0];
+    if (!e) continue;
+    const rep = r() < 0.5, x = S.withDetails(b, e, rep);
+    if (!x) continue;
+    for (const f of new Set([...Object.keys(b), ...Object.keys(x)])) {
+      if (S.DETAILS.includes(f)) { if (!rep && b[f] != null && JSON.stringify(x[f]) !== JSON.stringify(b[f])) kept = false; }
+      else if (f === 'pages') { if (x.pages !== (b.pages || e.pages)) only = false; }
+      else if (JSON.stringify(x[f]) !== JSON.stringify(b[f])) only = false;
+    }
+  }
+  check(only, 'details change nothing but the reading details and a blank page count');
+  check(kept, 'and without Replace leave the details a book has');
+
+  // Details find every copy they're for, and never a removed book.
+  const SHELF = [['Dune', 'Frank Herbert', '9780441013593'], ['The Republic', 'Plato', ''], ['Becoming', 'Michelle Obama', '9781524763138'], ['Walden', 'Henry David Thoreau', '']];
+  let never = true, every = true;
+  for (let k = 0; k < 300; k++) {
+    const books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const [title, who, isbn] = any(SHELF);
+      return { id: 'k' + i, t: 1, del: r() < 0.15 ? 1 : 0, title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.3 ? [who, any(['F. M. Cornford', 'Allan Bloom'])] : [who], isbn: r() < 0.5 ? isbn : '' }; });
+    const lib = S.cleanDoc({ books }), live = S.live(lib);
+    const det = S.cleanDetails({ details: { books: Array.from({ length: 1 + Math.floor(r() * 4) }, () => { const [title, who, isbn] = any(SHELF);
+      return { id: any(['', 'k' + Math.floor(r() * 10), 'zz']), title, authors: r() < 0.3 ? [who, any(['F. M. Cornford', 'Allan Bloom'])] : [who], isbn: r() < 0.5 ? isbn : '', kind: 'fiction' }; }) } });
+    const named = new Set(det.books.map(e => e.id).filter(id => lib.books[id] && !lib.books[id].del));
+    S.matchDetails(lib, det).forEach(({ e, bs }) => {
+      if (bs.some(b => b.del)) never = false;
+      if (named.has(e.id)) { if (bs.length !== 1 || bs[0].id !== e.id) every = false; return; }
+      const keys = S.dupKeys(e), copies = live.filter(b => !named.has(b.id) && S.dupKeys(b).some(x => keys.includes(x)));
+      const same = copies.filter(b => S.authorsKey(b) === S.authorsKey(e)), want = copies.length > 1 && same.length ? same : copies;
+      if (want.map(b => b.id).sort().join() !== bs.map(b => b.id).sort().join()) every = false;
+    });
+  }
+  check(never, 'details never find a removed book');
+  check(every, 'and find every copy they’re for: the book named by id, or each copy with the ISBN or title and author');
+
+  // What to read next, dealt again and again as its sheet does: no book twice in a deal, books not yet shown first,
+  // and nothing lent out, being read, read (unless rereads are asked for) or browsed (unless asked for).
+  const now = new Date('2026-11-03T12:00:00').getTime();
+  let fair = true, why = '';
+  for (let k = 0; k < 200 && fair; k++) {
+    const lib = S.live(S.cleanDoc({ books: Array.from({ length: Math.floor(r() * 16) }, (_, i) => ({ id: 'n' + i, t: 1, title: 'Book ' + i, authors: [any(['Ann Lee', 'Bo Chen', 'Cy Dee'])],
+      status: any(['', '', 'read', 'reading']), rating: any([0, 3, 5]), loan: r() < 0.15 ? { to: 'Sam' } : null, way: any(['', 'browse', 'dip']), pages: any([0, 120, 300, 600]),
+      added: any(['2019-03-04', '2026-10-30', '']), kind: any(['', 'fiction', 'nonfiction']), moods: any([[], ['funny'], ['dark', 'tense']]), chapters: any(['', 'short']) })) }));
+    const c = S.cleanNext({ reread: r() < 0.3, browse: r() < 0.3, lean: any(['', 'oldest', 'newest', 'loved']), len: any(['', '', 'short', 'long']), kind: any(['', '', 'fiction']), moods: any([[], ['funny']]), short: r() < 0.2 });
+    const pool = S.nextPool(lib, c), rnd = rng(9000 + k);
+    let seen = {};
+    for (let d = 0; d < 6; d++) {
+      const deal = S.dealNext(lib, c, rnd, seen, now), ids = deal.picks.map(p => p.b.id);
+      const unseen = pool.filter(b => !seen[b.id]).length;
+      if (new Set(ids).size !== ids.length) why = 'a book twice in one deal';
+      else if (ids.length !== Math.min(3, pool.length)) why = ids.length + ' picks from ' + pool.length;
+      else if (deal.fresh !== Math.min(ids.length, unseen) || ids.some((id, i) => !!seen[id] === i < deal.fresh)) why = 'books already shown came before new ones';
+      else if (deal.picks.some(({ b }) => b.loan || b.status === 'reading' || b.way === 'browse' && !c.browse || b.status === 'read' && !(c.reread && b.rating >= 4))) why = 'a book that can’t be suggested was';
+      if (why) { fair = false; break; }
+      if (ids.length && !deal.fresh) seen = {};
+      ids.forEach(id => { seen[id] = 1; });
+    }
+  }
+  check(fair, 'what to read next, dealt six times over 200 random libraries, keeps its promises' + (why ? ': ' + why : ''));
+  check(Date.now() - t0 < 5000, 'the random checks run quickly (' + (Date.now() - t0) + ' ms)');
 }
 
 // ---------- batches and links ----------
