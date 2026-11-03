@@ -950,6 +950,47 @@ step('a card left open while another device changes the book keeps that change i
   } finally { await a.context().close(); await b.context().close(); }
 });
 
+step('two devices that connect at the same moment end up with one library file and every book', async () => {
+  const g = fakeGoogle();
+  const libraries = () => g.files().filter(f => f.appProperties && f.appProperties.shelfmark === 'library' && !f.trashed);
+  async function device(book) {
+    const ctx = await context(DESK);
+    await g.install(ctx);
+    const page = await open(ctx);
+    await seed(page, [book]);
+    await page.click('#setBtn');
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    return page;
+  }
+  const a = await device(PIRANESI), b = await device(MIDDLEMARCH);
+  try {
+    // Both tap Connect at once, so each finds no library file in Drive and makes its own.
+    await Promise.all([a.click('#dvGo'), b.click('#dvGo')]);
+    const fileId = page => page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.drive') || '{}').fileId);
+    await until(async () => (await fileId(a)) && (await fileId(b)), 'both devices to connect');
+    const synced = page => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced');
+    await until(async () => (await synced(a)) && (await synced(b)), 'both to sync');
+    for (const page of [a, b]) { await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await wait(1500); }
+    const ids = async page => Object.keys((await stored(page)).library.books).sort();
+    await until(async () => (await ids(a)).length === 2 && (await ids(b)).length === 2, 'both devices to have both books', 10000).catch(() => {});
+    assert.deepEqual([await ids(a), await ids(b)], [['b03', 'b04'], ['b03', 'b04']], 'a device kept only its own book');
+    assert.equal(libraries().length, 1, 'Drive kept ' + libraries().length + ' library files');
+    assert.deepEqual([await fileId(a), await fileId(b)], [libraries()[0].id, libraries()[0].id], 'a device still saves to a file in the trash');
+    assert.deepEqual(Object.keys(JSON.parse(libraries()[0].body).library.books).sort(), ['b03', 'b04'], 'the file in Drive hasn\'t both books');
+    // The file kept is the first one made, which any other device that synced already holds.
+    const first = libraries()[0].id;
+    assert.equal(first, g.files().filter(f => f.appProperties && f.appProperties.shelfmark === 'library')[0].id);
+    // A second file left from before is folded in on the next visit.
+    g.drive.files['f' + g.drive.next++] = { owner: 'mark', name: 'Shelfmark library.json', mimeType: 'application/json', appProperties: { shelfmark: 'library' }, version: 1, modified: Date.now(),
+      body: JSON.stringify({ shelfmark: 1, library: { books: { b05: CRADLE }, seen: {} } }) };
+    await a.reload();
+    await until(async () => (await ids(a)).includes('b05'), 'the next visit to fold in the other file', 10000);
+    await until(() => libraries().length === 1 && JSON.parse(libraries()[0].body).library.books.b05, 'the folded file to go to the trash and its book to reach the first');
+    assert.equal(libraries()[0].id, first);
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await a.context().close(); await b.context().close(); }
+});
+
 step('a details link fills in reading details, and a book\'s card shows and changes them', async () => {
   const ctx = await context();
   try {

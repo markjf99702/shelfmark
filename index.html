@@ -1705,7 +1705,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   var API = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
   function q(s) { return encodeURIComponent(s); }
-  function findFiles(kind) { return api('GET', API + '?spaces=drive&orderBy=modifiedTime%20desc&fields=files(id,version)&q=' + q("appProperties has { key='shelfmark' and value='" + kind + "' } and trashed = false")).then(function (r) { return r.json(); }).then(function (j) { return j.files || []; }); }
+  // Oldest first, so every device picks the same one to keep (see fold()).
+  function findFiles(kind) { return api('GET', API + '?spaces=drive&orderBy=createdTime&fields=files(id,version)&q=' + q("appProperties has { key='shelfmark' and value='" + kind + "' } and trashed = false")).then(function (r) { return r.json(); }).then(function (j) { return j.files || []; }); }
   function download_(id) {
     return api('GET', API + '/' + id + '?alt=media').then(function (r) { return r.text(); }).then(function (t) {
       var o; try { o = JSON.parse(t); } catch (e) { o = null; }
@@ -1719,26 +1720,50 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var payload = '--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + bd + '\r\nContent-Type: application/json\r\n\r\n' + (body || '') + '\r\n--' + bd + '--';
     return api('POST', UP + '?uploadType=multipart&fields=id,version', payload, 'multipart/related; boundary=' + bd).then(function (r) { return r.json(); });
   }
-  // The library file's id and version, making it (and its folder) the first time. If two devices each
-  // made one, their books are merged here and the extras go to the Drive trash.
+  // The library file's id and version, making it (and its folder) the first time.
+  // Two devices that each found no file at the same moment (both tapping Connect at once, or both noticing the file
+  // was put in the trash) each make one, and then each keeps syncing with its own. So on the first sync of each visit,
+  // and straight after making a file, the library files are listed, and any beyond the first are folded into it (foldFiles).
+  var listed = false;
   function ensureFile() {
     var byId = D.fileId ? api('GET', API + '/' + D.fileId + '?fields=id,version,trashed').then(function (r) { return r.json(); }).then(function (f) { return f.trashed ? null : f; }, function (e) { if (e.gone) return null; throw e; }) : Promise.resolve(null);
     return byId.then(function (f) {
-      if (f) return { id: f.id, version: String(f.version) };
-      D.version = '';
+      if (f && listed) return { id: f.id, version: String(f.version) };
       return findFiles('library').then(function (fs) {
-        if (fs.length) {
-          var extra = fs.slice(1);
-          return extra.reduce(function (p, x) {
-            return p.then(function () { return download_(x.id); }).then(function (d) { DOC = mergeDocs(DOC, d); persist(true); render(); if (cardRefresh) cardRefresh(); D.pending = true; return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json'); });
-          }, Promise.resolve()).then(function () { D.fileId = fs[0].id; return { id: fs[0].id, version: String(fs[0].version) }; });
-        }
+        // Drive's search can be a moment behind a file just made: this device's own file still counts, as the newest.
+        if (f && !fs.some(function (x) { return x.id === f.id; })) fs.push(f);
+        if (fs.length) return foldFiles(fs);
+        D.version = '';
         return findFiles('folder').then(function (fo) {
           return fo.length ? fo[0].id : api('POST', API + '?fields=id', JSON.stringify({ name: 'Shelfmark', mimeType: 'application/vnd.google-apps.folder', appProperties: { shelfmark: 'folder' } }), 'application/json').then(function (r) { return r.json(); }).then(function (x) { return x.id; });
         }).then(function (folder) {
           return create({ name: 'Shelfmark library.json', mimeType: 'application/json', parents: [folder], appProperties: { shelfmark: 'library' } }, canon(DOC));
-        }).then(function (x) { D.fileId = x.id; D.version = String(x.version); D.pending = false; return { id: x.id, version: D.version, made: true }; });
+        }).then(function (x) {
+          D.fileId = x.id; D.version = String(x.version); D.pending = false;
+          return findFiles('library').then(function (fs) {
+            if (!fs.some(function (y) { return y.id === x.id; })) fs.push({ id: x.id, version: x.version });
+            return fs.length > 1 ? foldFiles(fs) : (listed = true, { id: x.id, version: D.version, made: true });
+          });
+        });
       });
+    });
+  }
+  // fs: the library files, the first made first. The later ones are merged into this device's copy and go to the Drive
+  // trash, and the first is kept, since every device that already synced with it holds its id; the merged library is
+  // written to it next. (Kept the other way round, those devices would make yet another file.) A device whose file
+  // was put in the trash finds the first one at its next sync. Extra Shelfmark folders are left alone: Shelfmark can't
+  // see what else is in them, so emptying one could take someone's own files with it.
+  function foldFiles(fs) {
+    var keep = fs[0];
+    return fs.slice(1).reduce(function (p, x) {
+      return p.then(function () { return download_(x.id); }).then(function (d) {
+        DOC = mergeDocs(DOC, d); persist(true); render(); if (cardRefresh) cardRefresh(); D.pending = true;
+        return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json');
+      });
+    }, Promise.resolve()).then(function () {
+      listed = true;
+      if (D.fileId !== keep.id) { D.fileId = keep.id; D.version = ''; }
+      return { id: keep.id, version: String(keep.version) };
     });
   }
   function sync() {

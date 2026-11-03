@@ -54,7 +54,7 @@ Each device keeps its own copy and works offline. When you sync, Shelfmark:
 2. merges it with this device's copy, book by book, keeping whichever version was changed most recently;
 3. writes it back if anything changed.
 
-Removed books are remembered, so a removal on your phone reaches your laptop instead of the old copy coming back. Syncing happens:
+Removed books are remembered, so a removal on your phone reaches your laptop instead of the old copy coming back. Two devices connecting at the same moment can each make a library file; the next sync folds the later file into the first one made and puts it in Drive's trash, so every device ends up with the same file and every book. Syncing happens:
 - a few seconds after each change;
 - when you come back to the tab;
 - once a minute while the page is open;
