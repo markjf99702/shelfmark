@@ -508,6 +508,12 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     eq(ids({ moods: ['funny', 'sad'] }), ['f1', 'f2'], 'moods match any of those picked');
     eq(ids({ short: true }), ['f1', 'p1'], 'short chapters, or a book to dip into');
     eq(ids({ genre: 'history', pace: 'slow' }), ['n1'], 'genre and pace narrow it too');
+    // Moods and genres offered follow the kind chosen, and whether books you browse are in, keeping one already chosen.
+    const offered = c => { const o = S.nextOffers(shelf, S.cleanNext(c)); return [Object.keys(o.fit.moods).sort(), Object.keys(o.fit.genres).sort()]; };
+    eq(offered({ kind: 'poetry' }), [['reflective'], []], 'with poetry chosen, only the moods and genres of poems on hand');
+    eq(offered({ kind: 'nonfiction' }), [['informative', 'reflective'], ['history']], 'a cookbook’s genre waits until books you browse are in');
+    eq(offered({ kind: 'nonfiction', browse: true }), [['informative', 'reflective'], ['food', 'history']], 'and then it’s offered');
+    eq(offered({ kind: 'poetry', moods: ['funny'], genre: 'humor' }), [['funny', 'reflective'], ['humor']], 'a mood or genre already chosen stays, to be taken off');
     const reflective = {}; for (let k = 0; k < 400; k++) { const id = S.dealNext(shelf, S.cleanNext({ moods: ['reflective', 'sad'] }), rng(500 + k), {}, now).picks[0].b.id; reflective[id] = (reflective[id] || 0) + 1; }
     check(reflective.f2 > reflective.n1 && reflective.f2 > reflective.p1, 'a book with more of the moods picked comes up more ' + JSON.stringify(reflective));
     const picky = S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now);

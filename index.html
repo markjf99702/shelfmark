@@ -988,9 +988,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // What What to read next offers, from the books on hand (rereads and books you browse included): only the choices that
   // can change something. Length needs page counts; Waiting longest and Newest arrivals need books added on two or more
   // days; Favorite authors needs an unread book by an author you've read; moods, genres and the rest need reading details.
-  function nextOffers(all) {
+  // The moods and genres offered (fit) are those of the books of the kind chosen, with books you browse only when they're
+  // in, and keep any already chosen, so it can be taken off; moods and genres are those of every book on hand.
+  function nextOffers(all, c) {
     var fans = authorFans(all), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null) }, days = Object.create(null);
-    onHand(all, true, true).forEach(function (b) {
+    var fit = o.fit = { moods: Object.create(null), genres: Object.create(null) }, base = onHand(all, true, true), kind;
+    c = c || cleanNext({});
+    base.forEach(function (b) {
       (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[b.room] = 1;
       if (b.kind) o.kind = 1; if (b.pace) o.pace = 1; if (b.pages) o.len = 1; if (b.added) days[b.added] = 1;
       (b.moods || []).forEach(function (m) { o.moods[m] = 1; }); (b.genres || []).forEach(function (g) { o.genres[g] = 1; });
@@ -998,6 +1002,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (b.way === 'browse') o.browse = 1;
       if (!b.status && fanOf(b, fans)) o.loved = 1;
     });
+    kind = o.kind ? c.kind : '';
+    base.forEach(function (b) {
+      if ((!c.browse && b.way === 'browse') || kind && b.kind !== kind) return;
+      (b.moods || []).forEach(function (m) { fit.moods[m] = 1; }); (b.genres || []).forEach(function (g) { fit.genres[g] = 1; });
+    });
+    c.moods.forEach(function (m) { if (o.moods[m]) fit.moods[m] = 1; });
+    if (c.genre && o.genres[c.genre]) fit.genres[c.genre] = 1;
     var many = Object.keys(days).length > 1;
     o.leans = LEANS.filter(function (l) { return !l[0] || (l[0] === 'loved' ? o.loved : many); });
     o.reread = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
@@ -1796,8 +1807,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
     function drawCrit() {
-      var has = nextOffers(live(DOC)); fitNext(c, has);
-      var moods = MOODS.filter(function (m) { return has.moods[m[0]]; }), genres = GENRES.filter(function (g) { return has.genres[g[0]]; });
+      var has = nextOffers(live(DOC), c); fitNext(c, has);
+      var moods = MOODS.filter(function (m) { return has.fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return has.fit.genres[g[0]]; });
       var tk = Object.keys(has.tags).sort(COLL.compare), rk = Object.keys(has.rooms).sort(COLL.compare), favs = has.reread;
       var html = (has.kind ? seg('kind', 'Fiction or not', KINDS) : '') +
         (moods.length ? '<div class="nx-f"><span class="lbl">In the mood for' + (c.moods.length > 1 ? '<span class="nx-range"> · any of these</span>' : '') + '</span>' +

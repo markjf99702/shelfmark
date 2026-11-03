@@ -1604,6 +1604,7 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     await page.click('#nextBtn');
     assert.equal(await page.textContent('#nxOut > .note'), 'From 4 unread books on hand.', 'the cookbook is left out');
     await page.click('#nxCrit [data-k="kind"][data-v="fiction"]');
+    assert.deepEqual(await page.$$eval('#nxCrit [data-mood]', els => els.map(e => e.dataset.mood)), ['mysterious', 'reflective'], 'with fiction chosen, a nonfiction mood is offered');
     await page.click('#nxCrit [data-mood="mysterious"]');
     assert.equal(await page.textContent('.nx-pick .nx-t'), 'Piranesi');
     assert.equal(await page.textContent('.nx-pick .nx-blurb'), 'An endless house of statues and tides.');
