@@ -1614,8 +1614,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
       var btn = this;
       if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = 'Tap again to erase ' + plural(all.length, 'book'); btn.style.borderColor = 'var(--bad)'; return; }
       // The covers found and the What to read next choices name books, rooms and tags, so they go too. Sorting and
-      // whether to look things up are this device's settings, not the catalog, and stay.
-      try { localStorage.removeItem(LS); localStorage.removeItem(LSD); localStorage.removeItem(LSC); } catch (e) { }
+      // whether to look things up are this device's settings, not the catalog, and stay. The Google sign-in and its
+      // account email go (LSG is Shelfmark's alone at its own address): left here, Connect would bring the whole
+      // library back from Drive without asking Google. Nothing is revoked, which would sign every project out.
+      try { localStorage.removeItem(LS); localStorage.removeItem(LSD); localStorage.removeItem(LSC); localStorage.removeItem(LSG); } catch (e) { }
       clearTimeout(coverSaveT); COVERS = {}; coverQ = []; coverQueued = {}; coverRound++;
       delete PREF.next; savePrefs();
       DOC = { books: {}, seen: {} }; D = freshDrive(); saveDrive(); closeSheet(); renderSync(); render(); toast('Erased this device’s copy');
@@ -1646,6 +1648,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     D.token = g.token; D.exp = g.exp - 60000; return true;
   }
   function shareToken() { var g = readShared(); if (!GOOGLE_CLIENT_ID || clientId() !== GOOGLE_CLIENT_ID) return; try { localStorage.setItem(LSG, JSON.stringify({ token: D.token, exp: D.exp + 60000, scope: SCOPE, email: g && g.email || '' })); } catch (e) { } }
+  // A sign-in is kept here (after Disconnect, say), which Erase takes away too.
+  function signedIn() { try { return !!localStorage.getItem(LSG); } catch (e) { return false; } }
   function dropShared(token) { var g = readShared(); if (g && g.token === token) try { localStorage.removeItem(LSG); } catch (e) { } }
   // gisErr says Google's sign-in script couldn't load or start on this visit. It isn't saved with D: the next
   // try clears it.
@@ -1787,7 +1791,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }
     s.innerHTML = html;
-    if ($('stEraseNote')) $('stEraseNote').textContent = 'Erasing removes your library from this browser only' + (D.on ? ', and disconnects Drive here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
+    if ($('stEraseNote')) $('stEraseNote').textContent = 'Erasing removes your library' + (D.on || signedIn() ? ' and your Google sign-in' : '') + ' from this browser only' +
+      (D.on ? ', so Drive is disconnected here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
     if ($('dvCidGo')) $('dvCidGo').addEventListener('click', function () {
       var v = str($('dvCid').value, 200);
       if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(v)) { toast('That doesn’t look like a client ID — it ends in .apps.googleusercontent.com'); return; }

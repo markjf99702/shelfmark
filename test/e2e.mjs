@@ -471,6 +471,41 @@ step('erasing this device\'s copy leaves no list of the books behind', async () 
   } finally { await ctx.close(); }
 });
 
+// Connects this page to the fake Drive from Settings, and closes Settings once the library file is known.
+async function connectDrive(page) {
+  await page.click('#setBtn');
+  await page.waitForFunction(() => window.google && window.google.accounts);
+  await page.click('#dvGo');
+  await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.drive') || '{}').fileId), 'Drive to connect');
+  await page.click('#stx');
+  await wait(450); // a tap where Done was is ignored for a moment after (see tapGuard), and Settings is near it
+}
+
+step('erasing this device\'s copy signs Google out here too, so Connect asks Google again', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await connectDrive(page);
+    await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('junkdrawer.google') || '{}').email === 'mark@gmail.com'), 'the account\'s email to be kept with the sign-in');
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the first sync');
+    const asked = await page.evaluate(() => (window.__prompts || []).length);
+    await page.click('#setBtn');
+    assert.match(await page.textContent('#stEraseNote'), /removes your library and your Google sign-in from this browser only/);
+    await page.click('#stErase');
+    await page.click('#stErase');
+    assert.equal(await page.evaluate(() => localStorage.getItem('junkdrawer.google')), null, 'the Google sign-in and the account\'s email are still in this browser');
+    assert.match(await page.textContent('#list'), /Your shelves are empty/);
+    // Whoever has the device next can't bring the library back without signing in to Google.
+    await page.click('#setBtn');
+    await page.click('#dvGo');
+    await until(() => page.evaluate(n => (window.__prompts || []).length > n, asked), 'Connect to ask Google', 5000);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
