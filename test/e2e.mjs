@@ -981,6 +981,15 @@ step('a long title shows whole in the card on a phone, and Enter there finishes 
     await page.click('#list .bk[data-id="T1"]');
     const shows = () => page.$eval('#f-title', e => [e.value, e.scrollHeight <= e.clientHeight + 1, e.scrollWidth <= e.clientWidth + 1]);
     assert.deepEqual(await shows(), [long, true, true], 'the title is cut short');
+    // Turned or resized narrower while the card is open, the box grows to the title's new number of lines.
+    await page.setViewportSize({ width: 320, height: 844 });
+    await until(async () => (await shows())[1], 'the title box to grow on a narrower screen', 3000).catch(() => {});
+    assert.deepEqual(await shows(), [long, true, true], 'the title is cut short once the screen is narrower');
+    await page.setViewportSize({ width: 390, height: 844 });
+    // A keyboard that puts words together (Chinese or Japanese, say) takes Enter to finish the word, not the title.
+    await page.focus('#f-title');
+    await page.$eval('#f-title', e => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'f-title', 'Enter while a word was being put together finished the title');
     await page.click('#f-title');
     await page.keyboard.press('Control+End');
     await page.keyboard.type(', Volume 2');
