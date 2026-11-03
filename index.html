@@ -441,8 +441,16 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function str(v, n) { return typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim().slice(0, n) : ''; }
-  function para(v, n) { return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, n) : ''; }
+  // Text in one line (str) or in paragraphs (para), up to n characters as JavaScript counts them (an emoji is two).
+  // It's cut before it's tidied at the end, so nothing is left there to trim the next time (a space, half an emoji),
+  // and cleaning it again gives the same text.
+  function cut(s, n) { s = s.slice(0, n); var i = s.length; while (i && /[\s\ud800-\udbff]/.test(s.charAt(i - 1))) i--; return s.slice(0, i); }
+  function str(v, n) { return typeof v === 'string' || typeof v === 'number' ? cut(String(v).replace(/\s+/g, ' ').trim(), n) : ''; }
+  function para(v, n) { return typeof v === 'string' ? cut(v.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), n) : ''; }
+  // An object's own value for a key, never one every object has ("constructor"): ids and batch ids are keys.
+  function got(o, k) { return Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; }
+  // A key named like something every object has gets a letter in front, so it's a key like any other.
+  function ownKey(k) { return k && k in Object.prototype ? 'b' + k : k; }
   // A whole number in range, from a number or from text as it's printed. A plain number, decimals and all ("3.5",
   // "1999.0"), is rounded half up. Otherwise digit groups are joined first ("1,024", "1 024"), and then a year is the
   // first four-digit number ("1937–40", "2nd ed. 1999", "©1951, 1979"), a page count the largest number ("2 vols, 880")
@@ -506,22 +514,28 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   // Several values typed in one field. They split on commas and semicolons, so "Arts & crafts" stays one tag;
   // names (authors) also split on " & ", and keep a "Jr." or "III" with the name before it ("Kurt Vonnegut, Jr."),
-  // which also mends a name split from its "Jr." before.
+  // which also mends a name split from its "Jr." before. Empty pieces go first, so "Vonnegut, , Jr." is one name.
   var SUFFIX = /^(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$/i;
   function list(v, n, each, names) {
-    var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(names ? /\s*[,;]\s*|\s+&\s+/ : /\s*[,;]\s*/) : v ? [v] : [], out = [], seen = {};
-    if (names) a = a.reduce(function (r, x) { var y = str(x, each), p = r.length ? str(r[r.length - 1], each) : ''; if (p && SUFFIX.test(y)) r[r.length - 1] = p + ', ' + y; else r.push(x); return r; }, []);
-    a.forEach(function (x) { x = str(x, each); var k = fold(x); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });
+    var a = Array.isArray(v) ? v : typeof v === 'string' ? v.split(names ? /\s*[,;]\s*|\s+&\s+/ : /\s*[,;]\s*/) : v ? [v] : [], out = [], seen = Object.create(null);
+    a = a.map(function (x) { return str(x, each); }).filter(Boolean);
+    if (names) a = a.reduce(function (r, y) { if (r.length && SUFFIX.test(y)) r[r.length - 1] = str(r[r.length - 1] + ', ' + y, each); else r.push(y); return r; }, []);
+    a.forEach(function (x) { var k = fold(x); if (!seen[k]) { seen[k] = 1; out.push(x); } });
     return out.slice(0, n);
   }
   // Several values from one of the lists above, in the order given, each once.
   function picks(v, from, n) { var out = []; list(v, 40, 40).forEach(function (x) { var k = pick(x, from); if (k && out.indexOf(k) < 0) out.push(k); }); return out.slice(0, n); }
+  // A book's id: letters, digits, _ and -, up to 40. One that's all digits gets a letter in front, so key order stays
+  // stable, and so does one named like something every object has ("constructor").
+  function bookId(v) { var id = str(v, 40).replace(/[^\w-]/g, ''); return (/^\d+$/.test(id) ? 'b' + id : ownKey(id)).slice(0, 40); }
+  // The last moment a JavaScript date can be (ECMA-262 §21.4.1.1, Time Values and Time Range), so a book’s time is a date.
+  var MAX_T = 8.64e15;
   // Every book that comes in — from storage, Drive, a file or a link — goes through here, so the rest of
-  // the page can trust its shape. Empty fields are dropped to keep the library file small.
+  // the page can trust its shape. Empty fields are dropped to keep the library file small. Cleaning a clean book
+  // gives it back as it was.
   function cleanBook(o) {
     if (!o || typeof o !== 'object') return null;
-    var id = str(o.id, 40).replace(/[^\w-]/g, ''), t = +o.t > 0 ? Math.floor(+o.t) : 0;
-    if (/^\d*$/.test(id)) id = id ? 'b' + id : '';
+    var id = bookId(o.id), t = +o.t > 0 ? Math.floor(Math.min(+o.t, MAX_T)) : 0;
     if (o.del) return id ? { id: id, t: t, del: 1 } : null;
     var title = str(o.title, 300); if (!title) return null;
     // With no valid ISBN, the first number in the field is kept as typed (some books have none, or an odd one).
@@ -548,8 +562,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function cleanDoc(o) {
     var src = o && o.library ? o.library : o || {}, books = {}, seen = {};
     var bs = src.books && typeof src.books === 'object' ? (Array.isArray(src.books) ? src.books : Object.keys(src.books).map(function (k) { return src.books[k]; })) : [];
-    bs.forEach(function (x) { var b = cleanBook(x); if (b && (!books[b.id] || newer(b, books[b.id]))) books[b.id] = b; });
-    if (src.seen && typeof src.seen === 'object') Object.keys(src.seen).forEach(function (k) { var id = str(k, 80), v = +src.seen[k]; if (id && v > 0) seen[id] = Math.floor(v); });
+    bs.forEach(function (x) { var b = cleanBook(x), y = b && got(books, b.id); if (b && (!y || newer(b, y))) books[b.id] = b; });
+    if (src.seen && typeof src.seen === 'object') Object.keys(src.seen).forEach(function (k) { var id = ownKey(str(k, 80)), v = +src.seen[k]; if (id && v > 0) seen[id] = Math.floor(v); });
     return { books: sortObj(books), seen: sortObj(seen) };
   }
   // At the same time, the copy with more fields wins: an older Shelfmark (a tab left open, say) that doesn't know a field,
@@ -563,8 +577,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function mergeDocs(a, b) {
     var books = {}, seen = {};
     [a, b].forEach(function (d) {
-      Object.keys(d.books).forEach(function (id) { var x = d.books[id], y = books[id]; if (!y || newer(x, y)) books[id] = x; });
-      Object.keys(d.seen).forEach(function (k) { var v = d.seen[k]; if (!seen[k] || v < seen[k]) seen[k] = v; });
+      Object.keys(d.books).forEach(function (id) { var x = d.books[id], y = got(books, id); if (!y || newer(x, y)) books[id] = x; });
+      Object.keys(d.seen).forEach(function (k) { var v = d.seen[k], w = got(seen, k); if (!w || v < w) seen[k] = v; });
     });
     return { books: sortObj(books), seen: sortObj(seen) };
   }
@@ -626,7 +640,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       if (c) { delete c.id; delete c.t; books.push(c); }
     });
     return {
-      id: str(b.id, 80).replace(/[^\w.-]/g, '') || 'x' + hash(JSON.stringify(books)).toString(36),
+      id: ownKey(str(b.id, 80).replace(/[^\w.-]/g, '')) || 'x' + hash(JSON.stringify(books)).toString(36),
       name: str(b.name, 120), made: day(b.made), room: str(b.room, 60), shelf: str(b.shelf, 60), books: books, more: more
     };
   }
@@ -639,7 +653,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var books = [];
     d.books.slice(0, BATCH_MAX).forEach(function (x) {
       if (!x || typeof x !== 'object') return;
-      var src = { title: str(x.title, 300) || '?', authors: x.authors || x.author, isbn: x.isbn, pages: x.pages }, e = { id: str(x.id, 40).replace(/[^\w-]/g, '') };
+      var src = { title: str(x.title, 300) || '?', authors: x.authors || x.author, isbn: x.isbn, pages: x.pages }, e = { id: bookId(x.id) };
       DETAILS.forEach(function (k) { src[k] = x[k]; });
       var c = cleanBook(src);
       if (str(x.title, 300)) ['title', 'authors', 'isbn'].forEach(function (k) { if (c[k]) e[k] = c[k]; });
@@ -647,18 +661,18 @@ body.locked .toast.show{transform:translate(-50%,0)}
       ['pages'].concat(DETAILS).forEach(function (k) { if (c[k] != null) e[k] = c[k]; });
       if (e.pages || DETAILS.some(function (k) { return k in e; })) books.push(e);
     });
-    return { id: str(d.id, 80).replace(/[^\w.-]/g, '') || 'd' + hash(JSON.stringify(books)).toString(36), name: str(d.name, 120), books: books, more: Math.max(0, d.books.length - BATCH_MAX) };
+    return { id: ownKey(str(d.id, 80).replace(/[^\w.-]/g, '')) || 'd' + hash(JSON.stringify(books)).toString(36), name: str(d.name, 120), books: books, more: Math.max(0, d.books.length - BATCH_MAX) };
   }
   // The books each entry is for: the book with its id, or else every copy with the same ISBN or the same title and
   // author's surname. A book another entry names by id is left to that entry, and when the copies found have different
   // authors (two translations), the ones with all the entry's authors are taken, if any are.
   function matchDetails(doc, det) {
-    var ix = {}, named = {};
-    function own(e) { var b = e.id && doc.books[e.id]; return b && !b.del ? b : null; }
+    var ix = Object.create(null), named = Object.create(null);
+    function own(e) { var b = e.id && got(doc.books, e.id); return b && !b.del ? b : null; }
     live(doc).forEach(function (b) { dupKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
     det.books.forEach(function (e) { var b = own(e); if (b) named[b.id] = 1; });
     return det.books.map(function (e) {
-      var b = own(e), bs = [], seen = {};
+      var b = own(e), bs = [], seen = Object.create(null);
       if (b) return { e: e, bs: [b] };
       (e.title ? dupKeys(e) : []).forEach(function (k) { (ix[k] || []).forEach(function (x) { if (!seen[x.id] && !named[x.id]) { seen[x.id] = 1; bs.push(x); } }); });
       var same = bs.filter(function (x) { return authorsKey(x) === authorsKey(e); });
@@ -672,7 +686,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var out = {};
     rows.forEach(function (r) {
       r.bs.forEach(function (b) {
-        var cur = out[b.id] || doc.books[b.id], x = cur && !cur.del && withDetails(cur, r.e, replace);
+        var cur = got(out, b.id) || got(doc.books, b.id), x = cur && !cur.del && withDetails(cur, r.e, replace);
         if (x) out[b.id] = x;
       });
     });
@@ -868,7 +882,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       return -1;
     }
     while (picks.length < 3) {
-      var i = draw(function (i) { return !skip[pool[i].id]; });
+      var i = draw(function (i) { return !got(skip, pool[i].id); });
       if (i < 0) i = draw(function () { return true; }); else fresh++;
       if (i < 0) break;
       left.splice(left.indexOf(i), 1); picks.push(pool[i]);
@@ -1015,7 +1029,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   function render() {
     showStore();
-    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, rooms = {}, tags = {}, noRoom = 0;
+    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, rooms = Object.create(null), tags = Object.create(null), noRoom = 0;
     all.forEach(function (b) {
       counts[b.status || 'unread']++; if (b.loan) counts.lent++; if (b.check) counts.check++;
       if (b.room) rooms[b.room] = (rooms[b.room] || 0) + 1; else noRoom++;
@@ -1150,7 +1164,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function opts(list, v, blank) { return (blank != null ? '<option value="">' + blank + '</option>' : '') + list.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
   function datalist(id, vals) { return '<datalist id="' + id + '">' + vals.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>'; }
-  function distinct(f) { var s = {}; live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
+  function distinct(f) { var s = Object.create(null); live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
 
   // ---------- the catalog card: one book, to add or edit ----------
   function bookSheet(b, isNew) {
@@ -1447,7 +1461,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     // library while it's open. A row the person has ticked, unticked or edited (mine) keeps its tick.
     function check() { var ix = dupIndex(DOC); rows.forEach(function (r) { r.dup = findDup(ix, r.b); if (!r.mine) r.on = !r.dup; }); }
     function head() {
-      var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = DOC.seen[batch.id];
+      var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
       return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
         (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added from this link ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
@@ -1507,7 +1521,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         DOC.books[b.id] = b; n++; first = first || b;
       });
       if (!n) return;
-      DOC.seen[batch.id] = DOC.seen[batch.id] || now;
+      DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); closeSheet();
       UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
@@ -1560,7 +1574,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     }
     function changes() { return Object.keys(detailChanges(DOC, rows, replace)).length; }
     function head() {
-      var seenAt = DOC.seen[det.id];
+      var seenAt = got(DOC.seen, det.id);
       return '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
         (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added these ' + esc(since(seenAt)) + '.</span></p>' : '');
@@ -1605,7 +1619,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
       check(); ch = detailChanges(DOC, rows, replace);
       Object.keys(ch).forEach(function (id) { var x = cleanBook(stamp(ch[id], DOC.books[id])); if (x) { DOC.books[x.id] = x; n++; } });
       if (!n) return;
-      DOC.seen[det.id] = DOC.seen[det.id] || now;
+      DOC.seen[det.id] = got(DOC.seen, det.id) || now;
       var saved = persist(); closeSheet(); render();
       toast(saved ? 'Added reading details to ' + plural(n, 'book') : STORE_TOAST[STORE]);
     });
@@ -1645,7 +1659,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     }
     // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
     function drawCrit() {
-      var all = live(DOC), base = onHand(all, true, true), tags = {}, rooms = {}, has = {};
+      var all = live(DOC), base = onHand(all, true, true), tags = Object.create(null), rooms = Object.create(null), has = {};
       base.forEach(function (b) {
         (b.tags || []).forEach(function (t) { tags[t] = 1; }); if (b.room) rooms[b.room] = 1;
         if (b.kind) has.kind = 1; if (b.pace) has.pace = 1;

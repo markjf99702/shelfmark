@@ -94,8 +94,30 @@ def text(v):
     return str(v)
 
 
+def cut(t, n):
+    """The first n characters of t as Shelfmark counts them (in UTF-16, so an emoji is two), never half an emoji, with
+    no white space left at the end. Cut before it's tidied, so cleaning it again gives the same text."""
+    u = 0
+    for i, c in enumerate(t):
+        u += 2 if ord(c) > 0xFFFF else 1
+        if u > n:
+            t = t[:i]
+            break
+    while t and (t[-1] in WS or '\ud800' <= t[-1] <= '\udbff'):
+        t = t[:-1]
+    return t
+
+
 def s(v, n):
-    return re.sub(f'[{WS}]+', ' ', text(v)).strip(WS)[:n]
+    """Text in one line, as Shelfmark's str()."""
+    return cut(re.sub(f'[{WS}]+', ' ', text(v)).strip(WS), n)
+
+
+def para(v, n):
+    """Text in paragraphs (notes), as Shelfmark's para(): line breaks kept, at most one blank line in a row."""
+    if not isinstance(v, str):
+        return ''
+    return cut(re.sub(r'\n{3,}', '\n\n', re.sub(r'[ \t]+\n', '\n', re.sub(r'\r\n?', '\n', v))).strip(WS), n)
 
 
 def isbn13(v):
@@ -136,24 +158,24 @@ def fold(t):
 def items(v, n, each, names=False):
     """Several values in one field, as Shelfmark reads them (list() in index.html): a list, or text split on commas and
     semicolons, so "Arts & crafts" stays one tag. Names (authors) also split on " & ", not on "and", and keep a "Jr." or
-    "III" with the name before it ("Kurt Vonnegut, Jr."). Each value up to `each` characters, each once, `n` in all."""
+    "III" with the name before it ("Kurt Vonnegut, Jr."). Empty pieces go first, so "Vonnegut, , Jr." is one name. Each
+    value up to `each` characters, each once, `n` in all."""
     if isinstance(v, str):
         v = re.split(r'\s*[,;]\s*|\s+&\s+' if names else r'\s*[,;]\s*', v)
     elif not isinstance(v, list):
         v = [v] if v else []
+    v = [y for y in (s(x, each) for x in v) if y]
     if names:
         r = []
-        for x in v:
-            y, p = s(x, each), s(r[-1], each) if r else ''
-            if p and SUFFIX.match(y):
-                r[-1] = p + ', ' + y
+        for y in v:
+            if r and SUFFIX.match(y):
+                r[-1] = s(r[-1] + ', ' + y, each)
             else:
-                r.append(x)
+                r.append(y)
         v = r
     out, seen = [], set()
     for x in v:
-        x = s(x, each)
-        if x and fold(x) not in seen:
+        if fold(x) not in seen:
             seen.add(fold(x))
             out.append(x)
     return out[:n]
@@ -265,7 +287,7 @@ def clean(b, i, warn):
         if day(loan.get('since')):
             out['loan']['since'] = day(loan.get('since'))
     out['tags'] = items(b.get('tags'), 20, 40)
-    out['notes'] = str(b.get('notes') or '').strip()[:4000]
+    out['notes'] = para(b.get('notes'), 4000)
     out['edition'] = s(b.get('edition'), 120)
     out['signed'] = yes(b.get('signed'))
     out['first'] = yes(b.get('first')) or yes(b.get('first_edition'))
@@ -484,7 +506,7 @@ def build_details(doc, warn):
         if not isinstance(b, dict):
             warn.append(f'#{i + 1}: not an entry object, left out')
             continue
-        title, bid = s(b.get('title'), 300), re.sub(r'[^\w-]', '', s(b.get('id'), 40))
+        title, bid = s(b.get('title'), 300), re.sub(r'[^\w-]', '', s(b.get('id'), 40), flags=re.ASCII)
         if not title and not bid:
             warn.append(f'#{i + 1}: no id or title, so Shelfmark couldn’t tell which book it is; left out')
             continue

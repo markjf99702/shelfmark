@@ -136,7 +136,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 
 `node test/library.test.js` has no dependencies. It reads the logic straight out of `index.html` and checks:
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
-- **Cleaning:** every field is trimmed, clamped and mapped.
+- **Cleaning:** every field is trimmed, clamped and mapped, and a book cleaned again comes out the same (text cut at its limit, emoji, a "Jr." after an empty name, long ids, ids like `constructor`).
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).

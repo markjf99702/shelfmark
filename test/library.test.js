@@ -69,6 +69,34 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', signed: v }).signed), want, 'signed is yes only for true, 1, "true", "yes" or "1"');
     eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', first: v }).first), want, 'and so is first edition');
   }
+  // Cleaning a book again gives the same book: text cut at its limit loses the space before the cut, not a character
+  // the next time; a name loses its empty neighbours before its "Jr." joins it; a long numeric id stays 40.
+  {
+    const twice = (o, what) => { const a = S.cleanBook(o), b = S.cleanBook(a); eq(b, a, 'cleaning twice gives the same book: ' + what); return a; };
+    eq(twice({ id: 'a', title: 'a'.repeat(299) + ' b' }, 'a title cut after a space').title, 'a'.repeat(299), 'and the cut leaves no space at the end');
+    twice({ id: 'a', title: 'T', shelf: 'a'.repeat(59) + ' b', tags: ['a'.repeat(39) + ' b'], publisher: 'p'.repeat(119) + ' q', loan: { to: 'x'.repeat(79) + ' y' }, authors: ['n'.repeat(119) + ' m'] }, 'shelf, tag, publisher, borrower and author cut after a space');
+    eq(twice({ id: 'a', title: 'T', notes: 'a'.repeat(3999) + '\n\nb' }, 'notes cut after a line break').notes, 'a'.repeat(3999), 'and the cut leaves no line break at the end');
+    eq(twice({ id: 'a', title: 'a'.repeat(299) + '😀' }, 'a title cut inside an emoji').title, 'a'.repeat(299), 'and the cut leaves no half an emoji');
+    eq(twice({ id: 'a', title: 'T', authors: ['X', '', 'Jr'] }, 'a "Jr" after an empty name').authors, ['X, Jr'], 'and the "Jr" joins its name the first time');
+    eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Kurt Vonnegut, , Jr.' }).authors, ['Kurt Vonnegut, Jr.'], 'as it does typed with an empty piece');
+    eq(twice({ id: '1'.repeat(40), title: 'T' }, 'a 40-digit id').id, 'b' + '1'.repeat(39), 'and the id stays 40 long');
+  }
+  // Ids and batch ids named like something every object has, and times past the last day a date can be.
+  {
+    const doc = S.cleanDoc({ books: [{ id: 'constructor', t: 1, title: 'A' }, { id: '__proto__', t: 1, title: 'B' }, { id: 'toString', t: 1, title: 'C' }, { id: 'hasOwnProperty', t: 1, del: 1 }],
+      seen: JSON.parse('{"constructor": 5, "__proto__": 6, "c1": 7}') });
+    eq([Object.keys(doc.books), S.live(doc).map(b => b.title).sort()], [['b__proto__', 'bconstructor', 'bhasOwnProperty', 'btoString'], ['A', 'B', 'C']], 'books with ids like "constructor" and "__proto__" are kept, with a letter in front');
+    eq(doc.seen, { b__proto__: 6, bconstructor: 5, c1: 7 }, 'and so are batches seen with such ids');
+    eq(S.live(S.mergeDocs(doc, S.cleanDoc({ books: [{ id: 'toString', t: 2, title: 'C2' }] }))).map(b => b.title).sort(), ['A', 'B', 'C2'], 'and they merge like any other');
+    eq(S.cleanBatch({ batch: { id: 'constructor', books: [{ title: 'A' }] } }).id, 'bconstructor', 'a batch id like "constructor" gets the same letter');
+    const ent = S.cleanDetails({ details: { books: [{ id: 'constructor', title: 'A', kind: 'fiction' }, { id: 'valueOf', title: 'Nothing here', kind: 'fiction' }] } });
+    eq(S.matchDetails(doc, ent).map(r => r.bs.map(b => b.id)), [['bconstructor'], []], 'a details entry with such an id finds its book, and one not here finds nothing');
+    eq(S.cleanBook({ id: 'a', title: 'T', tags: ['constructor', 'toString', '__proto__'] }).tags, ['constructor', 'toString', '__proto__'], 'tags like "constructor" are kept');
+    const far = S.cleanBook({ id: 'a', t: 1e17, title: 'T' });
+    eq([far.t, new Date(far.t).getTime()], [8.64e15, 8.64e15], 'a time past the last day a date can be is brought back to it');
+    const pool = S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'constructor', t: 1, title: 'A' }, { id: 'b', t: 1, title: 'B' }] })), S.cleanNext({}), rng(1), JSON.parse('{"bconstructor": 1}'), Date.now());
+    eq(pool.picks.map(p => p.b.id), ['b', 'bconstructor'], 'what to read next skips a book with such an id once it has been shown');
+  }
   eq(S.cleanBook({ id: 'x1', t: 9, del: 1, title: 'gone' }), { id: 'x1', t: 9, del: 1 }, 'a removed book keeps only id and time');
   eq(S.cleanBook({ id: '123', title: 'T' }).id, 'b123', 'numeric ids get a letter so key order stays stable');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
@@ -451,6 +479,15 @@ function randomDoc(r, n) {
       const oddOut = JSON.parse(fs.readFileSync(path.join(oddDir, fs.readdirSync(oddDir)[0]), 'utf8')).batch.books;
       odd.forEach((x, i) => { const c = S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 })); delete c.id; delete c.t; eq(sorted(oddOut[i]), sorted(c), 'the script reads “' + x.title + '” as the page does'); });
       check(!/isn’t one Shelfmark knows/.test(oddSaid), 'moods and genres split on semicolons are known words to the script');
+      // And cuts text at the same place: in UTF-16 units, as the page counts, never inside an emoji, and with no space left.
+      const edge = [{ title: 'a'.repeat(299) + ' b', authors: ['X', '', 'Jr'], notes: 'n'.repeat(3999) + '\n\nb', tags: ['constructor', 'b'.repeat(39) + ' c'] },
+        { title: 'a'.repeat(298) + '😀😀', authors: 'Kurt Vonnegut, , Jr.', notes: 42, shelf: '\ufeffTop\ufeff' }, { title: '\ufeff' }, { title: 'T', authors: ['é'.repeat(119) + '😀'] }];
+      const edgeIn = path.join(tmp, 'edge.json'), edgeDir = fs.mkdtempSync(path.join(tmp, 'edge-'));
+      fs.writeFileSync(edgeIn, JSON.stringify({ books: edge }));
+      execFileSync('python3', [py, edgeIn, '--out', edgeDir, '--no-link'], { encoding: 'utf8' });
+      const edgeOut = JSON.parse(fs.readFileSync(path.join(edgeDir, fs.readdirSync(edgeDir)[0]), 'utf8')).batch.books;
+      const edgePage = edge.map(x => S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 }))).filter(Boolean).map(c => { delete c.id; delete c.t; return sorted(c); });
+      eq(edgeOut.map(sorted), edgePage, 'the script cuts and splits text where the page does');
       const oddDet = path.join(tmp, 'odd-details.json');
       fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
       const oddDetOut = JSON.parse(fs.readFileSync(/File: (\S+)/.exec(execFileSync('python3', [py, oddDet, '--details', '--out', oddDir, '--no-link'], { encoding: 'utf8' }))[1], 'utf8')).details.books;
