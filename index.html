@@ -339,8 +339,9 @@ details.more .fs{padding:2px 12px 12px}
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;width:max-content;max-width:calc(100vw - 32px)}
 .toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
-body.locked .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top,0px));transform:translate(-50%,-24px)}
-body.locked .toast.show{transform:translate(-50%,0)}
+/* over a sheet, the toast sits just above the sheet's footer, clear of its heading and buttons (--above is how far the
+   footer's top is from the bottom, set as the toast shows) */
+body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px)))}
 .toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:0;text-decoration:underline}
 
 @media (max-width:720px){
@@ -1118,6 +1119,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function pushSheet() { try { history.scrollRestoration = 'manual'; history.pushState({ sheet: sheetN, page: PAGE }, ''); } catch (e) { } }
   function openSheet(html, onClose) {
     if (!$('sheet').hidden) shut(true); else tapGuard = null;
+    // A toast about what was done before ("Marked … as reading · Undo") would sit over this sheet and take its taps.
+    hideToast();
     sheetN++;
     if (!sheetEntry()) pushSheet();
     else try { history.replaceState({ sheet: sheetN, page: PAGE }, ''); } catch (e) { }
@@ -1157,12 +1160,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   var toastT;
   function toast(m, act, fn) {
-    var t = $('toast'), b = $('toastBtn');
+    var t = $('toast'), b = $('toastBtn'), ft = !$('sheet').hidden && $('sheet').querySelector('.ft');
+    t.style.setProperty('--above', ft ? Math.max(0, Math.round($('sheet').getBoundingClientRect().bottom - ft.getBoundingClientRect().top)) + 'px' : '');
     $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
     b.onclick = act ? function () { t.classList.remove('show'); fn(); } : null;
     t.classList.add('show'); clearTimeout(toastT);
     toastT = setTimeout(function () { t.classList.remove('show'); }, act || m.length > 60 ? 6000 : 3000); // a long one needs time to read
   }
+  function hideToast() { clearTimeout(toastT); $('toast').classList.remove('show'); $('toastBtn').hidden = true; $('toastBtn').onclick = null; }
   function download(name, text, type) {
     var url = URL.createObjectURL(new Blob([text], { type: type })), a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();

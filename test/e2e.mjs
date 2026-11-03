@@ -921,6 +921,31 @@ step('a book opened straight after adding one closes with Done, though Done is w
   } finally { await ctx.close(); }
 });
 
+step('a toast from the last thing done doesn\'t cover the next sheet: Start reading, then a book\'s Done', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await page.click('#nextBtn');
+    await page.click('#nxGo');
+    assert.match(await page.textContent('#toastTx'), /as reading/);
+    await page.tap('#list .bk[data-id="b04"]'); // well within the toast's six seconds
+    assert.equal(await sheetOpen(page), true);
+    const done = await page.locator('#bkx').boundingBox();
+    await page.touchscreen.tap(done.x + done.width / 2, done.y + 4);
+    assert.equal(await sheetOpen(page), false, 'a tap at the top of Done didn\'t close the card');
+    // A toast raised inside a sheet on a phone sits above its footer, clear of its heading and buttons.
+    await page.tap('#list .bk[data-id="b04"]');
+    await page.click('details.more > summary >> nth=0');
+    for (const m of ['adventurous', 'challenging', 'dark', 'emotional', 'funny']) await page.click('#f-moods button[data-m="' + m + '"]');
+    assert.match(await page.textContent('#toastTx'), /Up to four moods/);
+    await wait(300);
+    const [t, hd, ft] = await page.evaluate(() => ['#toast', '#sheet .hd', '#sheet .ft'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }));
+    assert.ok(t.top >= hd.bottom && t.bottom <= ft.top, 'the toast lies over the sheet\'s heading or footer: ' + JSON.stringify([t, hd, ft]));
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card left open while another tab changes the book keeps that change', async () => {
   const ctx = await context(DESK);
   try {
