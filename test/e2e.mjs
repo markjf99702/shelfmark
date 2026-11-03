@@ -880,6 +880,43 @@ step('on an iPhone, nothing sits under the home indicator or the notch', async (
   } finally { await ctx.close(); }
 });
 
+step('on a phone To check is in view after a first batch, and the sideways rows fade where there\'s more', async () => {
+  for (const width of [390, 375]) {
+    const ctx = await context({ ...PHONE, viewport: { width, height: 812 } });
+    try {
+      const page = await open(ctx);
+      await page.goto(linkTo({ name: 'Hall', books: [
+        { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Piranesi', authors: ['Susanna Clarke'], unsure: 'glare on the spine' }, { title: 'Walden', authors: ['Henry David Thoreau'] },
+      ] }));
+      await page.click('#rv-add');
+      assert.equal(await page.textContent('#toastTx'), 'Added 3 books — newest first · 1 to check');
+      // Nothing is being read or read yet, so those chips wait until something is.
+      assert.deepEqual(await page.$$eval('#chips .chip', els => els.map(e => e.dataset.s)), ['', 'unread', 'check']);
+      const chk = await page.locator('#chips .chip[data-s="check"]').boundingBox();
+      assert.ok(chk.x + chk.width <= width, 'To check is past the edge at ' + width);
+      // A chip that's chosen stays while it's chosen, though its count drops to nothing.
+      await page.click('#list .bk >> nth=0');
+      await page.click('#f-status button[data-v="reading"]');
+      await page.click('#bkx2');
+      await page.click('#chips .chip[data-s="reading"]');
+      await page.click('#list .bk >> nth=0');
+      await page.click('#f-status button[data-v="unread"]');
+      await page.click('#bkx2');
+      assert.deepEqual(await page.$$eval('#chips .chip', els => els.map(e => e.dataset.s)), ['', 'unread', 'reading', 'check']);
+
+      // The mood row in What to read next runs off the edge: it fades there, and at the start once scrolled.
+      const MOODS = ['adventurous', 'challenging', 'dark', 'emotional', 'funny', 'hopeful', 'informative', 'inspiring', 'lighthearted', 'mysterious', 'reflective', 'relaxing', 'sad', 'tense'];
+      await seed(page, MOODS.map((m, i) => ({ id: 'm' + i, t: 1000, title: 'Book ' + i, authors: ['Ann Lee'], kind: 'fiction', moods: [m] })));
+      await page.click('#nextBtn');
+      const fade = () => page.$eval('.nx-moods', el => [el.classList.contains('fade-l'), el.classList.contains('fade-r')]);
+      assert.deepEqual(await fade(), [false, true]);
+      await page.$eval('.nx-moods', el => { el.scrollLeft = el.scrollWidth; });
+      await until(async () => (await fade()).join() === 'true,false', 'the mood row to fade at its start only');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {

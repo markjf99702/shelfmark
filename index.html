@@ -122,6 +122,10 @@ a{color:var(--accent)}
 .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:2px}
 .chips::-webkit-scrollbar{display:none}
+/* a row that scrolls sideways fades out at an edge with more chips past it, so it shows that it scrolls */
+.fade-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent)}
+.fade-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent)}
+.fade-l.fade-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
 .chip{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 13px var(--sans);color:var(--ink2);white-space:nowrap}
 .chip:hover{color:var(--ink);border-color:var(--ink3)}
 .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
@@ -310,7 +314,7 @@ details.more .fs{padding:2px 12px 12px}
 /* on a phone the moods are one row to swipe along, edge to edge */
 @media (max-width:640px){
   .nx-f:has(.nx-moods){justify-items:stretch}
-  .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 16px;max-width:none}
+  .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 24px 2px 16px;max-width:none}
   .nx-moods::-webkit-scrollbar{display:none}
 }
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
@@ -362,6 +366,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
   .list{grid-template-columns:1fr}
   .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+  .chips{padding-right:24px}
   /* the sort menu keeps its own width; a little less padding fits "All rooms" beside it at 360px */
   .selects select{flex:1 1 0;min-width:0;max-width:none;padding-left:8px;padding-right:25px}
   #sortSel{flex:none}
@@ -1121,6 +1126,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return true;
     });
   }
+  // A row of chips that scrolls sideways fades at an edge with more past it (see .fade-l, .fade-r).
+  function fades(el) {
+    if (!el) return;
+    el.classList.toggle('fade-l', el.scrollLeft > 1);
+    el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   function render() {
     showStore();
@@ -1133,7 +1144,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check) UI.status = '';
     if (UI.room && UI.room !== NOROOM && !rooms[UI.room] || UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
-    var chipDefs = [['', 'All'], ['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
+    // Reading and Read show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
+    // phone the row doesn't spend itself on zeros before the chips that count.
+    var chipDefs = [['', 'All'], ['unread', 'Unread']];
+    if (counts.reading || UI.status === 'reading') chipDefs.push(['reading', 'Reading']);
+    if (counts.read || UI.status === 'read') chipDefs.push(['read', 'Read']);
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
     $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
@@ -1145,6 +1160,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var sort = UI.sort || PREF.sort;
     $('sortSel').value = sort;
     $('tools').hidden = !all.length;
+    fades($('chips'));
     $('nextBtn').hidden = !onHand(all, true, true).length;
 
     var L = $('list');
@@ -1613,19 +1629,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function () {
-      var now = Date.now(), added = today(), n = 0, first = null;
+      var now = Date.now(), added = today(), n = 0, first = null, checks = 0;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order.
         var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || added }), bulk, batch)); if (!b) return;
-        DOC.books[b.id] = b; n++; first = first || b;
+        DOC.books[b.id] = b; n++; first = first || b; if (b.check) checks++;
       });
       if (!n) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); closeSheet();
       UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
-      toast(saved ? 'Added ' + plural(n, 'book') + ' — newest first' : STORE_TOAST[STORE]);
+      toast(saved ? 'Added ' + plural(n, 'book') + ' — newest first' + (checks ? ' · ' + checks + ' to check' : '') : STORE_TOAST[STORE]);
     });
     count();
     return panel;
@@ -1785,7 +1801,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (a && box.contains(a)) focus = a.id ? '#' + a.id : ['k', 'v', 'len', 'lean', 'mood'].filter(function (d) { return a.dataset[d] != null; }).map(function (d) { return '[data-' + d + '="' + a.dataset[d] + '"]'; }).join('');
       box.innerHTML = html; box.hidden = !html;
       row = box.querySelector('.nx-moods');
-      if (row) { var on = row.querySelector('[aria-pressed="true"]'); row.scrollLeft = left >= 0 ? left : on ? on.offsetLeft - row.offsetLeft - 16 : 0; }
+      if (row) { var on = row.querySelector('[aria-pressed="true"]'); row.scrollLeft = left >= 0 ? left : on ? on.offsetLeft - row.offsetLeft - 16 : 0; fades(row); }
       if (focus && box.querySelector(focus)) try { box.querySelector(focus).focus({ preventScroll: true }); } catch (e) { }
       // A details element's toggle doesn't bubble, so it's listened for here, each time the choices are drawn.
       if ($('nxMore')) $('nxMore').addEventListener('toggle', function () { c.more = this.open; PREF.next = c; savePrefs(); });
@@ -1843,6 +1859,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       else { var i = c.moods.indexOf(x.dataset.mood); if (i >= 0) c.moods.splice(i, 1); else c.moods.push(x.dataset.mood); }
       changed();
     });
+    $('nxCrit').addEventListener('scroll', function (e) { if (e.target.classList && e.target.classList.contains('nx-moods')) fades(e.target); }, { capture: true, passive: true });
     $('nxCrit').addEventListener('change', function (e) {
       var id = e.target.id, k = { nxTag: 'tag', nxRoom: 'room', nxGenre: 'genre', nxRe: 'reread', nxShort: 'short', nxBrowse: 'browse' }[id];
       if (!k) return;
@@ -2140,6 +2157,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
   });
   $('chips').addEventListener('click', function (e) { var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s; render(); });
+  $('chips').addEventListener('scroll', function () { fades(this); }, { passive: true });
+  window.addEventListener('resize', function () { fades($('chips')); fades(document.querySelector('#nxCrit .nx-moods')); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fades($('chips')); });
   var qT; $('q').addEventListener('input', function () { clearTimeout(qT); var v = this.value; qT = setTimeout(function () { UI.q = v; render(); }, 90); });
   // On a phone the search box is too narrow for the whole placeholder, which stopped at "tags, b".
   var narrow = window.matchMedia ? matchMedia('(max-width:720px)') : null;
