@@ -1612,7 +1612,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     $('stOpen').addEventListener('click', function () { $('fileIn').click(); });
     $('stErase').addEventListener('click', function () {
       var btn = this;
-      if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = 'Tap again to erase ' + plural(all.length, 'book'); btn.style.borderColor = 'var(--bad)'; return; }
+      if (!btn.dataset.sure) { btn.dataset.sure = '1'; btn.style.borderColor = 'var(--bad)'; eraseLabel(); return; }
       // The covers found and the What to read next choices name books, rooms and tags, so they go too. Sorting and
       // whether to look things up are this device's settings, not the catalog, and stay. The Google sign-in and its
       // account email go (LSG is Shelfmark's alone at its own address): left here, Connect would bring the whole
@@ -1791,8 +1791,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }
     s.innerHTML = html;
+    // Changes not yet in Drive would be lost for good (D.pending: Google's hour is up, say, or a sync failed).
     if ($('stEraseNote')) $('stEraseNote').textContent = 'Erasing removes your library' + (D.on || signedIn() ? ' and your Google sign-in' : '') + ' from this browser only' +
-      (D.on ? ', so Drive is disconnected here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
+      (D.on && D.pending ? '. Your latest changes here haven’t reached Drive yet. Tap Sync now first, or they’ll be lost.' : D.on ? ', so Drive is disconnected here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
+    eraseLabel();
     if ($('dvCidGo')) $('dvCidGo').addEventListener('click', function () {
       var v = str($('dvCid').value, 200);
       if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(v)) { toast('That doesn’t look like a client ID — it ends in .apps.googleusercontent.com'); return; }
@@ -1805,6 +1807,11 @@ body.locked .toast.show{transform:translate(-50%,0)}
       var cid = D.clientId; D = freshDrive(); D.clientId = cid; saveDrive(); renderSync(); renderDrive(); render();
       toast('Drive disconnected on this device. Your library is still here and in Drive.');
     });
+  }
+  // Erase this device's copy, once tapped: what a second tap erases.
+  function eraseLabel() {
+    var b = $('stErase'); if (!b || !b.dataset.sure) return;
+    b.textContent = D.on && D.pending ? 'Tap again to erase, changes not in Drive included' : 'Tap again to erase ' + plural(live(DOC).length, 'book');
   }
   function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
 

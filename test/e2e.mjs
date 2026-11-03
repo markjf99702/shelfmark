@@ -507,6 +507,34 @@ step('erasing this device\'s copy signs Google out here too, so Connect asks Goo
 });
 
 
+step('erasing with changes that haven\'t reached Drive says so before they\'re lost', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await connectDrive(page);
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the first sync');
+    // An hour on, Google's sign-in has run out, and a book is marked read here.
+    await page.evaluate(() => {
+      for (const k of ['junkdrawer.google', 'shelfmark.drive']) localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)), exp: Date.now() - 1000 }));
+    });
+    await page.reload();
+    await until(() => page.evaluate(() => document.getElementById('syncBtn').dataset.s === 'tap'), 'the sync button to ask for a tap');
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    await wait(450);
+    await page.click('#setBtn');
+    assert.match(await page.textContent('#stEraseNote'), /Your latest changes here haven’t reached Drive yet\. Tap Sync now first, or they’ll be lost\./);
+    await page.click('#stErase');
+    assert.equal(await page.textContent('#stErase'), 'Tap again to erase, changes not in Drive included');
+    assert.equal(await storedBook(page, 'b03').then(b => b.status), 'read', 'the first tap erased something');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {
