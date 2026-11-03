@@ -911,6 +911,36 @@ step('What to read next offers only choices that can change something', async ()
   } finally { await ctx.close(); }
 });
 
+step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
+  const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
+  try {
+    const page = await open(ctx);
+    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { more: true } })));
+    const kinds = ['fiction', 'nonfiction', 'poetry'], moods = ['reflective', 'funny', 'dark', 'hopeful', 'tense'], genres = ['classics', 'history', 'science', 'fantasy'];
+    await seed(page, Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'], kind: kinds[i % 3], moods: [moods[i % 5]], genres: [genres[i % 4]],
+      pace: ['slow', 'fast'][i % 2], chapters: 'short', tags: ['t' + (i % 2)], room: ['Den', 'Hall'][i % 2], pages: 150 + i * 60, added: '2026-0' + (1 + i % 5) + '-01' })));
+    await page.click('#nextBtn');
+    assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), true);
+    const inView = () => page.evaluate(() => {
+      const t = document.querySelector('.nx-pick .nx-t').getBoundingClientRect(), b = document.querySelector('#sheet .bd').getBoundingClientRect();
+      return t.top >= b.top && t.bottom <= b.bottom;
+    });
+    assert.equal(await inView(), false, 'the pick is in view from the start, so this proves nothing');
+    const was = await page.textContent('.nx-pick .nx-t');
+    await page.click('#nxAgain');
+    assert.notEqual(await page.textContent('.nx-pick .nx-t'), was);
+    await until(inView, 'the new pick to come into view', 5000);
+    // A tap on one of the others doesn't move the sheet: the person is choosing there.
+    const scrolled = () => page.evaluate(() => document.querySelector('#sheet .bd').scrollTop);
+    let top = -1;
+    await until(async () => { const y = await scrolled(), still = y === top; top = y; return still; }, 'the sheet to stop scrolling', 5000);
+    await page.click('.nx-alt >> nth=0');
+    await wait(400);
+    assert.equal(await scrolled(), top);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('junk in the saved covers and settings doesn\'t stop covers or sorting', async () => {
   const ctx = await context();
   const ol = await fakeOpenLibrary(ctx);

@@ -1822,6 +1822,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         '<p class="note">' + esc(nextNotes(deal, c, lap).join(' ')) + '</p>' + ask;
     }
     function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
+    // After Pick again, a pick drawn where little or none of it shows (More choices open, a small phone, the sheet
+    // scrolled past it) is brought up to just under the heading, so the book that changed is in view. A tap on a choice
+    // or on one of the others doesn't move the sheet: the person is still choosing there.
+    function showPick() {
+      var o = $('nxOut'), bd = o.parentNode, pick = o.querySelector('.nx-pick'); if (!pick) return;
+      var b = bd.getBoundingClientRect(), r = pick.getBoundingClientRect(), y = bd.scrollTop + r.top - b.top - 8;
+      if (r.top >= b.top && r.top <= b.bottom - 120) return;
+      var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      try { bd.scrollTo({ top: y, behavior: calm ? 'auto' : 'smooth' }); } catch (e) { bd.scrollTop = y; }
+    }
     $('nxCrit').addEventListener('click', function (e) {
       var x = e.target.closest('[data-len],[data-lean],[data-k],[data-mood]'); if (!x) return;
       if (x.dataset.len != null) c.len = x.dataset.len;
@@ -1841,7 +1851,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut();
     });
     $('nxx').addEventListener('click', closeSheet);
-    $('nxAgain').addEventListener('click', dealNow);
+    $('nxAgain').addEventListener('click', function () { dealNow(); showPick(); });
     $('nxGo').addEventListener('click', function () {
       var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
       var was = b.status || '';
