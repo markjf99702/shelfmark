@@ -198,8 +198,9 @@ a{color:var(--accent)}
 .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
 .hd h2{margin:0;font:500 21px/1.2 var(--serif);flex:1;min-width:0}
 #sheetTitle{outline:none} /* focused as a sheet opens; it isn't something to press */
-/* Done, Close and the like answer a tap 44px tall, in a header no taller than before */
-.hd .btn{min-height:44px;margin:-7px 0}
+/* On a touch screen, Done, Close and the like answer a tap 44px tall, in a header no taller than before. Only there:
+   with a mouse, a box that tall shows as the button's hover border and its keyboard outline. */
+@media (pointer:coarse){.hd .btn{min-height:44px;margin:-7px 0}}
 .hd .callno{flex:1;min-width:0;font:500 11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bd{padding:16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 /* a sheet with no footer (Settings, Import) ends clear of an iPhone's home indicator */

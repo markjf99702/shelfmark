@@ -959,6 +959,19 @@ step('on a phone the small controls answer a tap around them, without looking an
   } finally { await ctx.close(); }
 });
 
+step('with a mouse, a sheet\'s Done keeps its own size, so its hover border isn\'t a tall box', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await page.click('#list .bk[data-id="b03"]');
+    await page.hover('#bkx');
+    const h = await page.$eval('#bkx', e => Math.round(e.getBoundingClientRect().height));
+    assert.ok(h < 40, 'Done at the top is ' + h + ' tall with a mouse');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a long title shows whole in the card on a phone, and Enter there finishes it', async () => {
   const ctx = await context();
   try {
