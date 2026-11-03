@@ -926,6 +926,11 @@ step('a book\'s ISBN reads like its other details', async () => {
     await page.click('details.more > summary');
     const look = id => page.$eval(id, e => { const c = getComputedStyle(e); return [c.color, c.fontWeight, c.textTransform, c.letterSpacing]; });
     assert.deepEqual(await look('#f-isbn'), await look('#f-publisher'));
+    // An old ISBN can end in X, which a phone's number pad hasn't got.
+    assert.deepEqual(await page.$eval('#f-isbn', e => [e.inputMode, e.getAttribute('autocapitalize'), e.spellcheck]), ['text', 'characters', false]);
+    // The big stand-in cover breaks a word too long for it rather than cutting its end off.
+    await page.fill('#f-title', 'Middlemarch');
+    assert.equal(await page.$eval('#bkcv .cv-t', e => e.scrollWidth <= e.clientWidth), true, 'the cover cuts "Middlemarch" short');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
