@@ -328,6 +328,8 @@ details.more .fs{padding:2px 12px 12px}
 .nx-alt .bk-t{font-size:16px}
 .nx-w{font-size:12.5px;color:var(--ink3);overflow-wrap:anywhere}
 .nx-out>.note{margin-top:16px}
+.nx-ask{display:grid;gap:8px;justify-items:start;margin-top:10px}
+.nx-ask .note{margin:0}
 .nx-none h3{margin:0 0 6px;font:500 20px var(--serif)}
 .nx-none p{margin:0 0 10px;color:var(--ink2)}
 @keyframes deal{from{opacity:0;transform:translateY(6px)}}
@@ -1256,6 +1258,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
   }
+  function backup() { download('shelfmark-library-' + today() + '.json', canon(DOC), 'application/json'); }
   function opts(list, v, blank) { return (blank != null ? '<option value="">' + blank + '</option>' : '') + list.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
   function datalist(id, vals) { return '<datalist id="' + id + '">' + vals.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>'; }
   function distinct(f) { var s = Object.create(null); live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
@@ -1740,7 +1743,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
   function nextSheet() {
-    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, lap = false;
+    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, lap = false, ask = '';
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>');
@@ -1769,12 +1772,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (favs ? '<label class="opt"><input type="checkbox" id="nxRe"' + (c.reread ? ' checked' : '') + '><span>Include rereads of 4- and 5-star books</span></label>' : '');
       var set = [c.genre, c.pace, c.tag, c.room, c.browse && has.browse, c.reread && favs].filter(Boolean).length;
       if (more) html += '<details class="nx-more" id="nxMore"' + (c.more ? ' open' : '') + '><summary>More choices' + (set ? '<span class="nx-range"> · ' + set + ' set</span>' : '') + '</summary><div class="nx-morein">' + more + '</div></details>';
-      if (!has.kind && !moods.length) html += '<p class="note">Ask Claude to add <b>reading details</b> to your Shelfmark library, and you can choose by fiction or not, mood, genre, pace and chapter length here.</p>';
+      // With no reading details yet, a note under the pick says how to get them (and, without a page count, a length).
+      ask = has.kind || moods.length ? '' : '<div class="nx-ask"><p class="note">Want to choose by fiction or not, mood, genre or ' + (has.len ? 'pace' : 'length') +
+        '? Ask Claude, with the Shelfmark skill, to add <b>reading details</b> to your library. It reads the library from ' + (D.on ? 'your Google Drive, or from a backup you send it,' : 'a backup you send it,') +
+        ' and gives you a link to open here.</p>' + (D.on ? '' : '<button class="btn sm" type="button" id="nxBackup">Download a backup</button>') + '</div>';
       // Drawn again after each change: the mood row keeps its place (or opens at the first mood chosen), and the
       // keyboard stays on the choice it was on.
       var box = $('nxCrit'), row = box.querySelector('.nx-moods'), left = row ? row.scrollLeft : -1, a = document.activeElement, focus = '';
       if (a && box.contains(a)) focus = a.id ? '#' + a.id : ['k', 'v', 'len', 'lean', 'mood'].filter(function (d) { return a.dataset[d] != null; }).map(function (d) { return '[data-' + d + '="' + a.dataset[d] + '"]'; }).join('');
-      box.innerHTML = html;
+      box.innerHTML = html; box.hidden = !html;
       row = box.querySelector('.nx-moods');
       if (row) { var on = row.querySelector('[aria-pressed="true"]'); row.scrollLeft = left >= 0 ? left : on ? on.offsetLeft - row.offsetLeft - 16 : 0; }
       if (focus && box.querySelector(focus)) try { box.querySelector(focus).focus({ preventScroll: true }); } catch (e) { }
@@ -1794,7 +1800,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!p.length) {
         var any = onHand(live(DOC), c.reread, c.browse).length, favs = !c.reread && $('nxRe');
         o.innerHTML = '<div class="nx-none">' + (any
-          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, lap).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>'
+          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, lap).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         if ($('nxClear')) $('nxClear').addEventListener('click', function () { Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' }); changed(); });
         return;
@@ -1813,7 +1819,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
             (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
-        '<p class="note">' + esc(nextNotes(deal, c, lap).join(' ')) + '</p>';
+        '<p class="note">' + esc(nextNotes(deal, c, lap).join(' ')) + '</p>' + ask;
     }
     function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
     $('nxCrit').addEventListener('click', function (e) {
@@ -1830,7 +1836,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       c[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       changed();
     });
-    $('nxOut').addEventListener('click', function (e) { var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut(); });
+    $('nxOut').addEventListener('click', function (e) {
+      if (e.target.closest('#nxBackup')) { backup(); return; }
+      var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut();
+    });
     $('nxx').addEventListener('click', closeSheet);
     $('nxAgain').addEventListener('click', dealNow);
     $('nxGo').addEventListener('click', function () {
@@ -1856,7 +1865,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     renderDrive();
     $('stx').addEventListener('click', closeSheet);
     $('stLook').addEventListener('change', function () { PREF.lookups = this.checked; savePrefs(); if (!PREF.lookups) { coverQ = []; coverQueued = {}; } render(); });
-    $('stDl').addEventListener('click', function () { download('shelfmark-library-' + today() + '.json', canon(DOC), 'application/json'); });
+    $('stDl').addEventListener('click', backup);
     $('stCsv').addEventListener('click', function () { download('shelfmark-' + today() + '.csv', toCsv(DOC), 'text/csv'); });
     $('stOpen').addEventListener('click', function () { $('fileIn').click(); });
     $('stErase').addEventListener('click', function () {

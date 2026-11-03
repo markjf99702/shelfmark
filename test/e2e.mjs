@@ -1438,7 +1438,11 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     const page = await open(ctx);
     await seed(page, [PIRANESI, MIDDLEMARCH]);
     await page.click('#nextBtn');
-    assert.match(await page.textContent('#nxCrit'), /Ask Claude to add reading details/, 'before any book has details, it says how to get them');
+    // Before any book has details, a note under the pick says how to get them, with a backup to send Claude.
+    assert.match(await page.textContent('#nxOut .nx-ask'), /Ask Claude, with the Shelfmark skill, to add reading details to your library\. It reads the library from a backup you send it/);
+    assert.ok((await page.locator('.nx-pick').boundingBox()).y < (await page.locator('.nx-ask').boundingBox()).y, 'the note comes before the pick');
+    const [file] = await Promise.all([page.waitForEvent('download'), page.click('#nxBackup')]);
+    assert.match(file.suggestedFilename(), /^shelfmark-library-\d{4}-\d{2}-\d{2}\.json$/);
     assert.equal(await page.locator('#nxCrit [data-k="kind"]').count(), 0);
     await page.click('#nxx');
     await seed(page, [
