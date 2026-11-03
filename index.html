@@ -88,10 +88,11 @@ a{color:var(--accent)}
 .mono{font-family:var(--mono)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .note{color:var(--ink3);font-size:13.5px;margin:6px 0 0}
-.wrap{max-width:1240px;margin:0 auto;padding:0 16px 56px}
+/* with viewport-fit=cover, the page keeps clear of an iPhone's notch in landscape itself */
+.wrap{max-width:1240px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right,0px)) 56px max(16px,env(safe-area-inset-left,0px))}
 
 /* top bar */
-.top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 10px}
+.top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
 .top-in{display:flex;align-items:center;gap:8px;max-width:1240px;margin:0 auto}
 .brand{flex:none;display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink);margin-right:auto}
 .brand svg{width:30px;height:30px;flex:none}
@@ -192,10 +193,12 @@ a{color:var(--accent)}
 #sheetTitle{outline:none} /* focused as a sheet opens; it isn't something to press */
 .hd .callno{flex:1;min-width:0;font:500 11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bd{padding:16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* a sheet with no footer (Settings, Import) ends clear of an iPhone's home indicator */
+.panel>.bd:last-child{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 .ft{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface2)}
 .ft .grow{flex:1}
 @media (max-width:640px){
-  .panel{left:0;right:0;bottom:0;top:auto;transform:none;width:100%;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);border-radius:16px 16px 0 0}
+  .panel{left:0;right:0;bottom:0;top:auto;transform:none;width:100%;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px - env(safe-area-inset-top,0px));border-radius:16px 16px 0 0}
 }
 
 /* the catalog card */
@@ -353,7 +356,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .tbtn{padding:8px 10px}
   .sync .t{display:inline}
   .sync[data-s="ok"] .t,.sync[data-s="busy"] .t{display:none}
-  #addBtn{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;justify-content:center;padding:0;box-shadow:0 12px 26px -8px rgba(0,0,0,.5);z-index:30}
+  #addBtn{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;justify-content:center;padding:0;box-shadow:0 12px 26px -8px rgba(0,0,0,.5);z-index:30}
   #addBtn svg{width:24px;height:24px}
   .wrap{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}

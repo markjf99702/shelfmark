@@ -856,6 +856,30 @@ step('on a phone, every field in a sheet is 16px or more, so Safari on an iPhone
   } finally { await ctx.close(); }
 });
 
+step('on an iPhone, nothing sits under the home indicator or the notch', async () => {
+  // An iPhone 15's safe areas: 34px for the home indicator in portrait, 59px each side for the notch in landscape.
+  const inset = async (page, insets) => { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets }); };
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await inset(page, { top: 0, bottom: 34, left: 0, right: 0 });
+    for (const [open, last] of [['#setBtn', '#stErase'], ['#importBtn', '#imgo']]) {
+      await page.click(open);
+      await page.evaluate(() => { const b = document.querySelector('#sheet .bd'); b.scrollTop = b.scrollHeight; });
+      const end = await page.evaluate(q => document.querySelector(q).getBoundingClientRect().bottom, last);
+      assert.ok(end <= await page.evaluate(() => innerHeight) - 34, last + ' ends at ' + end + ', under the home indicator');
+      await page.keyboard.press('Escape');
+    }
+    await page.setViewportSize({ width: 844, height: 390 });
+    await inset(page, { top: 0, bottom: 21, left: 59, right: 59 });
+    const [brand, add, card] = await page.evaluate(() => ['.top .brand', '#addBtn', '#list .bk'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left, r.right]; }));
+    assert.ok(brand[0] >= 59 && card[0] >= 59, 'the logo or the first book sits under the notch on the left: ' + JSON.stringify([brand, card]));
+    assert.ok(add[1] <= 844 - 59 && card[1] <= 844 - 59, 'Add or a book sits under the notch on the right: ' + JSON.stringify([add, card]));
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
