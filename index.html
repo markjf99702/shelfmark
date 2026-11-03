@@ -107,6 +107,8 @@ a{color:var(--accent)}
 .sync[data-s="busy"] i{background:var(--brass);animation:pulse 1s ease-in-out infinite}
 .sync[data-s="tap"]{border-style:solid;border-color:var(--brass);color:var(--brass)}
 .sync[data-s="tap"] i{background:var(--brass)}
+.sync[data-s="offline"]{border-color:var(--brass);color:var(--brass)}
+.sync[data-s="offline"] i{background:var(--brass)}
 .sync[data-s="err"]{border-style:solid;border-color:var(--bad);color:var(--bad)}
 .sync[data-s="err"] i{background:var(--bad)}
 @keyframes pulse{50%{opacity:.35}}
@@ -1696,7 +1698,9 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function dropShared(token) { var g = readShared(); if (g && g.token === token) try { localStorage.removeItem(LSG); } catch (e) { } }
   // gisErr says Google's sign-in script couldn't load or start on this visit. It isn't saved with D: the next
   // try clears it.
-  var tokenClient = null, gisLoading = false, gisErr = '', syncing = false, again = false, syncT, syncState = 'off';
+  // offline: the last sync couldn't reach Drive at all. That isn't a failure for a page meant to work offline: the
+  // changes wait here, and go to Drive when the connection is back (see the online listener). Not saved with D.
+  var tokenClient = null, gisLoading = false, gisErr = '', syncing = false, again = false, syncT, syncState = 'off', offline = false;
 
   function loadGis() {
     if (tokenClient || gisLoading || !clientId()) return;
@@ -1739,7 +1743,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function api(method, url, body, type) {
     var h = { Authorization: 'Bearer ' + D.token }; if (type) h['Content-Type'] = type;
-    return fetch(url, { method: method, headers: h, body: body }).then(function (r) {
+    return fetch(url, { method: method, headers: h, body: body }).catch(function (e) { e.net = true; throw e; }).then(function (r) {
       if (r.status === 401) { var e = new Error('auth'); e.auth = true; throw e; }
       if (r.status === 404) { var n = new Error('gone'); n.gone = true; throw n; }
       if (!r.ok) return r.text().then(function (t) { var m = /"message":\s*"([^"]+)"/.exec(t); throw new Error('Drive said: ' + (m ? m[1] : r.status)); });
@@ -1825,11 +1829,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
       });
     }).then(function () {
       if (editSeq === seq) D.pending = false;
-      D.last = Date.now(); D.err = ''; saveDrive(); syncing = false; renderSync(); renderDrive();
+      D.last = Date.now(); D.err = ''; offline = false; saveDrive(); syncing = false; renderSync(); renderDrive();
       if (again || D.pending) { again = false; syncSoon(); }
     }, function (e) {
-      syncing = false; again = false;
-      if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; } else D.err = e.message || 'Sync failed';
+      syncing = false; again = false; offline = false;
+      if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; }
+      // No connection, or one that dropped mid-way (fetch's own TypeError: "Failed to fetch", Safari's "Load failed").
+      else if (e.net || navigator.onLine === false || e.name === 'TypeError' && /fetch|network|load failed/i.test(e.message)) { offline = true; D.err = ''; }
+      else D.err = e.message || 'Sync failed';
       saveDrive(); renderSync(); renderDrive();
     });
   }
@@ -1840,6 +1847,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (b.hidden) return;
     if (syncing) { setSync('busy'); $('syncTx').textContent = 'Syncing'; b.title = 'Syncing with Google Drive'; return; }
     if (!hasToken()) { setSync('tap'); $('syncTx').textContent = 'Sync'; b.title = 'Google needs you to sign in again to sync'; return; }
+    if (offline) { setSync('offline'); $('syncTx').textContent = 'Offline'; b.title = 'Offline: your changes are kept here and go to Drive when you’re back'; return; }
     if (D.err) { setSync('err'); $('syncTx').textContent = 'Sync failed'; b.title = D.err; return; }
     setSync('ok'); $('syncTx').textContent = D.pending ? 'Saving' : 'Synced'; b.title = D.last ? 'Synced with Google Drive ' + ago(D.last) : 'Synced with Google Drive';
   }
@@ -1853,8 +1861,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
       html += '<p>Keep your library in your own Google Drive and the same on every device you use. Shelfmark can see only the files it makes: one folder, <span class="drivepath">Shelfmark</span>, with your library file in it. <a href="privacy.html">More on privacy</a></p>' +
         (D.err || gisErr ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') + '<div class="row"><button class="btn primary" type="button" id="dvGo">Connect Google Drive</button></div>';
     } else {
-      html += '<p>' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Shelfmark out after an hour. Tap <b>Sync now</b> to sign back in; your changes are safe here meanwhile.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
-        (D.err || gisErr ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') +
+      html += '<p>' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Shelfmark out after an hour. Tap <b>Sync now</b> to sign back in; your changes are safe here meanwhile.' :
+        offline ? (D.last ? 'Last synced ' + esc(ago(D.last)) + '. ' : '') + 'You’re offline. Changes made here wait on this device and go to Drive when you’re back online.' : D.last ? 'Last synced ' + esc(ago(D.last)) + '.' : 'Connected.') + '</p>' +
+        // Offline, Google's sign-in script can't load either, which needs no second message.
+        (D.err || gisErr && !offline ? '<p class="err">' + esc(D.err || gisErr) + '</p>' : '') +
         '<p>Your library is in <span class="drivepath">My Drive › Shelfmark › Shelfmark library.json</span>. Drive keeps its earlier versions for 30 days (right-click it › File information › Manage versions).</p>' +
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }
@@ -1888,7 +1898,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   $('importBtn').addEventListener('click', importSheet);
   $('nextBtn').addEventListener('click', nextSheet);
   $('setBtn').addEventListener('click', function () { loadGis(); settingsSheet(); });
-  $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err) { D.err = ''; sync(); } else { settingsSheet(); } });
+  $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err || offline) { D.err = ''; sync(); } else { settingsSheet(); } });
   $('list').addEventListener('click', function (e) {
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
@@ -1941,6 +1951,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     renderSync();
   });
   setInterval(function () { if (document.visibilityState === 'visible' && D.on && hasToken() && !syncing) sync(); else renderSync(); }, 60000);
+  // Back online: what waited here goes to Drive now, not at the next minute's sync.
+  window.addEventListener('online', function () { if (D.on && hasToken()) sync(); });
 
   render();
   if (D.on && clientId()) { loadGis(); if (hasToken()) sync(); }

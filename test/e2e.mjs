@@ -1085,6 +1085,41 @@ step('two devices that connect at the same moment end up with one library file a
   } finally { await a.context().close(); await b.context().close(); }
 });
 
+step('losing the connection mid-sync shows Offline, not Sync failed, and coming back syncs', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  const driveBook = id => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library' && !f.trashed); return f && f.body ? JSON.parse(f.body).library.books[id] : null; };
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await connectDrive(page);
+    await until(() => driveBook('b03'), 'the library to reach Drive');
+    // The connection drops while the change is on its way to Drive.
+    let dropped = 0;
+    await ctx.route('https://www.googleapis.com/upload/drive/v3/files/**', r => r.request().method() === 'PATCH' ? (dropped++, r.abort('internetdisconnected')) : r.fallback());
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    await until(() => dropped > 0, 'the change to be sent');
+    const sync = () => page.evaluate(() => { const b = document.getElementById('syncBtn'); return [b.dataset.s, document.getElementById('syncTx').textContent, b.title]; });
+    await until(async () => (await sync())[0] !== 'busy', 'the sync to end');
+    assert.deepEqual(await sync(), ['offline', 'Offline', 'Offline: your changes are kept here and go to Drive when you’re back'], 'a dropped connection reads as a failed sync');
+    await wait(450);
+    await page.click('#setBtn');
+    assert.match(await page.textContent('#driveSect'), /You’re offline\. Changes made here wait on this device and go to Drive when you’re back online\./);
+    assert.equal(await page.locator('#driveSect .err').count(), 0, 'Settings shows an error for being offline');
+    await page.click('#stx');
+    // Back online, it syncs straight away rather than waiting for the minute's timer.
+    await ctx.unroute('https://www.googleapis.com/upload/drive/v3/files/**');
+    await ctx.setOffline(true);
+    await ctx.setOffline(false);
+    await until(() => (driveBook('b03') || {}).status === 'read', 'the change to reach Drive once back online', 8000);
+    await until(async () => (await sync())[1] === 'Synced', 'the button to say Synced', 5000);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a details link fills in reading details, and a book\'s card shows and changes them', async () => {
   const ctx = await context();
   try {
