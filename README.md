@@ -38,7 +38,7 @@
   - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
   - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
-- **Backups.** Download the whole library as a file, open it on any device (it merges), or download a spreadsheet (CSV).
+- **Backups.** Download the whole library as a file, open it on any device (it merges, after saying how many books it would add, change or remove), or download a spreadsheet (CSV).
 - No account and no server. Your catalog stays in your browser, and in your Google Drive if you turn on sync. It installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline; covers and looking up a book's details need a signal.
 
 ## Your data

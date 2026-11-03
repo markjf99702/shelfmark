@@ -311,6 +311,8 @@ details.more .fs{padding:2px 12px 12px}
 .nx-why{margin:6px 0 6px;padding:0;list-style:none;display:grid;gap:5px}
 .nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
 .nx-why li::before{content:"";position:absolute;left:2px;top:.5em;width:5px;height:5px;border-radius:50%;background:var(--brass)}
+.lb-what{margin:0 0 14px}
+.lb-what li{color:var(--ink2);font-size:15px}
 .nx-alts{display:grid;gap:8px;margin-top:20px;animation:deal .28s ease-out}
 .nx-alt{display:flex;gap:10px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
 .nx-alt:hover{border-color:var(--ink3)}
@@ -1417,15 +1419,31 @@ body.locked .toast.show{transform:translate(-50%,0)}
     return panel;
   }
 
+  // A library file (a backup, or the Drive file downloaded), and what merging it here would change, book by book:
+  // books it adds (new here, or changed in the file after they were removed here), books here it has changed more
+  // recently, books removed here since (they stay removed), and books here it removes.
   function librarySheet(doc) {
-    var mine = DOC.books, theirs = live(doc), fresh = theirs.filter(function (b) { return !mine[b.id]; }).length;
-    var newer_ = theirs.filter(function (b) { return mine[b.id] && newer(b, mine[b.id]); }).length;
-    openSheet('<div class="hd"><h2 id="sheetTitle">Open a Shelfmark library</h2><button class="btn sm quiet" type="button" id="lbx">Not now</button></div><div class="bd">' +
-      '<p class="lede">This file holds <b>' + plural(theirs.length, 'book') + '</b>. ' + (fresh ? plural(fresh, 'is', 'are').replace(/^\d+/, fresh) + ' not on this device' : 'Every one is already on this device') + (newer_ ? ', and ' + plural(newer_, 'book') + ' changed more recently than your copy' : '') + '.</p>' +
-      '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
-      '<div class="ft"><span class="grow"></span><button class="btn quiet" type="button" id="lbx2">Cancel</button><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>');
-    $('lbx').addEventListener('click', closeSheet); $('lbx2').addEventListener('click', closeSheet);
-    $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); var saved = persist(); closeSheet(); render(); toast(saved ? 'Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')' : STORE_TOAST[STORE]); });
+    var mine = DOC.books, theirs = live(doc), adds = 0, here = 0, newer_ = 0, gone = 0, drops = 0;
+    theirs.forEach(function (b) {
+      var m = mine[b.id];
+      if (!m) adds++;
+      else if (m.del) { if (newer(b, m)) adds++; else gone++; }
+      else { here++; if (newer(b, m)) newer_++; }
+    });
+    Object.keys(doc.books).forEach(function (id) { var x = doc.books[id], m = mine[id]; if (x.del && m && !m.del && newer(x, m)) drops++; });
+    var nothing = !adds && !newer_ && !drops, one = function (n, a, b) { return n === 1 ? a : b; };
+    var what = [];
+    if (adds) what.push(adds + one(adds, ' isn’t on this device yet, so merging adds it', ' aren’t on this device yet, so merging adds them'));
+    if (here) what.push(here + one(here, ' is', ' are') + ' already here' + (!newer_ ? '' : ', ' + (newer_ < here ? newer_ + ' ' : here === 1 ? '' : here === 2 ? 'both ' : 'all ') + 'with newer changes in the file'));
+    if (gone) what.push(gone + one(gone, ' was removed here since, and stays removed', ' were removed here since, and stay removed'));
+    if (drops) what.push(drops + one(drops, ' of your books was removed in the file, so merging removes it here too', ' of your books were removed in the file, so merging removes them here too'));
+    openSheet('<div class="hd"><h2 id="sheetTitle">Open a Shelfmark library</h2><button class="btn sm quiet" type="button" id="lbx">' + (nothing ? 'Close' : 'Not now') + '</button></div><div class="bd">' +
+      (nothing ? '<p class="lede">Nothing to merge: this device already has everything in this file' + (gone ? ', apart from ' + plural(gone, 'book') + ' removed here since, which ' + one(gone, 'stays', 'stay') + ' removed' : '') + '.</p></div>'
+        : '<p class="lede">This file holds <b>' + plural(theirs.length, 'book') + '</b>.</p><ul class="nx-why lb-what">' + what.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul>' +
+          '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
+          '<div class="ft"><span class="grow"></span><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>'));
+    $('lbx').addEventListener('click', closeSheet);
+    if (!nothing) $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); var saved = persist(); closeSheet(); render(); toast(saved ? 'Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')' : STORE_TOAST[STORE]); });
   }
 
   // The reading details on a book, in a line: "Nonfiction · History · Informative, reflective · Slow · Short chapters".

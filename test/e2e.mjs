@@ -584,6 +584,51 @@ step('a browser out of room says so once, not with every save while typing', asy
   } finally { await ctx.close(); }
 });
 
+step('a backup opens on another device, and the library sheet says what merging it would change', async () => {
+  const a = await context(), b = await context();
+  try {
+    const page = await open(a);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await page.click('#setBtn');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#stDl')]);
+    const backup = await readFile(await dl.path(), 'utf8');
+    const lede = p => p.textContent('#sheet .lede');
+    const what = p => p.$$eval('#sheet .lb-what li', lis => lis.map(li => li.textContent));
+    const openFile = (p, text) => p.setInputFiles('#fileIn', { name: 'shelfmark-library.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+
+    // On a new device it merges, and the library there is the one backed up.
+    const other = await open(b);
+    await openFile(other, backup);
+    assert.equal(await lede(other), 'This file holds 2 books.');
+    assert.deepEqual(await what(other), ['2 aren’t on this device yet, so merging adds them']);
+    assert.deepEqual(await other.$$eval('#sheet button', bs => bs.map(x => x.textContent)), ['Not now', 'Merge into my library'], 'two buttons that close it, or the wrong ones');
+    await other.click('#lbgo');
+    assert.deepEqual(await stored(other), JSON.parse(backup));
+    // Opened again, there's nothing to merge, and it says so.
+    await wait(450);
+    await openFile(other, backup);
+    assert.equal(await lede(other), 'Nothing to merge: this device already has everything in this file.');
+    assert.deepEqual(await other.$$eval('#sheet button', bs => bs.map(x => x.textContent)), ['Close']);
+    await other.click('#lbx');
+    // A book removed here since stays removed, and the sheet counts it.
+    await other.click('#list .bk[data-id="b04"]');
+    await other.click('#f-del');
+    await wait(450);
+    await openFile(other, backup);
+    assert.equal(await lede(other), 'Nothing to merge: this device already has everything in this file, apart from 1 book removed here since, which stays removed.');
+    await other.click('#lbx');
+    // A file in which one of the books here was removed later says so before merging.
+    const removed = { shelfmark: 1, library: { books: { b03: { id: 'b03', t: Date.now() + 60000, del: 1 }, b04: MIDDLEMARCH, b05: CRADLE }, seen: {} } };
+    await wait(450);
+    await openFile(other, JSON.stringify(removed));
+    assert.equal(await lede(other), 'This file holds 2 books.');
+    assert.deepEqual(await what(other), ['1 isn’t on this device yet, so merging adds it', '1 was removed here since, and stays removed', '1 of your books was removed in the file, so merging removes it here too']);
+    await other.click('#lbgo');
+    assert.deepEqual((await titles(other)).sort(), ['Cat’s Cradle']);
+    assert.deepEqual([...page.problems, ...other.problems], []);
+  } finally { await a.close(); await b.close(); }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {
