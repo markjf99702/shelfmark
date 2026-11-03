@@ -978,6 +978,21 @@ step('What to read next offers only choices that can change something', async ()
   } finally { await ctx.close(); }
 });
 
+step('on a phone What to read next keeps its height, so a choice tapped stays under the finger', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, ['Middlemarch', 'Walden', 'Persuasion', 'Ivanhoe', 'Emma'].map((title, i) => ({ id: 'h' + i, t: 1000, title, authors: ['Ann Lee'], pages: 500 + i, room: 'Den' })));
+    await page.click('#nextBtn');
+    const at = () => page.$eval('#nxCrit [data-len="short"]', e => Math.round(e.getBoundingClientRect().top));
+    const before = await at();
+    await page.click('#nxCrit [data-len="short"]'); // nothing that short: the result shrinks to a line or two
+    assert.match(await page.textContent('#nxOut'), /Nothing matches/);
+    assert.equal(await at(), before, 'Short moved from under the finger');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Pick again says it\'s going round again on every repeat, and a tap on another book puts the keyboard on it', async () => {
   const ctx = await context();
   try {

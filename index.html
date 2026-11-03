@@ -203,6 +203,9 @@ a{color:var(--accent)}
 .ft .grow{flex:1}
 @media (max-width:640px){
   .panel{left:0;right:0;bottom:0;top:auto;transform:none;width:100%;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px - env(safe-area-inset-top,0px));border-radius:16px 16px 0 0}
+  /* What to read next takes the full height, so its choices don't move under the finger as the result changes */
+  .panel.tall{height:calc(100vh - 28px);height:calc(100dvh - 28px - env(safe-area-inset-top,0px))}
+  .panel.tall>.bd{flex:1 1 auto}
 }
 
 /* the catalog card */
@@ -1797,7 +1800,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, round = 0, ask = '';
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
-      '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>');
+      '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>').classList.add('tall');
     function meta(b) { return [byLine(b), b.year, b.pages ? plural(b.pages, 'page') : ''].filter(Boolean).join(' · '); }
     function seg(k, name, from) {
       return '<div class="nx-f"><span class="lbl">' + name + '</span><div class="seg" role="group" aria-label="' + name + '">' + [['', 'Any']].concat(from).map(function (o) { return '<button type="button" data-k="' + k + '" data-v="' + o[0] + '" aria-pressed="' + (c[k] === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
