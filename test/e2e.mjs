@@ -873,12 +873,13 @@ step('What to read next counts one match in the singular', async () => {
   const ctx = await context();
   try {
     const page = await open(ctx);
-    await seed(page, [{ ...PIRANESI, pages: 272 }, { ...MIDDLEMARCH, pages: 880 }]);
+    await seed(page, [{ ...PIRANESI, pages: 272 }, { ...MIDDLEMARCH, pages: 880 }, CRADLE]);
     await page.click('#nextBtn');
     await page.click('[data-len="long"]');
-    assert.equal(await page.textContent('#nxOut .note'), 'From 1 unread book that matches.');
+    // The book with no page count is left out, and the note says so though something matches.
+    assert.equal(await page.textContent('#nxOut .note'), 'From 1 unread book that matches. 1 book has no page count, so it only comes up under Any length.');
     await page.click('[data-len=""]');
-    assert.equal(await page.textContent('#nxOut .note'), 'From 2 unread books on hand.');
+    assert.equal(await page.textContent('#nxOut .note'), 'From 3 unread books on hand.');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -1453,7 +1454,7 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     await page.click('#nxCrit [data-mood="mysterious"]');
     assert.equal(await page.textContent('.nx-pick .nx-t'), 'Piranesi');
     assert.equal(await page.textContent('.nx-pick .nx-blurb'), 'An endless house of statues and tides.');
-    assert.match(await page.textContent('#nxOut > .note'), /From 1 unread book that matches\. 1 book without reading details can’t match/);
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 1 unread book that matches. 1 book without reading details is left out.');
     await page.click('#nxCrit [data-mood="mysterious"]');
     await page.check('#nxShort');
     assert.equal(await page.textContent('.nx-pick .nx-t'), 'Piranesi', 'short chapters leave Middlemarch out');
@@ -1466,7 +1467,7 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     await page.click('#nxCrit [data-k="kind"][data-v="nonfiction"]');
     await page.click('#nxMore summary');
     await page.check('#nxBrowse');
-    assert.equal(await page.textContent('#nxOut > .note'), 'From 2 unread books that match. 1 book without reading details can’t match fiction or not, mood, genre, pace or chapters yet.');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 2 unread books that match. 1 book without reading details is left out.');
     assert.match(await page.textContent('#nxMore summary'), /1 set/);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }

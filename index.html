@@ -817,6 +817,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
   var ANY_DETAILS = { kind: '', moods: [], genre: '', pace: '', short: false };
   function picky(c) { return !!(c.kind || c.moods.length || c.genre || c.pace || c.short); }
+  function narrowed(c) { return !!(c.len || c.tag || c.room || picky(c)); }
   function moodsMet(b, c) { return (b.moods || []).filter(function (m) { return c.moods.indexOf(m) >= 0; }).length; }
   function nextPool(all, c) {
     return onHand(all, c.reread, c.browse).filter(function (b) {
@@ -824,6 +825,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
         (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
     });
+  }
+  // A book that could match the choices once it has the reading details and page count it hasn't got yet: a choice it
+  // has the detail for has to match, one it hasn't is let by. Which chosen details it hasn't got (lacks).
+  function couldMatch(b, c) {
+    return (!c.len || !b.pages || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room) &&
+      (!c.kind || !b.kind || b.kind === c.kind) && (!c.moods.length || !b.moods || moodsMet(b, c)) && (!c.genre || !b.genres || b.genres.indexOf(c.genre) >= 0) &&
+      (!c.pace || !b.pace || b.pace === c.pace) && (!c.short || !b.chapters || b.chapters === 'short' || b.way === 'dip');
+  }
+  function lacks(b, c) {
+    return [['kind', c.kind && !b.kind], ['moods', c.moods.length && !b.moods], ['genre', c.genre && !b.genres], ['pace', c.pace && !b.pace],
+      ['short', c.short && !b.chapters && b.way !== 'dip']].filter(function (x) { return x[1]; }).map(function (x) { return x[0]; });
   }
   function authorKey(a) { return fold(a).replace(/[^\p{L}\p{N}]+/gu, ''); }
   // For each author: how many of their books you've read, one of them, and the one you rated highest.
@@ -908,15 +920,43 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (i < 0) break;
       left.splice(left.indexOf(i), 1); picks.push(pool[i]);
     }
+    // What's left out, for the notes under the pick: books that could match but haven't got a chosen detail yet (bare,
+    // and which details: lacking), books without a page count that only come up under Any length (noPages), books you
+    // browse that match what was chosen (browseMatch), and how many the choices themselves rule out (ruled).
+    var hand = onHand(all, c.reread, c.browse), could = hand.filter(function (b) { return couldMatch(b, c); }), lacking = [];
+    var bare = could.filter(function (b) { var l = lacks(b, c); l.forEach(function (k) { if (lacking.indexOf(k) < 0) lacking.push(k); }); return l.length; });
     return {
       pool: pool.length, fresh: fresh, even: w.every(function (x) { return x === w[0]; }),
       fans: pool.filter(function (b) { return fanOf(b, fans); }).length,
       noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' })).filter(function (b) { return !b.pages; }).length : 0,
-      // Books left out for want of reading details, and the ones you browse, which are left out unless asked for.
-      bare: picky(c) ? nextPool(all, Object.assign({}, c, ANY_DETAILS)).filter(function (b) { return !hasDetails(b); }).length : 0,
+      bare: bare.length, lacking: ['kind', 'moods', 'genre', 'pace', 'short'].filter(function (k) { return lacking.indexOf(k) >= 0; }), plain: bare.every(function (b) { return !hasDetails(b); }),
+      ruled: hand.length - could.length,
+      browseMatch: c.browse || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { browse: true })).length - pool.length,
       browsed: c.browse ? 0 : onHand(all, c.reread, true).filter(function (b) { return b.way === 'browse'; }).length,
       picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span) }; })
     };
+  }
+
+  // The notes under a pick (or under "Nothing matches all of these"), saying what the pick came from and what was left
+  // out, and why. lap: the deal is a repeat of books already shown.
+  var LACKS = { moods: 'moods', genre: 'genre', pace: 'pace', short: 'chapter length' };
+  function nextNotes(deal, c, lap) {
+    var n = [], some = deal.picks.length, one = function (k, a, b) { return k === 1 ? a : b; };
+    if (some) {
+      n.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (narrowed(c) ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
+      if (lap) n.push('You’ve seen every one, so these are repeats.');
+      else if (c.lean === 'loved' && !deal.fans) n.push('None of them are by authors you’ve read yet, so this is a random pick.');
+      else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) n.push('They were all added on the same day, so this is a random pick.');
+    }
+    if (c.len && deal.noPages) n.push(plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + one(deal.noPages, 'it only comes', 'they only come') + ' up under Any length.');
+    if (deal.bare) {
+      var k = deal.bare, l = deal.lacking.filter(function (x) { return x !== 'kind'; }).map(function (x) { return LACKS[x]; }), kind = deal.lacking.indexOf('kind') >= 0;
+      var who = deal.plain ? ' without reading details' : (kind ? ' not yet marked fiction, nonfiction or poetry' : '') + (l.length ? (kind ? ', or' : '') + ' with no ' + l.slice(0, -1).join(', ') + (l.length > 1 ? ' or ' : '') + l[l.length - 1] + ' yet' : '') + (kind && l.length ? ',' : '');
+      n.push(plural(k, 'book') + who + ' ' + one(k, 'is', 'are') + ' left out.');
+    }
+    if (deal.browseMatch) n.push(plural(deal.browseMatch, 'book') + ' you browse ' + one(deal.browseMatch, 'matches', 'match') + (some ? ' too' : '') + ': tick Include books you browse under More choices.');
+    if (!some && deal.ruled) n.push('Try fewer of them.');
+    return n;
   }
 
   // What What to read next offers, from the books on hand (rereads and books you browse included): only the choices that
@@ -1748,24 +1788,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
       drawOut();
     }
-    function bareNote() { return deal.bare ? plural(deal.bare, 'book', 'books') + ' without reading details can’t match fiction or not, mood, genre, pace or chapters yet.' : ''; }
     function drawOut() {
       var o = $('nxOut'), p = deal.picks;
       $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool < 2;
       if (!p.length) {
         var any = onHand(live(DOC), c.reread, c.browse).length, favs = !c.reread && $('nxRe');
         o.innerHTML = '<div class="nx-none">' + (any
-          ? '<h3>Nothing matches all of these</h3><p>' + [deal.noPages ? plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + (deal.noPages === 1 ? 'it only comes' : 'they only come') + ' up under Any length.' : '', bareNote()].filter(Boolean).join(' ') + (deal.noPages || deal.bare ? '' : 'Try fewer of them.') + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>'
+          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, lap).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>'
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         if ($('nxClear')) $('nxClear').addEventListener('click', function () { Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' }); changed(); });
         return;
       }
-      var t = p[top], b = t.b, notes = [], dl = detailLine(b);
-      notes.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (c.len || c.tag || c.room || picky(c) ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
-      if (lap) notes.push('You’ve seen every one, so these are repeats.');
-      else if (c.lean === 'loved' && !deal.fans) notes.push('None of them are by authors you’ve read yet, so this is a random pick.');
-      else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) notes.push('They were all added on the same day, so this is a random pick.');
-      if (bareNote()) notes.push(bareNote());
+      var t = p[top], b = t.b, dl = detailLine(b);
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
         '<span class="nx-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
@@ -1779,7 +1813,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
             (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
-        '<p class="note">' + notes.join(' ') + '</p>';
+        '<p class="note">' + esc(nextNotes(deal, c, lap).join(' ')) + '</p>';
     }
     function changed() { PREF.next = c; savePrefs(); seen = {}; drawCrit(); dealNow(); }
     $('nxCrit').addEventListener('click', function (e) {

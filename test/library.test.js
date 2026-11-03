@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -497,6 +497,31 @@ function randomDoc(r, n) {
     eq([picky.bare, picky.browsed], [1, 1], 'it counts books without details that a choice leaves out, and books you browse');
     eq(S.dealNext(shelf, S.cleanNext({}), rng(1), {}, now).bare, 0, 'with no details chosen, books without them still come up');
     check(S.KINDS.length === 3 && S.MOODS.length === 14, 'the lists are there for the script to match');
+
+    // The notes under a pick say what was left out and why: books without a chosen detail, without a page count, and
+    // books you browse that would match.
+    const honest = S.live(S.cleanDoc({ books: [
+      { id: 'f1', t: 1, title: 'F1', kind: 'fiction', moods: ['funny'], pace: 'fast', chapters: 'short', genres: ['humor'], pages: 200 },
+      { id: 'f2', t: 1, title: 'F2', kind: 'fiction', moods: ['sad'], pace: 'slow', chapters: 'long', genres: ['literary'], pages: 500 },
+      { id: 'f3', t: 1, title: 'F3', kind: 'fiction', moods: ['tense'], pace: 'fast', genres: ['thriller'] },
+      { id: 'f4', t: 1, title: 'F4', kind: 'fiction', moods: ['reflective'], genres: ['literary'], pages: 300 },
+      { id: 'f5', t: 1, title: 'F5', kind: 'fiction', moods: ['dark'] },
+      { id: 'n1', t: 1, title: 'N1', kind: 'nonfiction', genres: ['food'], moods: ['informative'], pace: 'slow', pages: 240 },
+      { id: 'u1', t: 1, title: 'U1', pages: 150 }, { id: 'u2', t: 1, title: 'U2' },
+      ...['k1', 'k2', 'k3'].map(id => ({ id, t: 1, title: id, kind: 'nonfiction', genres: ['food'], way: 'browse' }))
+    ] }));
+    const notes = (c, lib = honest) => S.nextNotes(S.dealNext(lib, S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false).join(' ');
+    eq(notes({ pace: 'fast' }), 'From 2 unread books that match. 4 books with no pace yet are left out.', 'a pace chosen counts the books with no pace, not only those with no details at all');
+    eq(notes({ kind: 'fiction' }), 'From 5 unread books that match. 2 books without reading details are left out.', 'books with no details at all are called that');
+    eq(notes({ genre: 'food' }), 'From 1 unread book that matches. 3 books with no genre yet are left out. 3 books you browse match too: tick Include books you browse under More choices.',
+      'books you browse that would match are counted, with how to include them');
+    eq(notes({ genre: 'food', browse: true }), 'From 4 unread books that match. 3 books with no genre yet are left out.', 'and aren’t once they’re included');
+    eq(notes({ len: 'short' }), 'From 3 unread books that match. 3 books have no page count, so they only come up under Any length.', 'a length chosen says how many books have no page count, though some match');
+    eq(notes({ kind: 'fiction', short: true }), 'From 1 unread book that matches. 5 books not yet marked fiction, nonfiction or poetry, or with no chapter length yet, are left out.', 'two details missing are both named');
+    eq(notes({ kind: 'poetry' }), '2 books without reading details are left out. Try fewer of them.', 'when the choices themselves rule out every book that has the details, it says to try fewer');
+    eq(notes({ pace: 'fast' }, honest.filter(b => ['f5', 'u1', 'u2'].includes(b.id))), '3 books with no pace yet are left out.', 'but not when only missing details leave nothing');
+    eq(notes({ len: 'long', room: 'Nowhere' }), 'Try fewer of them.', 'nothing left out for want of details: just try fewer');
+    eq(S.nextNotes(S.dealNext(honest, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), true), ['From 8 unread books on hand.', 'You’ve seen every one, so these are repeats.'], 'a repeat round says so');
   }
 
   const batch = S.cleanBatch({ shelfmark: 1, batch: { id: 'c20260926-abc', name: 'Hall', room: 'Hall', books: [
