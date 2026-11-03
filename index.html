@@ -206,6 +206,8 @@ a{color:var(--accent)}
 .flag span{flex:1;min-width:12em}
 .flag.store{margin:16px 0 0}
 .ft .flag{flex-basis:100%;margin:0}
+/* on a phone, a footer note of more than a few words takes a row of its own, above the button */
+@media (max-width:520px){.ft .note.wide{flex-basis:100%;margin:0}.ft .note.wide~.btn{margin-left:auto}}
 .fs{display:grid;gap:12px}
 .fl{display:grid;gap:4px;min-width:0}
 .fl>span:first-child,.lbl{font:600 11.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
@@ -691,6 +693,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
     if (s < 86400) return plural(Math.round(s / 3600), 'hour') + ' ago';
     return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
+  // When something happened, to follow a verb: "5 min ago", or "on Nov 3".
+  function since(ms) { return (Date.now() - ms < 86400e3 ? '' : 'on ') + ago(ms); }
   function where(b) { return [b.room, b.shelf].filter(Boolean).join(' › '); }
   function byLine(b) { return (b.authors || []).join(', '); }
 
@@ -1033,8 +1037,10 @@ body.locked .toast.show{transform:translate(-50%,0)}
 
   // ---------- sheets and toasts ----------
   // cardFlush saves the open book card's typing now, for when the page is closed or hidden before it would;
-  // cardRefresh shows changes made elsewhere in it.
-  var sheetDone = null, sheetFrom = null, cardFlush = null, cardRefresh = null;
+  // cardRefresh shows changes made elsewhere in it. sheetRefresh(changed) does the same for the sheets that bring books
+  // in (they check what's in the library), and redraws what they say about syncing with Drive.
+  var sheetDone = null, sheetFrom = null, cardFlush = null, cardRefresh = null, sheetRefresh = null;
+  function changedElsewhere() { if (cardRefresh) cardRefresh(); if (sheetRefresh) sheetRefresh(true); }
   // Another tab's change to the library doesn't redraw the list under an open sheet; closing the sheet does.
   var listStale = false;
   // A quick second tap on the button that closed a sheet (Add to library, Done) would land on whatever lies under
@@ -1083,7 +1089,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function shut(keepEntry) {
     if ($('sheet').hidden) return;
     if (!keepEntry && sheetEntry() === sheetN) try { backs++; history.back(); } catch (e) { backs--; }
-    var f = sheetDone; sheetDone = null; cardFlush = cardRefresh = null; if (f) f();
+    var f = sheetDone; sheetDone = null; cardFlush = cardRefresh = sheetRefresh = null; if (f) f();
     tapGuard = lastTap && Date.now() - lastTap.t < 300 ? { x: lastTap.x, y: lastTap.y, t: Date.now() } : null;
     $('sheet').hidden = true; $('sheet').innerHTML = ''; document.body.classList.remove('locked'); behind(false);
     if (listStale) { listStale = false; render(); }
@@ -1091,6 +1097,14 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var to = sheetFrom, id = to && to.dataset && to.dataset.id;
     if (id && !document.contains(to)) to = [].filter.call(document.querySelectorAll('#list .bk'), function (x) { return x.dataset.id === id; })[0];
     if (to && document.contains(to)) try { to.focus({ preventScroll: true }); } catch (e) { }
+  }
+  // Part of an open sheet drawn again, unless it would come out the same. Focus stays on the button it was on, or on
+  // the sheet's heading if that button has gone.
+  function redraw(el, html) {
+    if (!el || el.drawn === html) return;
+    var a = document.activeElement, id = a && el.contains(a) ? a.id || 'sheetTitle' : '';
+    el.drawn = html; el.innerHTML = html;
+    var f = id && ($(id) || $('sheetTitle')); if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
   }
   var toastT;
   function toast(m, act, fn) {
@@ -1353,27 +1367,56 @@ body.locked .toast.show{transform:translate(-50%,0)}
     return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch); })
       .catch(function (e) { toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
   }
+  // With sync on, a link's sheet waits for a sync first (the one already under way as the page opens, or one started
+  // now), so it checks the books against the library as it is in Drive, not an old copy on this device. It opens when
+  // that's done, or after a few seconds, saying it's still checking, and catches up when the sync lands.
+  var linkWait = null;
   function checkLink() {
     var h = location.hash; if (!/^#(s1[zj]|batch=)/.test(h)) return;
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
-    takeIncoming(linkText(h).then(function (t) { if (!t) throw new Error('empty'); return parseIncoming(t); }));
+    var p = linkText(h).then(function (t) { if (!t) throw new Error('empty'); return parseIncoming(t); });
+    var s = D.on && hasToken() ? syncing ? syncP : sync() : null;
+    if (!s) { takeIncoming(p); return; }
+    linkWait = s;
+    s.then(function () { if (linkWait === s) { linkWait = null; if (sheetRefresh) sheetRefresh(false); } });
+    takeIncoming(Promise.all([p, Promise.race([s, new Promise(function (ok) { setTimeout(ok, 4000); })])]).then(function (x) { return x[0]; }));
   }
+  // A device behind Drive checks a link's books against an old copy: books added on another device look new, and
+  // their reading details are left out. That's a device signed out (Google's hour is up, the usual case on a phone
+  // opening a link from Claude), or one whose last sync failed or couldn't reach Drive. The sheets say so, with a button
+  // to sync, and check the books again when it lands.
+  function driveFlag() {
+    if (!D.on || !clientId()) return '';
+    if (linkWait) return '<p class="flag" id="behind"><span>Checking Drive for books added on your other devices…</span></p>';
+    if (hasToken() && !D.err && !offline) return '';
+    return '<p class="flag" id="behind"><span>' + (D.last ? 'This device last synced with Drive ' + esc(since(D.last)) : 'This device hasn’t synced with Drive yet') + ', so books added on your other devices may not show here yet.</span>' +
+      '<button class="btn sm" type="button" id="behindGo"' + (syncing ? ' disabled>Syncing…' : '>Sync now') + '</button></p>';
+  }
+  document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#behindGo')) syncNow(); });
 
   function reviewSheet(batch) {
-    var ix = dupIndex(DOC), inBatch = {}, rows = batch.books.map(function (b, i) {
-      var dup = findDup(ix, b), twin = null;
+    var inBatch = {}, rows = batch.books.map(function (b, i) {
+      var twin = null;
       dupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
       dupKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
-      return { b: b, dup: dup, twin: twin, on: !dup };
+      return { b: b, dup: null, twin: twin, on: true, mine: false };
     });
-    var seenAt = DOC.seen[batch.id], bulk = { room: batch.room, shelf: batch.shelf };
-    var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.b.check; }).length;
+    var bulk = { room: batch.room, shelf: batch.shelf }, nc = rows.filter(function (r) { return r.b.check; }).length;
     // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
     function num(n) { return n.toLocaleString('en-US'); }
+    // Which books are here already: worked out as the sheet opens, and again when a sync or another tab changes the
+    // library while it's open. A row the person has ticked, unticked or edited (mine) keeps its tick.
+    function check() { var ix = dupIndex(DOC); rows.forEach(function (r) { r.dup = findDup(ix, r.b); if (!r.mine) r.on = !r.dup; }); }
+    function head() {
+      var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = DOC.seen[batch.id];
+      return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
+        (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
+        (seenAt ? '<p class="flag"><span>You added from this link ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
+    }
+    function have(r) { return r.dup ? '<b>Already in your library</b>' + (where(r.dup) ? ' — ' + esc(where(r.dup)) : '') + '. Tick it to add another copy.' : ''; }
+    check();
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
-      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
-      (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' +
-      (seenAt ? '<p class="flag"><span>You added from this link ' + esc(ago(seenAt)) + '. Books you already have are unticked.</span></p>' : '') +
+      '<div id="rv-head">' + head() + '</div>' +
       '<div class="bulk"><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
@@ -1382,7 +1425,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
           '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocomplete="off">' +
           (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
           (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
-          (r.dup ? '<span class="rv-dup"><b>Already in your library</b>' + (where(r.dup) ? ' — ' + esc(where(r.dup)) : '') + '. Tick it to add another copy.</span>' : '') +
+          '<span class="rv-dup rv-have"' + (r.dup ? '' : ' hidden') + '>' + have(r) + '</span>' +
           (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
           '</div></li>';
       }).join('') + '</ul></div>' +
@@ -1393,12 +1436,25 @@ body.locked .toast.show{transform:translate(-50%,0)}
       $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
       $('rv-n').textContent = n === rows.length ? '' : num(rows.length - n) + ' left out';
     }
+    sheetRefresh = function (changed) {
+      if (changed) {
+        check();
+        panel.querySelectorAll('#rv > li').forEach(function (li) {
+          var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
+          li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
+          h.innerHTML = have(r); h.hidden = !r.dup;
+        });
+        count();
+      }
+      redraw($('rv-head'), head());
+    };
     $('rv').addEventListener('change', function (e) {
       var li = e.target.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
-      if (e.target.type === 'checkbox') { r.on = e.target.checked; li.classList.toggle('off', !r.on); count(); }
+      if (e.target.type === 'checkbox') { r.on = e.target.checked; r.mine = true; li.classList.toggle('off', !r.on); count(); }
     });
     $('rv').addEventListener('input', function (e) {
       var li = e.target.closest('li'); if (!li || !e.target.dataset.f) return; var r = rows[+li.dataset.i];
+      r.mine = true;
       if (e.target.dataset.f === 'title') r.b.title = e.target.value; else r.b.authors = list(e.target.value, 12, 120, true);
     });
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
@@ -1456,16 +1512,22 @@ body.locked .toast.show{transform:translate(-50%,0)}
       b.pace ? label(b.pace, PACES) + ' pace' : '', b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', b.way && b.way !== 'through' ? label(b.way, WAYS) : ''].filter(Boolean).join(' · ');
   }
   function detailsSheet(det) {
-    var rows = matchDetails(DOC, det), found = rows.filter(function (r) { return r.bs.length; }), lost = rows.length - found.length, replace = false;
-    var had = found.filter(function (r) { return r.bs.some(hasDetails); }).length, seenAt = DOC.seen[det.id];
+    var replace = false, rows, found, lost, had;
+    // Matched as the sheet opens, again when a sync or another tab changes the library while it's open, and once more
+    // when Add details is tapped.
+    function check() {
+      rows = matchDetails(DOC, det); found = rows.filter(function (r) { return r.bs.length; }); lost = rows.length - found.length;
+      had = found.filter(function (r) { return r.bs.some(hasDetails); }).length;
+    }
     function changes() { var n = 0; found.forEach(function (r) { r.bs.forEach(function (b) { if (withDetails(DOC.books[b.id] || b, r.e, replace)) n++; }); }); return n; }
-    openSheet('<div class="hd"><h2 id="sheetTitle">Reading details from Claude</h2><button class="btn sm quiet" type="button" id="dtx">Not now</button></div><div class="bd">' +
-      '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
-      (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' +
-      (seenAt ? '<p class="flag"><span>You added these ' + esc(ago(seenAt)) + '.</span></p>' : '') +
-      '<p class="note">Fiction or not, genres, moods, pace, chapter length, how it reads and a line about it, plus a page count where a book has none. Nothing else on your books changes. You can change any of it on a book’s card.</p>' +
-      (had ? '<label class="opt"><input type="checkbox" id="dtRe"><span>Replace details ' + plural(had, 'book', 'books') + ' already ' + (had === 1 ? 'has' : 'have') + '</span></label>' : '') +
-      '<ul class="rv dt">' + found.map(function (r) {
+    function head() {
+      var seenAt = DOC.seen[det.id];
+      return '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
+        (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
+        (seenAt ? '<p class="flag"><span>You added these ' + esc(since(seenAt)) + '.</span></p>' : '');
+    }
+    function items() {
+      return found.map(function (r) {
         var b = r.bs[0], e = r.e;
         return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (byLine(b) ? '<span class="rv-by">' + esc(byLine(b)) + (r.bs.length > 1 ? ' · ' + r.bs.length + ' copies' : '') + '</span>' : '') +
           (detailLine(e) ? '<span class="rv-det">' + esc(detailLine(e)) + (e.pages && !b.pages ? ' · ' + plural(e.pages, 'page') : '') + '</span>' : '') +
@@ -1473,17 +1535,32 @@ body.locked .toast.show{transform:translate(-50%,0)}
       }).join('') +
       rows.filter(function (r) { return !r.bs.length; }).map(function (r) {
         return '<li class="off"><div class="rv-main"><span class="rt">' + esc(r.e.title || r.e.id) + '</span><span class="rv-dup">Not in your library, so it’s left out.</span></div></li>';
-      }).join('') + '</ul></div>' +
+      }).join('');
+    }
+    check();
+    openSheet('<div class="hd"><h2 id="sheetTitle">Reading details from Claude</h2><button class="btn sm quiet" type="button" id="dtx">Not now</button></div><div class="bd">' +
+      '<div id="dt-head">' + head() + '</div>' +
+      '<p class="note">Fiction or not, genres, moods, pace, chapter length, how it reads and a line about it, plus a page count where a book has none. Nothing else on your books changes. You can change any of it on a book’s card.</p>' +
+      '<label class="opt" id="dt-opt"' + (had ? '' : ' hidden') + '><input type="checkbox" id="dtRe"><span id="dt-opt-tx"></span></label>' +
+      '<ul class="rv dt" id="dt-list">' + items() + '</ul></div>' +
       '<div class="ft">' + storeFlag() + '<span class="note grow" id="dt-n"></span><button class="btn primary" type="button" id="dtgo">Add details</button></div>');
     function count() {
-      var n = changes();
+      // Books that aren't here can't be given details: added later, they get them when the link is opened again.
+      var n = changes(), first = lost ? 'Add ' + (found.length ? 'the ' + plural(lost, 'book') + ' not in your library' : 'these books') + ' first, then open this link again. It fills in only what’s missing.' : '';
       $('dtgo').textContent = n ? 'Add details to ' + plural(n, 'book') : 'Add details'; $('dtgo').disabled = !n;
-      $('dt-n').textContent = n ? '' : found.length ? 'Your books already have these.' : '';
+      $('dt-n').textContent = n ? first : [found.length ? 'Your books already have these.' : '', first].filter(Boolean).join(' ');
+      $('dt-n').classList.toggle('wide', !!first);
+      $('dt-opt').hidden = !had; $('dt-opt-tx').textContent = 'Replace details ' + plural(had, 'book', 'books') + ' already ' + (had === 1 ? 'has' : 'have');
     }
+    sheetRefresh = function (changed) {
+      if (changed) { check(); redraw($('dt-list'), items()); count(); }
+      redraw($('dt-head'), head());
+    };
     $('dtx').addEventListener('click', closeSheet);
-    if ($('dtRe')) $('dtRe').addEventListener('change', function () { replace = this.checked; count(); });
+    $('dtRe').addEventListener('change', function () { replace = this.checked; count(); });
     $('dtgo').addEventListener('click', function () {
       var now = Date.now(), n = 0;
+      check();
       found.forEach(function (r) {
         r.bs.forEach(function (b) {
           var cur = DOC.books[b.id], x = cur && !cur.del && withDetails(cur, r.e, replace);
@@ -1701,7 +1778,8 @@ body.locked .toast.show{transform:translate(-50%,0)}
   // try clears it.
   // offline: the last sync couldn't reach Drive at all. That isn't a failure for a page meant to work offline: the
   // changes wait here, and go to Drive when the connection is back (see the online listener). Not saved with D.
-  var tokenClient = null, gisLoading = false, gisErr = '', syncing = false, again = false, syncT, syncState = 'off', offline = false;
+  // syncP: the sync under way, which a link waits for (see checkLink).
+  var tokenClient = null, gisLoading = false, gisErr = '', syncing = false, syncP = null, again = false, syncT, syncState = 'off', offline = false;
 
   function loadGis() {
     if (tokenClient || gisLoading || !clientId()) return;
@@ -1805,7 +1883,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
     var keep = fs[0];
     return fs.slice(1).reduce(function (p, x) {
       return p.then(function () { return download_(x.id); }).then(function (d) {
-        DOC = mergeDocs(DOC, d); persist(true); render(); if (cardRefresh) cardRefresh(); D.pending = true;
+        DOC = mergeDocs(DOC, d); persist(true); render(); changedElsewhere(); D.pending = true;
         return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json');
       });
     }, Promise.resolve()).then(function () {
@@ -1816,15 +1894,15 @@ body.locked .toast.show{transform:translate(-50%,0)}
   }
   function sync() {
     if (!D.on) return Promise.resolve();
-    if (syncing) { again = true; return Promise.resolve(); }
+    if (syncing) { again = true; return syncP; }
     if (!hasToken()) { renderSync(); return Promise.resolve(); }
-    syncing = true; clearTimeout(syncT); var seq = editSeq; setSync('busy');
-    return ensureFile().then(function (f) {
+    syncing = true; clearTimeout(syncT); var seq = editSeq; setSync('busy'); if (sheetRefresh) sheetRefresh(false);
+    return syncP = ensureFile().then(function (f) {
       if (f.made || f.version === D.version && !D.pending) return;
       var got = f.version === D.version ? Promise.resolve(null) : download_(f.id);
       return got.then(function (remote) {
         var merged = remote ? mergeDocs(DOC, remote) : DOC;
-        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); if (cardRefresh) cardRefresh(); }
+        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); changedElsewhere(); }
         if (!remote || canon(merged) !== canon(remote)) return upload(f.id, merged).then(function (v) { D.version = v; });
         D.version = f.version;
       });
@@ -1844,6 +1922,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
   function syncSoon() { if (!D.on || !hasToken()) { renderSync(); return; } clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
   function setSync(s) { syncState = s; var b = $('syncBtn'); b.dataset.s = s; }
   function renderSync() {
+    if (sheetRefresh) sheetRefresh(false);
     var b = $('syncBtn'); b.hidden = !D.on || !clientId();
     if (b.hidden) return;
     if (syncing) { setSync('busy'); $('syncTx').textContent = 'Syncing'; b.title = 'Syncing with Google Drive'; return; }
@@ -1944,7 +2023,7 @@ body.locked .toast.show{transform:translate(-50%,0)}
         if (!e.newValue) DOC = { books: {}, seen: {} };
         else { var theirs = cleanDoc(JSON.parse(e.newValue)), m = mergeDocs(DOC, theirs); DOC = m; if (canon(m) !== canon(theirs)) persist(true); }
       } catch (x) { }
-      if ($('sheet').hidden) render(); else { listStale = true; if (cardRefresh) cardRefresh(); }
+      if ($('sheet').hidden) render(); else { listStale = true; changedElsewhere(); }
     }
     if (e.key === LSG) renderSync(); // signed in from another tab
     if (e.key === LSD) { try { var cid = D.clientId; D = Object.assign(freshDrive(), JSON.parse(e.newValue || '{}')); D.clientId = D.clientId || cid; } catch (x) { } renderSync(); }

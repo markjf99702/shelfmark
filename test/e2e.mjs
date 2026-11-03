@@ -1187,6 +1187,115 @@ step('losing the connection mid-sync shows Offline, not Sync failed, and coming 
   } finally { await ctx.close(); }
 });
 
+step('a link opened on a device behind Drive checks its books against Drive, and the sheet catches up as a sync lands', async () => {
+  // A laptop and a phone share a Drive. The phone falls behind (its tab closed, then Google's hour up), and opens
+  // links for books the laptop has added meanwhile.
+  const g = fakeGoogle();
+  const driveBooks = () => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library' && !f.trashed); return f && f.body ? JSON.parse(f.body).library.books : {}; };
+  const idOf = title => Object.values(driveBooks()).find(b => b.title === title).id;
+  const ca = await context(DESK), cb = await context(PHONE);
+  await g.install(ca); await g.install(cb);
+  const byHand = async (page, title, author) => {
+    await page.click('#addBtn'); await page.fill('#f-title', title); await page.fill('#f-authors', author); await page.click('#f-add');
+    await until(() => Object.values(driveBooks()).some(b => b.title === title), title + ' to reach Drive');
+    await wait(450);
+  };
+  const rowOf = (page, i) => page.locator(`#rv li[data-i="${i}"]`);
+  try {
+    const a = await open(ca);
+    await seed(a, [MIDDLEMARCH]);
+    await connectDrive(a);
+    await until(() => driveBooks().b04, 'the laptop\'s library to reach Drive');
+    let b = await open(cb);
+    await connectDrive(b);
+    await until(() => storedBook(b, 'b04'), 'the phone to get it');
+    await b.close();
+
+    // The laptop adds two books from a link and leaves the third out.
+    const den = linkTo({ name: 'Den shelf', room: 'Den', books: [
+      { title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pace: 'fast' },
+      { title: 'Moby-Dick', authors: ['Herman Melville'] },
+      { title: 'Emma', authors: ['Jane Austen'] },
+    ] });
+    await a.goto(den);
+    await a.waitForSelector('#rv-add');
+    await rowOf(a, 2).locator('.rv-tick').click();
+    await a.click('#rv-add');
+    await until(() => Object.values(driveBooks()).filter(x => !x.del).length === 3, 'the two books to reach Drive');
+
+    // Still signed in, the phone opens the same link: the sheet waits for the sync under way, so it knows them. (Drive
+    // takes a second and a half to answer, which the sheet waits out.)
+    const slow = ms => async r => { await wait(ms); await r.fallback(); }, media = u => u.hostname === 'www.googleapis.com' && u.searchParams.get('alt') === 'media';
+    await cb.route(media, slow(1500));
+    b = await open(cb, den);
+    await b.waitForSelector('#rv-add');
+    await cb.unroute(media);
+    assert.equal(await b.textContent('.lede'), 'Den shelf · 3 books · 2 you already have', 'the phone checked the link against its old copy');
+    assert.match(await b.textContent('#rv-head'), /You added from this link (just now|\d+ min ago)\. Books you already have are unticked\./);
+    assert.deepEqual(await b.$$eval('#rv .rv-tick input', els => els.map(e => e.checked)), [false, false, true]);
+    assert.equal(await b.textContent('#rv-add'), 'Add 1 book', 'the phone would add a second Walden and Moby-Dick');
+    assert.equal(await b.locator('#behind').count(), 0, 'a phone in step with Drive says it may not be');
+    await b.click('#rvx');
+    await b.close();
+
+    // The laptop adds two more by hand, and the phone's sign-in runs out (Google's hour).
+    await byHand(a, 'Bleak House', 'Charles Dickens');
+    await byHand(a, 'Sense and Sensibility', 'Jane Austen');
+    const lapsed = await open(cb, base + 'privacy.html');
+    await lapsed.evaluate(() => { for (const k of ['junkdrawer.google', 'shelfmark.drive']) localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)), exp: Date.now() - 1000 })); });
+    await lapsed.close();
+    b = await open(cb, linkTo({ name: 'Hall shelf', books: [
+      { title: 'Bleak House', authors: ['Charles Dickens'] },
+      { title: 'Persuasion', authors: ['Jane Austen'] },
+      { title: 'Sense and Sensibility', authors: ['Jane Austen'] },
+    ] }));
+    await b.waitForSelector('#rv-add');
+    assert.equal(await b.textContent('.lede'), 'Hall shelf · 3 books');
+    assert.match(await b.textContent('#behind'), /^This device last synced with Drive (just now|\d+ min ago), so books added on your other devices may not show here yet\.Sync now$/);
+    // The person unticks one and corrects a title, then syncs.
+    await rowOf(b, 1).locator('.rv-tick').click();
+    await rowOf(b, 2).locator('input[data-f="title"]').fill('Sense and Sensibility: A Novel');
+    await b.waitForFunction(() => window.google && window.google.accounts);
+    await b.click('#behindGo');
+    await until(async () => (await b.locator('#behind').count()) === 0, 'the sync to land and the flag to go');
+    await until(async () => (await b.textContent('.lede')) === 'Hall shelf · 3 books · 2 you already have', 'the sheet to check the books again');
+    assert.deepEqual(await b.$$eval('#rv .rv-tick input', els => els.map(e => e.checked)), [false, false, true], 'a row the person touched changed its tick, or a book found in Drive stayed ticked');
+    assert.match(await rowOf(b, 0).textContent(), /Already in your library\. Tick it to add another copy\./);
+    assert.equal(await rowOf(b, 0).getAttribute('class'), 'off');
+    assert.equal(await rowOf(b, 2).locator('input[data-f="title"]').inputValue(), 'Sense and Sensibility: A Novel', 'the corrected title was undone');
+    assert.match(await rowOf(b, 2).textContent(), /Already in your library/, 'the corrected title wasn\'t checked against Drive');
+    assert.equal(await b.textContent('#rv-add'), 'Add 1 book');
+    await b.click('#rvx');
+    await b.close();
+
+    // A details link, while a slow Drive keeps the sync going past the few seconds the sheet waits.
+    await byHand(a, 'Ivanhoe', 'Walter Scott');
+    await cb.route(media, slow(8000));
+    b = await open(cb, detailsLink([
+      { id: idOf('Walden'), title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', genres: ['nature'], pace: 'slow' },
+      { id: idOf('Moby-Dick'), title: 'Moby-Dick', authors: ['Herman Melville'], kind: 'fiction', moods: ['adventurous'] },
+      { id: idOf('Ivanhoe'), title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction', genres: ['historical-fiction'] },
+    ]));
+    await b.waitForSelector('#dtgo');
+    assert.equal(await b.textContent('.lede'), 'Reading details · 3 books · 1 not in your library');
+    assert.equal(await b.textContent('#behind'), 'Checking Drive for books added on your other devices…');
+    assert.equal(await b.textContent('#dt-n'), 'Add the 1 book not in your library first, then open this link again. It fills in only what’s missing.');
+    await b.check('#dtRe');
+    await until(async () => (await b.textContent('.lede')) === 'Reading details · 3 books', 'the sheet to match the books again once the sync lands', 15000);
+    assert.equal(await b.locator('#behind').count(), 0);
+    assert.equal(await b.isChecked('#dtRe'), true, 'Replace was unticked');
+    assert.equal(await b.textContent('#dtgo'), 'Add details to 3 books');
+    assert.equal(await b.textContent('#dt-n'), '');
+    await b.click('#dtgo');
+    assert.match(await b.textContent('#toastTx'), /Added reading details to 3 books/);
+    const mine = Object.values((await stored(b)).library.books);
+    const got = t => mine.find(x => x.title === t);
+    assert.deepEqual([got('Walden').pace, got('Walden').genres, got('Moby-Dick').moods, got('Ivanhoe').genres], ['slow', ['nature'], ['adventurous'], ['historical-fiction']]);
+    assert.equal(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
+    assert.deepEqual([...a.problems, ...b.problems], []);
+  } finally { await ca.close(); await cb.close(); }
+});
+
 step('a details link fills in reading details, and a book\'s card shows and changes them', async () => {
   const ctx = await context();
   try {
