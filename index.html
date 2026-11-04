@@ -41,6 +41,8 @@
   --brass:#86591A;--brass-soft:#F4E6C6;
   --bad:#A8321C;--bad-soft:#F7DCD4;
   --rule:#D9A79B;
+  /* behind a sheet, and round its edge (the light page's shadow is enough; a dark page needs a line) */
+  --scrim:rgba(20,14,8,.45);--edge:transparent;
   --serif:"Newsreader","Iowan Old Style","Palatino Linotype",Georgia,serif;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -57,6 +59,7 @@
   --brass:#DDB56B;--brass-soft:#352A14;
   --bad:#F28E74;--bad-soft:#401D15;
   --rule:#6A3A30;
+  --scrim:rgba(0,0,0,.62);--edge:#4A3F33;
   --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 26px -16px rgba(0,0,0,.85);
 }}
 :root[data-theme="dark"]{
@@ -68,6 +71,7 @@
   --brass:#DDB56B;--brass-soft:#352A14;
   --bad:#F28E74;--bad-soft:#401D15;
   --rule:#6A3A30;
+  --scrim:rgba(0,0,0,.62);--edge:#4A3F33;
   --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 26px -16px rgba(0,0,0,.85);
 }
 *{box-sizing:border-box}
@@ -220,8 +224,8 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 
 /* sheets */
 #sheet{position:fixed;inset:0;z-index:50}
-.scrim{position:absolute;inset:0;background:rgba(20,14,8,.45)}
-.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:var(--surface);border-radius:16px;box-shadow:0 30px 80px -20px rgba(0,0,0,.55);overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:var(--surface);border-radius:16px;box-shadow:0 0 0 1px var(--edge),0 30px 80px -20px rgba(0,0,0,.55);overflow:hidden}
 .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
 .hd h2{margin:0;font:500 21px/1.2 var(--serif);flex:1;min-width:0}
 #sheetTitle{outline:none} /* focused as a sheet opens; it isn't something to press */

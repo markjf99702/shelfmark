@@ -1291,6 +1291,25 @@ step('small grey text and the Reading badge reach WCAG AA contrast, light and da
   }
 });
 
+step('in dark, a sheet has an edge that stands off the page behind it', async () => {
+  const ctx = await context({ ...PHONE, colorScheme: 'dark' });
+  try {
+    const page = await open(ctx);
+    await page.click('#importBtn');
+    const [edge, sheet, behind] = await page.evaluate(() => {
+      const rgb = s => (s.match(/rgba?\(([^)]*)\)/) || [, '0,0,0,0'])[1].split(',').map(Number);
+      const panel = getComputedStyle(document.querySelector('#sheet .panel')), scrim = rgb(getComputedStyle(document.querySelector('#sheet .scrim')).backgroundColor);
+      const ground = rgb(getComputedStyle(document.body).backgroundColor), a = scrim[3] ?? 1;
+      return [rgb(panel.boxShadow), rgb(panel.backgroundColor), ground.slice(0, 3).map((g, i) => g * (1 - a) + scrim[i] * a)];
+    });
+    const lum = c => { const v = c.slice(0, 3).map(x => x / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    const ratio = (x, y) => { const [a, b] = [lum(x), lum(y)].sort((p, q) => q - p); return (a + 0.05) / (b + 0.05); };
+    assert.ok(edge.length === 3 || edge[3] > 0, 'the sheet has no edge in dark: ' + edge);
+    for (const [what, c] of [['the sheet', sheet], ['the page behind', behind]]) assert.ok(ratio(edge, c) >= 1.5, 'the sheet\'s edge is ' + ratio(edge, c).toFixed(2) + ':1 against ' + what);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('on a phone, a narrow one too, the menus and the search box show their words whole', async () => {
   const narrow = width => ({ ...PHONE, viewport: { width, height: 760 } });
   for (const [size, placeholder] of [[PHONE, 'Search your books'], [narrow(360), 'Search your books'], [narrow(320), 'Search your books'], [DESK, 'Search titles, authors, shelves, tags, borrowers…']]) {
