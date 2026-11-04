@@ -1018,6 +1018,19 @@ step('by shelf, Move on a shelf\'s heading moves or renames the whole shelf at o
     await until(async () => (await heads()).some(h => /wishlist/.test(h)), 'the search');
     assert.deepEqual(await page.$$eval('#list .shelf', els => els.map(e => e.querySelector('.grp').textContent.replace(/\s+/g, ' ') + ': ' + e.querySelectorAll('[data-mv]').length)),
       ['Living room › Tall bookcase, 1 book: 1', 'On your wishlist, 1 book: 0'], 'the wishlist has a Move');
+    // A heading with a room and no shelf, or no place at all, says where its books are in words.
+    await seed(page, [{ id: 'b08', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Den' }, { id: 'b09', t: 1000, title: 'Emma', authors: ['Jane Austen'] },
+      { id: 'b10', t: 1000, title: 'Dracula', authors: ['Bram Stoker'] }]);
+    await page.click('#list [data-mv] >> nth=0');
+    assert.equal(await page.textContent('#sheet .lede'), 'The book in Den without a shelf. Change the room to move it, or give it a shelf.');
+    await page.click('#mvx');
+    await wait(450);
+    await page.click('#list [data-mv] >> nth=1');
+    assert.equal(await page.textContent('#sheet .lede'), 'Every book not shelved yet. Give them a room and a shelf.');
+    await page.fill('#mv-room', 'Den');
+    assert.equal(await page.textContent('#mv-n'), 'They join the book in Den without a shelf.');
+    await page.click('#mvgo');
+    assert.equal(await page.textContent('#toastTx'), 'Moved 2 books to Den');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

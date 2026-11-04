@@ -2958,11 +2958,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function moveSheet(k) {
     var bs = home(DOC).filter(function (b) { return shelfKey(b) === k; }), at = placeIndex(home(DOC));
     if (!bs.length) return;
-    var b0 = bs[0], room = place(b0.room, at.rooms), shelf = place(b0.shelf, at.shelves[keys(b0).rk]), name = [room, shelf].filter(Boolean).join(' › ') || 'Not shelved yet';
+    var b0 = bs[0], room = place(b0.room, at.rooms), shelf = place(b0.shelf, at.shelves[keys(b0).rk]);
     var hidden = bs.length - (onList ? onList.books.filter(function (b) { return !b.wanted && shelfKey(b) === k; }).length : bs.length), from = sheetFrom;
     var ids = bs.map(function (b) { return b.id; }), others = home(DOC).filter(function (b) { return ids.indexOf(b.id) < 0; });
+    // A place in words: on a shelf ("on Study › Desk"), in a room without one ("in Den without a shelf"), or not shelved yet.
+    function inWords(r, s, bold) { function b(x) { return bold ? '<b>' + esc(x) + '</b>' : x; } return s ? 'on ' + b([r, s].filter(Boolean).join(' › ')) : r ? 'in ' + b(r) + ' without a shelf' : 'not shelved yet'; }
+    var one = bs.length === 1, them = one ? 'it' : 'them';
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Move ' + plural(bs.length, 'book') + '</h2><button class="btn sm quiet" type="button" id="mvx">Cancel</button></div><div class="bd">' +
-      '<p class="lede">' + (bs.length === 1 ? 'The book' : 'Every book') + ' on <b>' + esc(name) + '</b>' + (hidden ? ', the ' + (hidden === 1 ? 'one' : hidden) + ' your filters hide too' : '') + '. Change the room to move ' + (bs.length === 1 ? 'it' : 'them all') + ', or only the shelf to rename it.</p>' +
+      '<p class="lede">' + (one ? 'The book ' : 'Every book ') + inWords(room, shelf, true) + (hidden ? ', the ' + (hidden === 1 ? 'one' : hidden) + ' your filters hide too' : '') + '. ' +
+      (shelf ? 'Change the room to move ' + (one ? 'it' : 'them all') + ', or only the shelf to rename it.' : room ? 'Change the room to move ' + (one ? 'it' : 'them all') + ', or give ' + them + ' a shelf.' : 'Give ' + them + ' a room and a shelf.') + '</p>' +
       '<div class="two"><label class="fl"><span>Room</span><input id="mv-room" list="dl-room" value="' + esc(room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
       '<label class="fl"><span>Shelf</span><input id="mv-shelf" list="dl-shelf" value="' + esc(shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="go" autocomplete="off"></label></div></div>' +
       '<div class="ft">' + storeFlag() + '<span class="note grow" id="mv-n"></span><button class="btn primary" type="button" id="mvgo" disabled>Move ' + plural(bs.length, 'book') + '</button></div>' +
@@ -2975,7 +2979,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function draw() {
       var t = to(), same = t.room === room && t.shelf === shelf;
       $('mvgo').disabled = same;
-      $('mv-n').textContent = same || !t.n ? '' : (bs.length === 1 ? 'It joins ' : 'They join ') + (t.n === 1 ? 'the book' : 'the ' + t.n + ' books') + ' on ' + ([t.room, t.shelf].filter(Boolean).join(' › ') || 'no shelf') + '.';
+      $('mv-n').textContent = same || !t.n ? '' : (bs.length === 1 ? 'It joins ' : 'They join ') + (t.n === 1 ? 'the book' : 'the ' + t.n + ' books') + ' ' + inWords(t.room, t.shelf) + '.';
       $('mv-n').classList.toggle('wide', !!t.n && !same);
     }
     panel.addEventListener('input', draw);
