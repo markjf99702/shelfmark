@@ -3,7 +3,8 @@
 
     python3 make_shelfmark.py books.json [--out DIR] [--base URL] [--no-link]
     python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--keep-ebooks] [--out DIR]
-    python3 make_shelfmark.py details.json --details [--out DIR] [--base URL] [--no-link]
+    python3 make_shelfmark.py details.json --details [--library LIBRARY.json [--redo]] [--out DIR] [--base URL] [--no-link]
+    python3 make_shelfmark.py --details --library LIBRARY.json
 
 books.json (every field but "title" is optional; "authors" and "tags" may be a list or one string, which is split
 on commas and semicolons, and authors on " & " too, as Shelfmark splits them):
@@ -43,6 +44,12 @@ and what reading it is like, for What to read next. details.json is {"name": ...
 naming its book by "id" (from the library file) and "title"/"authors", with any of "kind", "genres", "moods",
 "pace", "chapters", "way", "blurb" and "pages". Opening the link or file fills in what each book doesn't have yet.
 Batches of new books can carry the same fields.
+
+With --library (the library file: Shelfmark library.json from Drive, or a backup) it checks the details against the
+library first. Each entry is matched to its book the way Shelfmark will match it; an id that names no book, or another
+book, is put right from the title; an entry that matches no book, or several different books, is pointed out; details a book already has are taken off, so the link carries only what's new (--redo keeps them,
+for when the person asked to redo them and will tick Replace); and the books that still have no reading details are
+listed. With --library and no details file, it only lists those books.
 """
 import argparse, base64, csv, datetime, hashlib, io, json, math, re, sys, unicodedata, zlib
 from pathlib import Path
@@ -676,8 +683,8 @@ def part_of(pid, name, n, k):
     return f'{pid}-{n}', name[:120 - len(tail)] + tail if name else f'Part {n} of {k}'
 
 
-def build_details(doc, warn):
-    """Reading details for books already in the library: {"shelfmark": 1, "details": {id, name, made, books}}."""
+def details_entries(doc, warn):
+    """The entries of reading details for books already in the library, cleaned: [entry], and the name."""
     if isinstance(doc, list):
         doc = {'books': doc}
     if isinstance(doc, dict) and isinstance(doc.get('details'), dict):
@@ -706,9 +713,13 @@ def build_details(doc, warn):
         entries.append(e)
     if not entries:
         raise SystemExit('error: no usable entries (each needs an id or title, and at least one detail)')
+    return entries, s(doc.get('name'), 120) or 'Reading details'
+
+
+def details_files(entries, name):
+    """Reading details for books already in the library: [{"shelfmark": 1, "details": {id, name, made, books}}], up to
+    3,000 entries a file, as for a batch: more come as numbered files, each of its own."""
     made = datetime.date.today().isoformat()
-    name = s(doc.get('name'), 120) or 'Reading details'
-    # Up to 3,000 entries a file, as for a batch: more come as numbered files, each of its own.
     parts = [entries[i:i + MAX_BOOKS] for i in range(0, len(entries), MAX_BOOKS)]
     outs = []
     for n, part in enumerate(parts, 1):
@@ -716,23 +727,210 @@ def build_details(doc, warn):
         if len(parts) > 1:
             did, label = part_of(did, name, n, len(parts))
         outs.append({'shelfmark': 1, 'details': {'id': did, 'name': label, 'made': made, 'books': part}})
-    return outs, name
+    return outs
+
+
+def build_details(doc, warn):
+    entries, name = details_entries(doc, warn)
+    return details_files(entries, name), name
+
+
+# ---------- reading details checked against the library ----------
+# With --library, the entries are matched to the books in the person's library file the way Shelfmark matches them
+# (matchDetails() in index.html), so what the link does is known before it's handed over: an id that names no book, or
+# another book, is put right from the title; an entry that finds no book, or several different books, is pointed out; details a book already has are taken off (Shelfmark fills only blanks unless Replace is ticked);
+# and the books that still have no reading details are listed, to write entries for next.
+
+def read_library(path):
+    """The books in a Shelfmark library file (Shelfmark library.json from Drive, or a backup), removed ones left out."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as e:
+        raise SystemExit(f'error: can’t read {path}: {e}')
+    lib = doc.get('library') if isinstance(doc, dict) else None
+    books = lib.get('books') if isinstance(lib, dict) else None
+    if not isinstance(books, dict):
+        raise SystemExit(f'error: {path} isn’t a Shelfmark library file (Shelfmark library.json from Drive, or a backup from Settings › Download a backup)')
+    out = []
+    for k, b in books.items():
+        if not isinstance(b, dict) or b.get('del'):
+            continue
+        x = {'id': s(b.get('id') or k, 80), 'title': s(b.get('title'), 300) or '?', 'sub': s(b.get('sub'), 300), 'authors': names(b.get('authors') or []),
+             'isbn': isbn13(b.get('isbn')), 'pages': whole(b.get('pages'), 0, 50000, 'most'), 'wanted': b.get('wanted') is True}
+        x.update({d: b[d] for d in DETAIL_KEYS if b.get(d) not in (None, '', [])})
+        out.append(x)
+    return out
+
+
+def has_details(b):
+    return any(b.get(k) not in (None, '', []) for k in DETAIL_KEYS)
+
+
+def without_details(books, hit=()):
+    """The books in the house (not on the wishlist) with no reading details, and none of the ids in hit, by title."""
+    return sorted((b for b in books if not b['wanted'] and not has_details(b) and b['id'] not in hit), key=lambda b: (fold(b['title']), fold(', '.join(b['authors']))))
+
+
+def authors_key(b):
+    return '|'.join(sorted(only(fold(a), 'LN') for a in b.get('authors') or []))
+
+
+def match_details(books, entries):
+    """[(entry, [book…])], each entry's books as Shelfmark finds them: the book its id names, or else every copy of the
+    same book (by ISBN, or title and author's surname) that no other entry names by id, those with all the entry's
+    authors when the copies' authors differ, and any with the entry's ISBN."""
+    byid = {b['id']: b for b in books}
+    ix = {}
+    for b in books:
+        for k in keys(b)[0]:
+            ix.setdefault(k, []).append(b)
+    named = {e['id'] for e in entries if e.get('id') in byid}
+    out = []
+    for e in entries:
+        if e.get('id') in byid:
+            out.append((e, [byid[e['id']]]))
+            continue
+        bs, seen = [], set()
+        for k in keys(e)[1] if e.get('title') else []:
+            for x in ix.get(k, []):
+                if x['id'] not in seen and x['id'] not in named:
+                    seen.add(x['id'])
+                    bs.append(x)
+        same = [x for x in bs if authors_key(x) == authors_key(e)]
+        i = isbn13(e.get('isbn'))
+        if len(bs) > 1 and same:
+            bs = [x for x in bs if x in same or i and x['isbn'] == i]
+        out.append((e, bs))
+    return out
+
+
+def head(t):
+    return bare(fold(t).partition(':')[0])
+
+
+def agrees(e, b):
+    """Whether an entry is for the book its id names: no title to say otherwise, or the same ISBN, book or title."""
+    return not e.get('title') or bool(set(keys(e)[1]) & set(keys(b)[0])) or head(e['title']) == head(b['title'])
+
+
+def copies(bs):
+    """Whether the books are copies of one book (the same title, subtitle and authors), not different books."""
+    def which(b):
+        f = fold(b['title'])
+        return head(f), bare(f.partition(':')[2] or fold(b.get('sub') or '')), authors_key(b)
+    return len({which(b) for b in bs}) == 1
+
+
+def book_line(b):
+    return f'“{short(b["title"])}”' + (f' by {", ".join(b["authors"])}' if b.get('authors') else '')
+
+
+def check_details(entries, books, redo):
+    """Matches the entries to the library's books and puts them right (see above). Returns the entries to hand over and
+    what was done: {fixed, kept, lost, several, had, trimmed, left}."""
+    byid = {b['id']: b for b in books}
+    did = {'fixed': [], 'kept': [], 'lost': [], 'several': [], 'had': 0, 'trimmed': 0, 'left': []}
+    wrong = {}  # entry index: (the id it gave, the book that id names, or None)
+    for n, e in enumerate(entries):
+        b = byid.get(e.get('id'))
+        if e.get('id') and (not b or not agrees(e, b)):
+            wrong[n] = (e.pop('id'), b)
+    for n, (e, bs) in enumerate(match_details(books, entries)):
+        if e.get('id'):
+            continue
+        if len(bs) == 1:
+            e['id'] = bs[0]['id']
+        elif not bs and n in wrong and wrong[n][1]:
+            # Nothing has its title: perhaps the title is written another way. Kept for the book its id names, to check.
+            e['id'] = wrong[n][0]
+            did['kept'].append((e['title'], e['id'], wrong[n][1]))
+        if n in wrong and (len(bs) == 1 or len(bs) > 1 and copies(bs)):
+            did['fixed'].append((e, wrong[n], bs))
+    out, hit = [], set()
+    for e, bs in match_details(books, entries):
+        if not bs:  # kept: Shelfmark says it isn't in the library, and fills it in once it's added and the link opened again
+            did['lost'].append(e)
+            out.append(e)
+            continue
+        hit.update(b['id'] for b in bs)
+        if len(bs) > 1 and not copies(bs):
+            did['several'].append((e, bs))
+        if len(bs) == 1:  # as the library has it, so it's found the same way on any copy of the library
+            b = bs[0]
+            for k in ('title', 'sub', 'authors', 'isbn'):
+                if b.get(k):
+                    e[k] = b[k]
+                else:
+                    e.pop(k, None)
+        if not redo:
+            gone = [k for k in DETAIL_KEYS + ('pages',) if k in e and all(b.get(k) not in (None, '', [], 0) for b in bs)]
+            for k in gone:
+                del e[k]
+            if not any(k in e for k in DETAIL_KEYS + ('pages',)):
+                did['had'] += 1
+                continue
+            if gone:
+                did['trimmed'] += 1
+        out.append(e)
+    did['left'] = without_details(books, hit)
+    return out, did
+
+
+def say_left(left, shown=50, here=''):
+    """The books with no reading details yet, to write entries for: here is what else they are (", and aren't in these details")."""
+    print(f'\n{count(len(left), "book")} in the library {"has" if len(left) == 1 else "have"} no reading details yet' + (here if left else '') + (':' if left else '.'))
+    for b in left[:shown]:
+        print(f'  - {b["title"]}' + (f': {b["sub"]}' if b.get('sub') else '') + (f' — {", ".join(b["authors"])}' if b['authors'] else '') + f' (id {b["id"]})')
+    if len(left) > shown:
+        print(f'  … and {len(left) - shown:,} more')
+
+
+def count(n, one, many=''):
+    """'1 book', '2 books', '1 entry', '3 entries'."""
+    return f'{n:,} ' + (one if n == 1 else many or one + 's')
 
 
 def details_main(doc, a):
     warn = []
-    outs, name = build_details(doc, warn)
+    entries, name = details_entries(doc, warn)
+    did = None
+    if a.library:
+        library = read_library(a.library)
+        entries, did = check_details(entries, library, a.redo)
+    outs = details_files(entries, name) if entries else []
     books = [e for o in outs for e in o['details']['books']]
     kinds = {k: sum(1 for e in books if e.get('kind') == k) for k in KINDS}
     browse = sum(1 for e in books if e.get('way') == 'browse')
-    print(f'{name}: {len(books):,} book{"s" if len(books) != 1 else ""} (' + ', '.join(f'{n} {k}' for k, n in kinds.items() if n) +
-          (f'; {browse} to browse rather than read' if browse else '') + ')')
+    print(f'{name}: {len(books):,} book{"s" if len(books) != 1 else ""}' + (' (' + ', '.join(f'{n} {k}' for k, n in kinds.items() if n) +
+          (f'; {browse} to browse rather than read' if browse else '') + ')' if any(kinds.values()) or browse else ''))
     for e in books:
         bits = [e.get('kind', ''), ', '.join(e.get('genres', [])), ', '.join(e.get('moods', [])), e.get('pace', '') and e['pace'] + ' pace',
                 e.get('chapters', '') and e['chapters'] + ' chapters', e.get('way', '') if e.get('way') != 'through' else '', e.get('pages') and f'{e["pages"]} pages']
         print(f'  - {e.get("title") or e["id"]}: ' + ' · '.join(x for x in bits if x))
+    if did:
+        given = len(entries) + did['had']
+        print(f'\nChecked against the library ({count(len(library), "book")}): {given - len(did["lost"]):,} of {count(given, "entry", "entries")} found their book.')
+        for e, (old, b), bs in did['fixed']:
+            print(f'  Fixed the id of “{short(e.get("title") or old)}”: {old} ' + (f'is {book_line(b)}' if b else 'isn’t in the library') +
+                  (f'; it’s {e["id"]}' if e.get('id') else f'; it’s for the {len(bs)} copies of it, found by title'))
+        for title, bid, b in did['kept']:
+            warn.append(f'“{short(title)}”: its id {bid} is {book_line(b)}, and no book has its title; kept for that book, so check it’s the right one')
+        for e in did['lost']:
+            warn.append(f'“{short(e.get("title") or e.get("id") or "")}” matches no book in the library. If it’s there under another title, give that one’s id and run again; '
+                        'if it hasn’t been added yet, Shelfmark leaves it out until it is, and the link is opened again')
+        for e, bs in did['several']:
+            warn.append(f'“{short(e["title"])}” matches {len(bs)} books: ' + ', '.join(book_line(b) for b in bs[:5]) + (' and more' if len(bs) > 5 else '') +
+                        '. Each gets these details; if they’re for one, give that one’s id and run again')
+        if did['had']:
+            print(f'  Left out {did["had"]:,} {"entry" if did["had"] == 1 else "entries"} whose book already has every detail given (--redo keeps them).')
+        if did['trimmed']:
+            print(f'  Took off the details {did["trimmed"]:,} {"book already has" if did["trimmed"] == 1 else "books already have"}, from {"its entry" if did["trimmed"] == 1 else "their entries"} (--redo keeps them).')
+        say_left(did['left'], here=', and ' + ('isn’t' if len(did['left']) == 1 else 'aren’t') + ' in these details')
     for w in warn:
         print(f'warning: {w}')
+    if not outs:
+        print('\nNothing to hand over: every entry’s book already has its details.')
+        return
     hand_over(outs, 'details', a, f'{slug(name)}-{outs[0]["details"]["made"]}', '.details.shelfmark.json')
 
 
@@ -812,7 +1010,7 @@ def slug(t):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('books')
+    ap.add_argument('books', nargs='?', help='the books (or with --details, the reading details) as JSON, or with --import an export')
     ap.add_argument('--out', default='.', help='folder for the .shelfmark.json file')
     ap.add_argument('--base', default=DEFAULT_BASE, help='where Shelfmark lives')
     ap.add_argument('--no-link', action='store_true')
@@ -820,7 +1018,18 @@ def main():
     ap.add_argument('--keep-unowned', action='store_true', help='with --import, put books that aren’t in the house on the wishlist')
     ap.add_argument('--keep-ebooks', action='store_true', help='with --import, bring in e-books and audiobooks too, which are left out otherwise')
     ap.add_argument('--details', action='store_true', help='make reading details for books already in the library, not a batch of new books')
+    ap.add_argument('--library', help='with --details, the library file (Shelfmark library.json, or a backup) to check the details against; alone, it lists the books with no reading details yet')
+    ap.add_argument('--redo', action='store_true', help='with --details --library, keep details a book already has, for when they asked to redo them (they tick Replace in Shelfmark)')
     a = ap.parse_args()
+    if a.library and not a.details:
+        ap.error('--library goes with --details')
+    if a.details and not a.books:
+        if not a.library:
+            ap.error('--details needs the reading details file, or --library to list the books that have none')
+        say_left(without_details(read_library(a.library)), shown=ALL)
+        return
+    if not a.books:
+        ap.error('the books file is needed')
     if a.details:
         try:
             doc = json.loads(Path(a.books).read_text(encoding='utf-8'))

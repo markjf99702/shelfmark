@@ -1453,6 +1453,66 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const newBooks = (await S.parseIncoming(fs.readFileSync(path.join(tmp, fs.readdirSync(tmp).find(f => /^reading-details-\d{4}-\d\d-\d\d\.shelfmark\.json$/.test(f))), 'utf8'))).batch.books;
       eq([newBooks[0].genres, newBooks[1].way], [['sf', 'classics'], 'browse'], 'a batch of new books carries reading details too');
       check(/Reading details: 3 books/.test(withDet), 'as an ordinary batch');
+      {
+        // With the library file, the script checks the details against it, as Shelfmark will match them.
+        const libFile = path.join(tmp, 'library.json'), chkIn = path.join(tmp, 'check.json'), chkDir = fs.mkdtempSync(path.join(tmp, 'check-'));
+        const all = { kind: 'fiction', genres: ['classics'], moods: ['funny'], pace: 'medium', chapters: 'short', way: 'through', blurb: 'A matchmaker misreads everyone.' };
+        const libBooks = [{ id: 'l1', title: 'Middlemarch', authors: ['George Eliot'] }, { id: 'l2', title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', genres: ['nature'] },
+          { id: 'l3', title: 'Emma', authors: ['Jane Austen'], pages: 400, ...all }, { id: 'l4', title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] },
+          { id: 'l5', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }, { id: 'l6', title: 'Dracula', authors: ['Bram Stoker'] },
+          { id: 'l7', title: 'Ulysses', authors: ['James Joyce'], wanted: true }, { id: 'l8', del: 1 }, { id: 'l9', title: 'Persuasion', authors: ['Jane Austen'], room: 'Den' },
+          { id: 'l10', title: 'Persuasion', authors: ['Jane Austen'], room: 'Hall' }, { id: 'l11', title: 'Beowulf' }, { id: 'l12', title: 'Frankenstein', authors: ['Mary Shelley'] }].map(b => ({ t: 1, ...b }));
+        const libDoc = { shelfmark: 1, library: { books: Object.fromEntries(libBooks.map(b => [b.id, b])), seen: {} } };
+        fs.writeFileSync(libFile, JSON.stringify(libDoc));
+        fs.writeFileSync(chkIn, JSON.stringify({ name: 'Reading details', books: [
+          { id: 'l2', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'] },
+          { id: 'nope', title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', genres: ['nature'], moods: ['reflective'], pages: 352 },
+          { id: 'l3', title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', pages: 474 },
+          { title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' },
+          { title: 'Gilead', authors: ['Marilynne Robinson'], kind: 'fiction' },
+          { title: 'Persuasion', authors: ['Jane Austen'], kind: 'fiction' },
+          { id: 'l6', title: 'Count Dracula', authors: ['Bram Stoker'], moods: ['dark'] },
+        ] }));
+        const chkSaid = execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const chk = (await S.parseIncoming(/Link: (\S+)/.exec(chkSaid)[1])).details;
+        eq(chk.books, [
+          { id: 'l1', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'] },
+          { id: 'l2', title: 'Walden', authors: ['Henry David Thoreau'], pages: 352, moods: ['reflective'] },
+          { id: '', title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' },
+          { id: '', title: 'Gilead', authors: ['Marilynne Robinson'], kind: 'fiction' },
+          { id: '', title: 'Persuasion', authors: ['Jane Austen'], kind: 'fiction' },
+          { id: 'l6', title: 'Dracula', authors: ['Bram Stoker'], moods: ['dark'] },
+        ], 'ids put right from the title, details the book has taken off, an entry with nothing new left out, one that finds no book kept for Shelfmark to say so, and the library\'s own title and authors');
+        eq(S.matchDetails(S.cleanDoc(libDoc), chk).map(r => r.bs.map(b => b.id).sort()), [['l1'], ['l2'], ['l4', 'l5'], [], ['l10', 'l9'], ['l6']], 'and Shelfmark finds each entry\'s books as the script did');
+        const lines = [
+          'Checked against the library (11 books): 6 of 7 entries found their book.',
+          '  Fixed the id of “Middlemarch”: l2 is “Walden” by Henry David Thoreau; it’s l1',
+          '  Fixed the id of “Walden”: nope isn’t in the library; it’s l2',
+          '  Left out 1 entry whose book already has every detail given (--redo keeps them).',
+          '  Took off the details 1 book already has, from its entry (--redo keeps them).',
+          '2 books in the library have no reading details yet, and aren’t in these details:', '  - Beowulf (id l11)', '  - Frankenstein — Mary Shelley (id l12)',
+          'warning: “Count Dracula”: its id l6 is “Dracula” by Bram Stoker, and no book has its title; kept for that book, so check it’s the right one',
+          'warning: “Gilead” matches no book in the library. If it’s there under another title, give that one’s id and run again; if it hasn’t been added yet, Shelfmark leaves it out until it is, and the link is opened again',
+          'warning: “The Lantern Cycle” matches 2 books: “The Lantern Cycle: First Light” by Ada Quill, “The Lantern Cycle: Second Dark” by Ada Quill. Each gets these details; if they’re for one, give that one’s id and run again'];
+        const missing = lines.filter(l => !chkSaid.split('\n').includes(l));
+        eq(missing, [], 'the script says what it put right, left out and took off, and which books still have no details:\n' + chkSaid);
+        check(!/Persuasion” matches/.test(chkSaid), 'two copies of one book aren’t several books');
+        // --redo keeps what the books have, for Replace.
+        const redo = (await S.parseIncoming(/Link: (\S+)/.exec(execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--redo', '--out', chkDir], { encoding: 'utf8' }))[1])).details.books;
+        eq([redo.length, redo[1].kind, redo[2].id], [7, 'nonfiction', 'l3'], 'with --redo, every detail stays');
+        // The library alone: the books with no details yet, and no file.
+        const onlyDir = fs.mkdtempSync(path.join(tmp, 'only-'));
+        const onlySaid = execFileSync('python3', [py, '--details', '--library', libFile, '--out', onlyDir], { encoding: 'utf8' });
+        check(onlySaid.includes('8 books in the library have no reading details yet:\n  - Beowulf (id l11)\n  - Dracula — Bram Stoker (id l6)\n') && !/Ulysses|Emma|Walden/.test(onlySaid) && !fs.readdirSync(onlyDir).length,
+          'the library alone lists the books in the house with no details, in title order, and writes nothing: ' + onlySaid);
+        // Every entry already done: nothing to hand over, and no file.
+        const doneIn = path.join(tmp, 'done.json'), doneDir = fs.mkdtempSync(path.join(tmp, 'done-'));
+        fs.writeFileSync(doneIn, JSON.stringify({ books: [{ id: 'l3', title: 'Emma', kind: 'fiction' }] }));
+        const doneSaid = execFileSync('python3', [py, doneIn, '--details', '--library', libFile, '--out', doneDir], { encoding: 'utf8' });
+        check(/Nothing to hand over/.test(doneSaid) && !/Link/.test(doneSaid) && !fs.readdirSync(doneDir).length, 'when every entry is done already, it says so and makes no link: ' + doneSaid);
+        let why = ''; try { execFileSync('python3', [py, chkIn, '--details', '--library', chkIn, '--out', doneDir], { encoding: 'utf8', stdio: 'pipe' }); } catch (e) { why = String(e.stderr); }
+        check(/isn’t a Shelfmark library file/.test(why), 'a file that isn’t a library is refused: ' + why);
+      }
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');

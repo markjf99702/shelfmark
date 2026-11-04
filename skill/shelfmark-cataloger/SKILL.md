@@ -121,13 +121,17 @@ Book fields are as above, plus `check` (an unresolved flag). A book with `"wante
 
 Shelfmark's **What to read next** can choose by what a book is like: fiction, nonfiction or poetry; mood; genre; pace; short chapters; and whether it's read cover to cover, dipped into, or browsed (a cookbook, a picture book or a reference book, which it doesn't suggest unless asked). These come from you. When someone asks for them ("add details to my library", "help Shelfmark pick what I read next"), or asks you to suggest something from their shelves and the books don't have details yet:
 
-1. Read their library: the Drive file as above, or a backup file they send (**Settings › Download a backup**). Skip removed books.
-2. Write an entry for each book you know, keyed by its `id` from the file, with its `title`, `sub` and `authors` too, as the file has them (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
-3. Run the script with `--details`, and hand over the link, or the numbered links when it gives several (each opens its own review), with the file for a computer; or only the file, when it says to.
+1. Read their library: the Drive file as above, or a backup file they send (**Settings › Download a backup**). Skip removed books. Save it as a file for the script (`library.json`).
+2. See which books have no details yet: `python3 scripts/make_shelfmark.py --details --library library.json` lists them with their ids ("12 books in the library have no reading details yet"). For "details for my new books", those are the ones.
+3. Write an entry for each book you know, keyed by its `id` from the file, with its `title`, `sub` and `authors` too, as the file has them (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
+4. Run the script with `--details` and the library file. It matches each entry to its book the way Shelfmark will, puts right an id that names another book or none (from the title), warns about an entry that matches no book or several different books, takes off details a book already has, so the link carries only what's new, and lists the books still without details. Pass on what it warns about, and offer details for the books it lists. When they asked you to redo details their books already have, add `--redo`, and tell them to tick **Replace** when the link opens.
+5. Hand over the link, or the numbered links when it gives several (each opens its own review), with the file for a computer; or only the file, when it says to.
 
 ```
-python3 scripts/make_shelfmark.py details.json --details --out /mnt/user-data/outputs
+python3 scripts/make_shelfmark.py details.json --details --library library.json --out /mnt/user-data/outputs
 ```
+
+Without the library file (no Drive connector and no backup), leave out `--library`: Shelfmark still finds each book by id, or else by ISBN or title and author, and says which it couldn't.
 
 ```json
 {"name": "Reading details", "books": [
