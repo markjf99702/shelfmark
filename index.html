@@ -138,9 +138,17 @@ a{color:var(--accent)}
 .count{margin:14px 2px 10px;font:500 12.5px var(--mono);color:var(--ink3);letter-spacing:.02em}
 
 /* book list */
-.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
-.grp{grid-column:1/-1;margin:14px 2px 0;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);overflow:hidden;overflow-wrap:anywhere}
-.grp:first-child{margin-top:0}
+.list{--cols:repeat(auto-fill,minmax(340px,1fr));display:grid;grid-template-columns:var(--cols);gap:10px}
+/* Sorted by shelf, each shelf is a section across the list: its heading, then its books in the list's columns. The
+   heading stays under the top bar while its books go by (--toph is the bar's height, kept by the script), and goes with
+   them; its band of the page's colour covers the books going under it. */
+.shelf{grid-column:1/-1;min-width:0}
+.shelf:first-child{margin-top:-8px}
+.shelf+.shelf{margin-top:6px}
+.shelf-bks{display:grid;grid-template-columns:var(--cols);gap:10px}
+.grp{position:sticky;top:var(--toph,calc(env(safe-area-inset-top,0px) + 55px));z-index:1;background:var(--ground);margin:0;padding:8px 2px 10px;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);overflow:hidden;overflow-wrap:anywhere}
+/* the keyboard's book is scrolled clear of the heading too, one of two lines included */
+html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-inset-top,0px) + 55px)) + 60px)}
 /* The rule runs on from the count to the edge, on the heading's last line when a long one wraps (the count goes with the
    shelf's last word). It takes no room on the line, so it never wraps onto a line of its own; the heading clips the rest. */
 .grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
@@ -396,7 +404,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   #addBtn svg{width:24px;height:24px}
   .wrap{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
-  .list{grid-template-columns:1fr}
+  .list{--cols:1fr}
   .frow{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
   .chips{padding-right:24px}
   /* the sort menu keeps its own width; a little less padding fits "All rooms" beside it at 360px */
@@ -1554,7 +1562,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       });
       // "Sunroom › 1  14 books": the count, in words and in plain type, can't be read as part of a shelf's name.
       groups.forEach(function (g) {
-        html += '<h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + plural(g.bs.length, 'book').replace(' ', '&nbsp;') + '</span></h3>' + g.bs.map(function (b) { return row(b, true); }).join('');
+        html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + plural(g.bs.length, 'book').replace(' ', '&nbsp;') + '</span></h3>' +
+          '<div class="shelf-bks">' + g.bs.map(function (b) { return row(b, true); }).join('') + '</div></section>';
       });
     } else html = vis.map(function (b) { return row(b); }).join('');
     L.innerHTML = html;
@@ -2753,6 +2762,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // Back online: what waited here goes to Drive now, not at the next minute's sync.
   window.addEventListener('online', function () { if (D.on && hasToken()) sync(); });
 
+  // The top bar's height, under which the shelf headings stay (see .grp): it grows with an iPhone's notch, and with zoom.
+  (function () {
+    var bar = document.querySelector('.top');
+    function keep() { document.documentElement.style.setProperty('--toph', bar.getBoundingClientRect().height + 'px'); }
+    keep();
+    if (window.ResizeObserver) new ResizeObserver(keep).observe(bar); else window.addEventListener('resize', keep);
+  })();
   render();
   if (D.on && clientId()) { loadGis(); if (hasToken()) sync(); }
   renderSync();

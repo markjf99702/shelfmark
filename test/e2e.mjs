@@ -701,6 +701,44 @@ step('by shelf, a row doesn\'t repeat the room and shelf over it, and the headin
   } finally { await ctx.close(); }
 });
 
+step('by shelf, a shelf\'s heading stays under the top bar while its books go by, on a phone and in columns', async () => {
+  for (const opts of [PHONE, DESK]) {
+    const ctx = await context(opts);
+    try {
+      const page = await open(ctx);
+      const many = Array.from({ length: 70 }, (_, i) => ({ id: 'q' + String(i).padStart(2, '0'), t: 1000 + i, title: 'Book ' + String(i + 1).padStart(2, '0'), authors: ['Ann Lee'],
+        room: i < 40 ? 'Living room' : 'Study', shelf: i < 40 ? 'Tall bookcase' : 'Desk shelf' }));
+      await seed(page, many);
+      await page.selectOption('#sortSel', 'shelf');
+      const at = () => page.evaluate(() => {
+        const bar = document.querySelector('.top').getBoundingClientRect().bottom, h = [...document.querySelectorAll('#list .grp')].map(e => e.getBoundingClientRect());
+        return { bar, first: h[0].top, firstBottom: h[0].bottom, second: h[1].top };
+      });
+      await page.evaluate(() => scrollTo(0, innerWidth > 720 ? 500 : 1500));
+      const mid = await at();
+      assert.ok(Math.abs(mid.first - mid.bar) <= 1, 'mid-shelf, its heading is at ' + mid.first + ', not under the top bar at ' + mid.bar);
+      // The heading goes with its shelf once the shelf has gone by, and the next one takes its place.
+      // (Rows out of sight have no height of their own until they come near, so this takes a few goes.)
+      for (let i = 0; i < 4; i++) {
+        await page.evaluate(() => scrollBy(0, document.querySelectorAll('#list .grp')[1].getBoundingClientRect().top - document.querySelector('.top').getBoundingClientRect().bottom - 20));
+        await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+      }
+      const late = await at();
+      assert.ok(late.first < late.bar, 'the first shelf\'s heading stayed after its books had gone');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'a heading\'s rule runs off the side');
+      // The keyboard, going up the list, keeps the book it's on clear of the heading.
+      await page.evaluate(() => scrollTo(0, innerWidth > 720 ? 500 : 1500));
+      await page.focus('#list .bk[data-id="q30"]');
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press('Shift+Tab');
+        const [top, under] = await page.evaluate(() => [document.activeElement.getBoundingClientRect().top, document.querySelector('#list .grp').getBoundingClientRect().bottom]);
+        assert.ok(top >= under - 0.5, 'Shift+Tab left a book under the shelf heading: its top at ' + top + ', the heading\'s bottom at ' + under);
+      }
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a book to check says To check, and the To check view says what to check', async () => {
   for (const width of [390, 320]) {
     const ctx = await context({ ...PHONE, viewport: { width, height: 760 } });
