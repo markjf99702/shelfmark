@@ -222,6 +222,11 @@ html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,c
 /* the title sits at the top of the cover, five lines at most, the last ending in … (no padding below it, where a
    sixth line would show) */
 .cv.lg .cv-t{font-size:13.5px;line-height:1.15;padding:28px 10px 0 14px;align-self:flex-start;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;text-align:left;width:100%;overflow-wrap:anywhere;hyphens:auto;-webkit-hyphens:auto}
+/* the author's surname at the foot, in italic under a thin rule, as a cloth binding carries it; the title then has four
+   lines, so it can't run into it */
+.cv.lg.by .cv-t{-webkit-line-clamp:4}
+.cv-a{position:absolute;left:14px;right:10px;bottom:12px;font:italic 500 11.5px/1.15 var(--serif);letter-spacing:.03em;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.cv-a::before{content:"";display:block;height:1px;margin-bottom:6px;background:rgba(244,233,210,.38)}
 
 /* empty states */
 .empty{grid-column:1/-1;max-width:560px;margin:28px auto 0;text-align:center;padding:10px}
@@ -1899,9 +1904,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // ---------- rendering ----------
   function cover(b, size, noQueue) {
     var c = CLOTH[hash(fold(b.title)) % CLOTH.length], id = PREF.lookups ? coverId(b, noQueue) : 0;
-    var tx = size === 'lg' ? b.title : monogram(b.title);
+    var tx = size === 'lg' ? b.title : monogram(b.title), by = size === 'lg' && b.authors && b.authors[0] ? surname(b.authors[0]) : '';
     var img = id ? '<img src="https://covers.openlibrary.org/b/id/' + id + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add(\'on\')" onerror="this.remove()">' : '';
-    return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t' + (size !== 'lg' && tx.length > 2 ? ' wide' : '') + '">' + esc(tx) + '</span>' + img + '</span>';
+    return '<span class="cv' + (size ? ' ' + size : '') + (by ? ' by' : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t' + (size !== 'lg' && tx.length > 2 ? ' wide' : '') + '">' + esc(tx) + '</span>' +
+      (by ? '<span class="cv-a">' + esc(by) + '</span>' : '') + img + '</span>';
   }
   function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
   // noPlace: the row is under its shelf's heading (sorted by shelf), so it leaves out the room and shelf. now: it's in
@@ -2444,7 +2450,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     panel.addEventListener('input', function (e) {
       if (isNew && /^f-(title|authors|isbn)$/.test(e.target.id)) { clearTimeout(dupT); dupT = setTimeout(drawDup, 250); }
       if (e.target.id === 'f-title') { if (/[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' '); growTitle(); }
-      if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
+      if (/^f-(title|authors|room|shelf|isbn)$/.test(e.target.id)) head();
       if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
       if (e.target.id === 'f-tags') drawPicks();
       if (e.target.id === 'f-notes') drawCount();

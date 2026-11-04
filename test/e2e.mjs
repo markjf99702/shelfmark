@@ -2651,6 +2651,13 @@ step('the big stand-in cover ends a long title with its … instead of showing m
     // Where the title can show: below its top padding, down to the bottom of its box (a line in the bottom padding shows too).
     const [h, lh] = await page.$eval('.cv.lg .cv-t', e => { const c = getComputedStyle(e); return [e.clientHeight - parseFloat(c.paddingTop), parseFloat(c.lineHeight)]; });
     assert.ok(h <= 5 * lh + 1, 'the title has ' + h + 'px to show in on the cover, more than five lines of ' + lh);
+    // The author's surname is at the foot, as on a cloth binding, and the title stops above it.
+    const foot = () => page.$eval('#bkcv .cv', cv => { const a = cv.querySelector('.cv-a'), t = cv.querySelector('.cv-t'); return a ? [a.textContent, t.getBoundingClientRect().bottom <= a.getBoundingClientRect().top, a.getBoundingClientRect().bottom <= cv.getBoundingClientRect().bottom] : null; });
+    assert.deepEqual(await foot(), ['Gibbon', true, true]);
+    await page.fill('#f-authors', 'Ursula K. Le Guin, Someone Else');
+    assert.deepEqual(await foot(), ['Le Guin', true, true], 'the cover\'s author follows what\'s typed');
+    await page.fill('#f-authors', '');
+    assert.equal(await foot(), null, 'a book with no author has none on its cover');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
