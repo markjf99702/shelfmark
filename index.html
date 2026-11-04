@@ -151,6 +151,11 @@ a{color:var(--accent)}
 .selects{display:flex;gap:6px;flex:0 1 auto;min-width:0}
 .selects select{width:auto;max-width:190px;padding:6px 28px 6px 10px;font-size:14px;border-radius:999px}
 .count{margin:14px 2px 10px;font:500 12.5px var(--mono);color:var(--ink3);letter-spacing:.02em}
+/* the count opens the summary: it reads as it did, with a › after it */
+.sumbtn{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;letter-spacing:inherit;text-align:left;display:inline-flex;align-items:baseline;gap:7px}
+.sumbtn .chev{font:600 15px/1 var(--sans);color:var(--ink3)}
+@media (hover:hover){.sumbtn:hover{color:var(--ink)}.sumbtn:hover .chev{color:var(--accent)}}
+.chip .x{margin-left:6px;font-weight:500}
 
 /* book list */
 .list{--cols:repeat(auto-fill,minmax(340px,1fr));display:grid;grid-template-columns:var(--cols);gap:10px}
@@ -407,6 +412,22 @@ details.more .fs{padding:2px 12px 12px}
 .sect .err{color:var(--bad);font-weight:600}
 .drivepath{font:500 12.5px var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;display:inline-block;overflow-wrap:anywhere}
 
+/* your library, in sum: each line a filter, with its share of the library as a thin brass rule under it */
+.sm-top{padding-bottom:12px;border-bottom:3px double var(--rule)}
+.sm-tot{margin:0;color:var(--ink2)}
+.sm-big{font:500 40px/1 var(--serif);color:var(--ink);margin-right:2px}
+.sm-top .note{margin:4px 0 0}
+.sm-sec{margin-top:18px}
+.sm-sec>.lbl{display:block;margin:0 2px 2px}
+.sm-rows{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));column-gap:24px}
+.sm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:10px;width:100%;min-height:44px;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 2px 8px;text-align:left}
+.sm-l{font:500 16px/1.25 var(--serif);overflow-wrap:anywhere}
+.sm-n{font:500 12.5px var(--mono);color:var(--ink2)}
+.sm-bar{grid-column:1/-1;height:2px;margin-top:5px;background:var(--brass);border-radius:1px}
+@media (hover:hover){.sm-row:hover .sm-l{color:var(--accent)}}
+.sm-row:active{background:var(--surface2)}
+.sm-sec>.note{margin:6px 2px 0}
+
 /* what to read next */
 .countrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:14px 2px 10px}
 .countrow .count{margin:0}
@@ -574,6 +595,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .tbtn::after{content:"";position:absolute;inset:-6px 0}
   .nextbtn{position:relative}
   .nextbtn::after{content:"";position:absolute;inset:-8px 0}
+  /* the count's taps reach up into the space over it, and What to read next, when it's on the line below, keeps its own */
+  .countrow{row-gap:16px}
+  .sumbtn{position:relative}
+  .sumbtn::after{content:"";position:absolute;inset:-20px -4px -8px}
   .rv-mv{position:relative}
   .rv-mv::after{content:"";position:absolute;inset:-8px 0}
   .sharerow .btn{position:relative}
@@ -619,7 +644,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       </div>
     </div>
   </div>
-  <div class="countrow"><p class="count" id="count" aria-live="polite"></p><button class="nextbtn" id="nextBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>What to read next?</button></div>
+  <div class="countrow"><p class="count"><button class="sumbtn" id="sumBtn" type="button" hidden><span class="sr">Your library: </span><span id="count" aria-live="polite"></span><span class="chev" aria-hidden="true">›</span></button></p><button class="nextbtn" id="nextBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>What to read next?</button></div>
   <div class="list" id="list"></div>
   <div class="sharerow"><button class="btn sm quiet" id="shareBtn" type="button" hidden>Share this list</button></div>
   <footer class="foot"><a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://shelfmark.junkdrawer.works/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a></footer>
@@ -1160,6 +1185,51 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return out.join('\n') + '\n';
   }
 
+  // ---------- your library, in sum ----------
+  // A filter the summary sets, besides the chips and menus: a kind ('kind:fiction'), a genre ('genre:sf'), a mood
+  // ('mood:dark'), or something missing ('no:author', 'no:shelf', 'no:details'). It shows as a chip before the others.
+  function facetHit(b, f) {
+    var i = f.indexOf(':'), k = f.slice(0, i), v = f.slice(i + 1);
+    return k === 'kind' ? b.kind === v : k === 'genre' ? (b.genres || []).indexOf(v) >= 0 : k === 'mood' ? (b.moods || []).indexOf(v) >= 0
+      : k === 'no' && (v === 'author' ? !(b.authors || []).length : v === 'shelf' ? !b.shelf : v === 'details' && !hasDetails(b));
+  }
+  // The filter's chip, or '' for one Shelfmark doesn't know.
+  function facetName(f) {
+    var i = String(f).indexOf(':'), k = f.slice(0, i), v = f.slice(i + 1);
+    return k === 'kind' ? label(v, KINDS) : k === 'genre' ? label(v, GENRES) : k === 'mood' ? (label(v, MOODS) ? 'Mood: ' + label(v, MOODS).toLowerCase() : '')
+      : k === 'no' && got({ author: 'No author', shelf: 'No shelf', details: 'No reading details' }, v) || '';
+  }
+  // What the summary counts of the books in the house, section by section: [{name, rows: [[words, books, filter]]}], each
+  // filter as the list takes it ({room}, {status} or {facet}). The rooms, most books first (and the books with none, once
+  // some have one); fiction, nonfiction and poetry; the eight genres and moods most books have; what's read, being read,
+  // unread, set aside and lent out, and how many are on the wishlist (wanted); and what's left to tidy. A section with
+  // nothing in it is left out, but To tidy, which says there's nothing.
+  function summaryOf(books, wanted) {
+    var rooms = Object.create(null), noRoom = 0, gs = Object.create(null), ms = Object.create(null), kinds = { fiction: 0, nonfiction: 0, poetry: 0 };
+    var st = { unread: 0, reading: 0, read: 0, aside: 0 }, lent = 0, check = 0, noAuthor = 0, noShelf = 0, noDetails = 0, names = placeNames(placeIndex(books).rooms);
+    books.forEach(function (b) {
+      if (b.room) { var k = placeKey(b.room); rooms[k] = (rooms[k] || 0) + 1; } else noRoom++;
+      if (b.kind) kinds[b.kind]++;
+      (b.genres || []).forEach(function (x) { gs[x] = (gs[x] || 0) + 1; });
+      (b.moods || []).forEach(function (x) { ms[x] = (ms[x] || 0) + 1; });
+      st[statusOf(b)]++; if (b.loan) lent++; if (b.check) check++;
+      if (!(b.authors || []).length) noAuthor++; if (!b.shelf) noShelf++; if (!hasDetails(b)) noDetails++;
+    });
+    function byMost(o, words) { return Object.keys(o).sort(function (x, y) { return o[y] - o[x] || COLL.compare(words(x), words(y)); }); }
+    function some(rows) { return rows.filter(function (r) { return r[1] > 0; }); }
+    var rk = byMost(rooms, function (k) { return names[k]; });
+    return [
+      { name: 'Rooms', rows: rk.map(function (k) { return [names[k], rooms[k], { room: names[k] }]; }).concat(rk.length ? [['No room yet', noRoom, { room: NOROOM }]] : []) },
+      { name: 'Fiction or not', rows: KINDS.map(function (x) { return [x[1], kinds[x[0]], { facet: 'kind:' + x[0] }]; }) },
+      { name: 'Genres', rows: byMost(gs, function (x) { return label(x, GENRES); }).slice(0, 8).map(function (x) { return [label(x, GENRES), gs[x], { facet: 'genre:' + x }]; }) },
+      { name: 'Moods', rows: byMost(ms, function (x) { return label(x, MOODS); }).slice(0, 8).map(function (x) { return [label(x, MOODS), ms[x], { facet: 'mood:' + x }]; }) },
+      { name: 'Reading', rows: [['Unread', st.unread, { status: 'unread' }], ['Reading', st.reading, { status: 'reading' }], ['Read', st.read, { status: 'read' }], ['Set aside', st.aside, { status: 'aside' }],
+        ['Lent out', lent, { status: 'lent' }], ['On your wishlist', wanted || 0, { status: 'wanted' }]] },
+      { name: 'To tidy', rows: [['To check', check, { status: 'check' }], ['Without an author', noAuthor, { facet: 'no:author' }], ['Without a shelf', noShelf, { facet: 'no:shelf' }],
+        ['Without reading details', noDetails, { facet: 'no:details' }]] }
+    ].map(function (sec) { return { name: sec.name, rows: some(sec.rows) }; }).filter(function (sec) { return sec.rows.length || sec.name === 'To tidy'; });
+  }
+
   // ---------- what to read next ----------
   // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
   // rereads of four- and five-star books when asked. Books you browse rather than read (cookbooks, picture books,
@@ -1536,7 +1606,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   PREF.lookups = PREF.lookups === true;
   // sort, when set, is how the list is sorted for this visit only, over the saved PREF.sort: after books are added
   // from a link they show newest first, without undoing a sort the person chose.
-  var UI = { q: '', status: '', room: '', tag: '', sort: '' };
+  var UI = { q: '', status: '', room: '', tag: '', sort: '', facet: '' };
   var editSeq = 0, persistAsked = false;
 
   // Whether this browser lets Shelfmark save: '' it does, 'blocked' when it keeps no site data for the page (blocked
@@ -1637,6 +1707,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (i) b.isbn = i; else b.title = q;
     if (UI.status === 'reading' || UI.status === 'read') b.status = UI.status;
     if (UI.status === 'aside') b.aside = true;
+    // With the summary's kind, genre or mood chosen, the book starts with it.
+    var f = UI.facet.split(':');
+    if (f[0] === 'kind') b.kind = f[1]; else if (f[0] === 'genre') b.genres = [f[1]]; else if (f[0] === 'mood') b.moods = [f[1]];
     if (UI.status === 'wanted') { b.wanted = true; return b; }
     if (handPlace) { b.room = handPlace.room; b.shelf = handPlace.shelf; }
     if (room && placeKey(room) !== placeKey(b.room || '')) { b.room = room; b.shelf = ''; }
@@ -1752,6 +1825,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (b.wanted ? UI.status !== 'wanted' && (UI.status || !q.length) : UI.status === 'wanted' || (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && statusOf(b) !== UI.status)) return 'status';
     if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return 'room';
     if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return 'tag';
+    if (UI.facet && !facetHit(b, UI.facet)) return 'facet';
     if (q.length && !searchHit(b, q)) return 'q';
     return '';
   }
@@ -1775,7 +1849,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // height it had, and the first of the books on screen that's still there is put back where it was. A new search,
   // filter or sort is a new list, and stays where it's scrolled, as it always has.
   var drawnView = null, chipDrawn = '';
-  function viewKey() { return [UI.q, UI.status, UI.room, UI.tag, UI.sort || PREF.sort].join('\u0001'); }
+  function viewKey() { return [UI.q, UI.status, UI.room, UI.tag, UI.facet, UI.sort || PREF.sort].join('\u0001'); }
   // A book being read has two rows, in Reading now and in its place below: each is told apart by this.
   function rowKey(r) { return (r.dataset.now ? '+' : '') + r.dataset.id; }
   function spot() {
@@ -1828,6 +1902,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
     if (UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
+    // The summary's filter goes once no book has what it's for (the last book given an author, say).
+    if (UI.facet && (!facetName(UI.facet) || !every.some(function (b) { return facetHit(b, UI.facet); }))) UI.facet = '';
     // Reading, Read and Set aside show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
     // phone the row doesn't spend itself on zeros before the chips that count.
     var chipDefs = [['', 'All'], ['unread', 'Unread']];
@@ -1837,7 +1913,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
     if (counts.wanted) chipDefs.push(['wanted', 'Wishlist']);
-    $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
+    // The summary's filter comes first, chosen, with its × to take it off.
+    $('chips').innerHTML = (UI.facet ? '<button class="chip" type="button" data-facet="1" aria-pressed="true" aria-label="' + esc(facetName(UI.facet)) + ', take this filter off">' + esc(facetName(UI.facet)) + '<span class="x" aria-hidden="true">×</span></button>' : '') + chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
     var rk = Object.keys(rooms).map(function (k) { return rooms[k]; }).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
     $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
     $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
@@ -1864,6 +1941,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('nextBtn').hidden = !onHand(all, true, true).length;
 
     var L = $('list');
+    $('sumBtn').hidden = !every.length;
     if (!every.length) {
       $('count').textContent = '';
       // Sync is on here but hasn't brought the library yet (a new device): the library is on its way, or in Drive.
@@ -1893,7 +1971,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (counts.read ? ' · ' + counts.read + ' read' + (thisYear ? ', ' + thisYear + ' this year' : '') : '') + (vw ? ' · ' + vw + ' on your wishlist' : '');
     if (!vis.length) {
       // A search with a chip, room or tag chosen as well: when it's the filter that hides the book, say so.
-      var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag) ? every.filter(function (b) { return searchHit(b, words); }).length : 0;
+      var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag || UI.facet) ? every.filter(function (b) { return searchHit(b, words); }).length : 0;
       // Nothing in the house yet, only books on the wishlist.
       if (!all.length && !UI.status && !words.length) {
         L.innerHTML = '<div class="empty"><h2>No books in the house yet</h2><p>' + plural(counts.wanted, 'book is', 'books are') + ' on your wishlist.</p>' +
@@ -1909,7 +1987,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // Reading now: with no search or filter on, the books being read come first, each with Finished and Set aside. They're
     // in the list below as well, in their place, which then has a heading of its own (or its shelves' headings).
-    var html = '', reading = !UI.q.trim() && !UI.status && !UI.room && !UI.tag ? vis.filter(function (b) { return statusOf(b) === 'reading'; }) : [];
+    var html = '', reading = !UI.q.trim() && !UI.status && !UI.room && !UI.tag && !UI.facet ? vis.filter(function (b) { return statusOf(b) === 'reading'; }) : [];
     if (reading.length) html = '<section class="shelf now"><h3 class="grp">Reading now' + headCount(reading.length) + '</h3><div class="shelf-bks">' + reading.map(nowRow).join('') + '</div></section>';
     var groups = sort === 'shelf' ? shelfGroups(vis, at) : null;
     onList = { books: vis, groups: groups };
@@ -2845,6 +2923,33 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     takeIncoming(f.text().then(parseIncoming));
   });
 
+  // ---------- your library, in sum ----------
+  // The count opens this: the books in each room, fiction or not, the genres and moods most books have, what's read and
+  // lent, and what's left to tidy, each line with its share of the library as a thin rule. A line tapped shows those
+  // books in the list, with nothing else filtered.
+  function summarySheet() {
+    var all = home(DOC), wanted = live(DOC).length - all.length, total = all.length;
+    function line(r) {
+      return '<li><button class="sm-row" type="button" data-f="' + esc(JSON.stringify(r[2])) + '" aria-label="' + esc(r[0]) + ', ' + plural(r[1], 'book') + '"><span class="sm-l">' + esc(r[0]) + '</span><span class="sm-n">' + r[1].toLocaleString('en-US') + '</span>' +
+        '<span class="sm-bar" style="width:' + Math.max(1, Math.min(100, r[1] / Math.max(1, total) * 100)).toFixed(1) + '%"></span></button></li>';
+    }
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Your library</h2><button class="btn sm quiet" type="button" id="smx">Done</button></div><div class="bd">' +
+      '<div class="sm-top"><p class="sm-tot"><span class="sm-big">' + total.toLocaleString('en-US') + '</span> ' + (total === 1 ? 'book' : 'books') + ' in the house' + (wanted ? ', and ' + wanted + ' on your wishlist' : '') + '.</p><p class="note">Tap a line to see those books.</p></div>' +
+      summaryOf(all, wanted).map(function (sec) {
+        return '<section class="sm-sec"><h3 class="lbl">' + sec.name + '</h3>' + (sec.rows.length ? '<ul class="sm-rows">' + sec.rows.map(line).join('') + '</ul>' : '<p class="note">Nothing to tidy.</p>') + '</section>';
+      }).join('') + '</div>');
+    $('smx').addEventListener('click', closeSheet);
+    panel.addEventListener('click', function (e) {
+      var x = e.target.closest('.sm-row'); if (!x) return;
+      var f = JSON.parse(x.dataset.f);
+      closeSheet();
+      UI.q = ''; $('q').value = ''; UI.status = f.status || ''; UI.room = f.room || ''; UI.tag = ''; UI.facet = f.facet || '';
+      // The Read list in the order the books were finished, and Lent out longest out first, as their chips do.
+      UI.sort = UI.status === 'read' && all.some(finished) ? 'finished' : UI.status === 'lent' ? 'lent' : UI.sort === 'finished' || UI.sort === 'lent' ? '' : UI.sort;
+      render(); window.scrollTo(0, 0);
+    });
+  }
+
   // ---------- moving a shelf ----------
   // Every book in the house on one shelf (k: its room and shelf, however they're spelled; see shelfGroups), moved or
   // renamed at once: the Room and Shelf boxes start out as where they are now, and the books get what they say then,
@@ -3459,7 +3564,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // sheet, and elsewhere to the clipboard, saying how many books. Nothing leaves the device unless it's shared from there.
   function viewHead() {
     var chip = { unread: 'Unread', reading: 'Reading', read: 'Read', aside: 'Set aside', lent: 'Lent out', check: 'To check', wanted: 'Wishlist' }[UI.status];
-    return [chip, UI.room === NOROOM ? 'No room yet' : UI.room, UI.tag ? 'Tag: ' + UI.tag : '', UI.q.trim() ? 'Search: ' + str(UI.q, 300) : ''].filter(Boolean);
+    return [UI.facet && facetName(UI.facet), chip, UI.room === NOROOM ? 'No room yet' : UI.room, UI.tag ? 'Tag: ' + UI.tag : '', UI.q.trim() ? 'Search: ' + str(UI.q, 300) : ''].filter(Boolean);
   }
   function shareList(e) {
     if (!onList) return;
@@ -3482,6 +3587,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   $('addBtn').addEventListener('click', function () { openNew(''); });
   $('importBtn').addEventListener('click', importSheet);
   $('nextBtn').addEventListener('click', nextSheet);
+  $('sumBtn').addEventListener('click', summarySheet);
   function openSettings() { loadGis(); settingsSheet(); }
   $('setBtn').addEventListener('click', openSettings);
   $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err || offline) { D.err = ''; sync(); } else { settingsSheet(); } });
@@ -3496,14 +3602,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     else if (a.dataset.act === 'drive') openSettings();
     else if (a.dataset.act === 'sync') syncNow(); // signing in to Google has to happen inside the tap
     else if (a.dataset.act === 'wish') { UI.status = 'wanted'; render(); }
-    else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
+    else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; UI.facet = ''; $('q').value = ''; render(); }
     // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
-    else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
+    else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; UI.facet = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
   });
   // The Read list is in the order the books were finished, once one has its day, and the Lent out list longest out first;
   // leaving them, the sort is as it was.
   $('chips').addEventListener('click', function (e) {
-    var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s;
+    var c = e.target.closest('.chip'); if (!c) return;
+    // The summary's filter, taken off; from the keyboard, the keyboard goes to the first chip.
+    if (c.dataset.facet) { UI.facet = ''; render(); if (!e.detail) refocus($('chips').querySelector('.chip')); return; }
+    UI.status = c.dataset.s;
     if (UI.status === 'read' && (UI.sort || PREF.sort) !== 'finished' && live(DOC).some(finished)) UI.sort = 'finished';
     else if (UI.status !== 'read' && UI.sort === 'finished') UI.sort = '';
     if (UI.status === 'lent' && (UI.sort || PREF.sort) !== 'lent') UI.sort = 'lent';

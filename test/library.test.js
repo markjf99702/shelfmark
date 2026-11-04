@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -165,6 +165,34 @@ eq(S.live(S.cleanDoc({ books: [{ id: 'la', t: 1, title: 'Emma', authors: ['Jane 
     'Search: le guin · 2 books\n\nStudy › Desk shelf\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin\n\nOn your wishlist\nThe Lathe of Heaven — Ursula K. Le Guin\n',
     'sorted by shelf, the books go under their shelves\' headings, which say the place');
   eq(S.listText({ head: ['Wishlist'], wish: true }, [lib[4]]), 'Wishlist · 1 book\n\nThe Lathe of Heaven — Ursula K. Le Guin\n', 'the wishlist doesn\'t say each book is wanted');
+}
+
+// ---------- your library, in sum ----------
+{
+  const lib = S.live(S.cleanDoc({ books: [
+    { id: 'ya', t: 1, title: 'Piranesi', authors: ['Susanna Clarke'], room: 'Hall', shelf: 'Console table', kind: 'fiction', genres: ['fantasy'], moods: ['mysterious', 'reflective'], status: 'read' },
+    { id: 'yb', t: 1, title: 'Middlemarch', authors: ['George Eliot'], room: 'Den', kind: 'fiction', genres: ['classics'], moods: ['reflective'], loan: { to: 'Sam' } },
+    { id: 'yc', t: 1, title: 'Cat’s Cradle', authors: ['Kurt Vonnegut'], kind: 'fiction', genres: ['sf', 'humor'], moods: ['funny'], status: 'reading', aside: true },
+    { id: 'yd', t: 1, title: 'A Brief History of Time', authors: ['Stephen Hawking'], room: 'den', shelf: 'Top', kind: 'nonfiction', genres: ['science'], moods: ['informative'] },
+    { id: 'ye', t: 1, title: 'Notebook', room: 'Den', shelf: 'Top', check: 'no title on the spine' }] }));
+  const sum = S.summaryOf(lib, 2);
+  eq(sum.map(x => [x.name, x.rows.map(r => r[0] + ' ' + r[1])]), [
+    ['Rooms', ['Den 3', 'Hall 1', 'No room yet 1']],
+    ['Fiction or not', ['Fiction 3', 'Nonfiction 1']],
+    ['Genres', ['Classics 1', 'Fantasy 1', 'Humor 1', 'Science 1', 'Science fiction 1']],
+    ['Moods', ['Reflective 2', 'Funny 1', 'Informative 1', 'Mysterious 1']],
+    ['Reading', ['Unread 3', 'Read 1', 'Set aside 1', 'Lent out 1', 'On your wishlist 2']],
+    ['To tidy', ['To check 1', 'Without an author 1', 'Without a shelf 2', 'Without reading details 1']]],
+    'the summary counts rooms (one however it\'s spelled), kinds, the genres and moods most books have, reading and what to tidy, leaving out what has none');
+  eq(sum[0].rows.map(r => r[2]), [{ room: 'Den' }, { room: 'Hall' }, { room: ' none' }], 'each room line chooses its room, and No room yet the books with none');
+  eq([sum[1].rows[0][2], sum[4].rows[3][2], sum[5].rows[2][2]], [{ facet: 'kind:fiction' }, { status: 'lent' }, { facet: 'no:shelf' }], 'and every other line its filter');
+  const hits = f => lib.filter(b => S.facetHit(b, f)).map(b => b.id);
+  eq(['kind:fiction', 'genre:sf', 'mood:reflective', 'no:author', 'no:shelf', 'no:details', 'no:what', 'what:ever'].map(hits), [['ya', 'yb', 'yc'], ['yc'], ['ya', 'yb'], ['ye'], ['yb', 'yc'], ['ye'], [], []],
+    'the summary\'s filters find the books with a kind, genre or mood, or without an author, shelf or reading details');
+  eq(['kind:poetry', 'genre:sf', 'mood:funny', 'no:author', 'no:shelf', 'no:details', 'no:what', 'genre:what', 'what:ever', 'constructor', 'no:constructor'].map(S.facetName),
+    ['Poetry', 'Science fiction', 'Mood: funny', 'No author', 'No shelf', 'No reading details', '', '', '', '', ''], 'and each says what it is, or nothing for one it doesn\'t know');
+  const bare = S.summaryOf(S.live(S.cleanDoc({ books: [{ id: 'yf', t: 1, title: 'Emma', authors: ['Jane Austen'], shelf: 'Top', kind: 'fiction' }] })), 0);
+  eq(bare.map(x => [x.name, x.rows.length]), [['Fiction or not', 1], ['Reading', 1], ['To tidy', 0]], 'a section with nothing is left out, but To tidy, which then says there\'s nothing');
 }
 
 // ---------- searching ----------

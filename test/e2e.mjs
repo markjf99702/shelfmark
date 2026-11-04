@@ -1761,6 +1761,68 @@ step('Share this list copies the list on screen on a computer, and hands it to t
   }
 });
 
+step('the count opens Your library, and each of its lines shows those books in the list', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, shelf: 'Console table', kind: 'fiction', genres: ['fantasy'], moods: ['mysterious', 'reflective'], status: 'read' },
+      { ...MIDDLEMARCH, kind: 'fiction', genres: ['classics'], moods: ['reflective'], loan: { to: 'Sam', since: '2026-10-02' } },
+      { ...CRADLE, kind: 'fiction', genres: ['sf', 'humor'], moods: ['funny'] },
+      { id: 'b06', t: 1000, title: 'A Brief History of Time', authors: ['Stephen Hawking'], kind: 'nonfiction', genres: ['science'], moods: ['informative'], room: 'Den', shelf: 'Top' },
+      { id: 'b07', t: 1000, title: 'Notebook', room: 'Den', shelf: 'Top', check: 'no title on the spine' },
+      { id: 'b08', t: 1000, title: 'Moby-Dick', authors: ['Herman Melville'], wanted: true }]);
+    assert.equal(await page.textContent('#count'), '5 books · 1 lent out · 1 read');
+    assert.equal(await page.getAttribute('#sumBtn', 'aria-label'), null);
+    assert.match(await page.locator('#sumBtn').evaluate(e => e.textContent), /^Your library: 5 books · 1 lent out · 1 read›$/);
+    // (a moment after a sheet closes, as a tap where the last one closed it is taken for a second tap on that)
+    const open_ = async () => { await wait(450); await page.click('#sumBtn'); await page.waitForSelector('.sm-row'); };
+    const pick = async words => { await page.click(`.sm-row[aria-label^="${words},"]`); assert.equal(await sheetOpen(page), false); };
+    await open_();
+    assert.equal(await page.textContent('#sheetTitle'), 'Your library');
+    assert.equal(await page.textContent('.sm-tot'), '5 books in the house, and 1 on your wishlist.');
+    const secs = await page.$$eval('.sm-sec', els => els.map(e => e.querySelector('.lbl').textContent + ': ' + [...e.querySelectorAll('.sm-row')].map(r => r.querySelector('.sm-l').textContent + ' ' + r.querySelector('.sm-n').textContent).join(', ')));
+    assert.deepEqual(secs, ['Rooms: Den 3, Hall 1, No room yet 1', 'Fiction or not: Fiction 3, Nonfiction 1', 'Genres: Classics 1, Fantasy 1, Humor 1, Science 1, Science fiction 1',
+      'Moods: Reflective 2, Funny 1, Informative 1, Mysterious 1', 'Reading: Unread 4, Read 1, Lent out 1, On your wishlist 1', 'To tidy: To check 1, Without an author 1, Without a shelf 2, Without reading details 1']);
+    // Each line's rule is its share of the library.
+    assert.deepEqual(await page.$$eval('.sm-sec:nth-of-type(1) .sm-bar', els => els.map(e => Math.round(parseFloat(e.style.width)))), [60, 20, 20]);
+    // Fiction: a chip of its own, chosen, before the others; its × takes it off.
+    await pick('Fiction');
+    assert.deepEqual(await titles(page), ['Piranesi', 'Middlemarch', 'Cat’s Cradle']);
+    assert.equal(await page.textContent('#count'), '3 of 5 books · 1 lent out · 1 read');
+    assert.deepEqual(await page.$$eval('#chips .chip[aria-pressed="true"]', els => els.map(e => e.textContent)), ['Fiction×', 'All5']);
+    assert.equal(await page.getAttribute('#chips .chip >> nth=0', 'aria-label'), 'Fiction, take this filter off');
+    // Add a book from here starts as fiction.
+    await page.click('#addBtn');
+    assert.equal(await page.textContent('#f-rdsum'), 'Fiction');
+    await page.click('#bkx2');
+    await page.click('#chips .chip >> nth=0');
+    assert.equal((await titles(page)).length, 5);
+    // A room, and a status, are the room menu and the chip; a line takes off what was chosen before.
+    await open_(); await pick('Den');
+    assert.deepEqual([await page.inputValue('#roomSel'), await page.getAttribute('#chips .chip[data-s=""]', 'aria-pressed')], ['Den', 'true']);
+    assert.deepEqual(await titles(page), ['Middlemarch', 'A Brief History of Time', 'Notebook']);
+    await open_(); await pick('Without a shelf');
+    assert.deepEqual([await page.inputValue('#roomSel'), await titles(page)], ['', ['Middlemarch', 'Cat’s Cradle']]);
+    await open_(); await pick('Lent out');
+    assert.deepEqual([await page.getAttribute('#chips .chip[data-s="lent"]', 'aria-pressed'), await page.inputValue('#sortSel')], ['true', 'lent']);
+    assert.equal(await page.locator('#chips .chip[data-facet]').count(), 0, 'the filter chosen before is still there');
+    await open_(); await pick('On your wishlist');
+    assert.deepEqual(await titles(page), ['Moby-Dick']);
+    // From the keyboard, the keyboard comes back to the count.
+    await open_();
+    await page.focus('.sm-row[aria-label^="Without an author,"]');
+    await page.keyboard.press('Enter');
+    assert.deepEqual([await page.evaluate(() => document.activeElement.id), await titles(page)], ['sumBtn', ['Notebook']]);
+    // Giving the last book without an author one takes the filter off.
+    await page.click('#list .bk[data-id="b07"]');
+    await page.fill('#f-authors', 'Anon');
+    await page.click('#bkx2');
+    assert.equal(await page.locator('#chips .chip[data-facet]').count(), 0);
+    assert.equal((await titles(page)).length, 5);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {
@@ -2254,7 +2316,7 @@ step('on a phone the small controls answer a tap 44px tall, and none takes anoth
       const w = viewport.width + 'px: ';
       const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
       // The list: its chips, menus, What to read next and the top bar's buttons.
-      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])', '.now-acts .btn', '#shareBtn']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])', '.now-acts .btn', '#shareBtn', '#sumBtn']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
       await page.click('#list .bk[data-id="b03"]');
       // The card: status, stars, tag picks; with its sections open, the reading details, genres, Signed and First edition.
       await page.evaluate(() => document.querySelectorAll('.panel details').forEach(d => d.open = true));
