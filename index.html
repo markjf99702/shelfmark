@@ -494,6 +494,10 @@ details.more .fs{padding:2px 12px 12px}
 .nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
 .nx-why li::before{content:"";position:absolute;left:2px;top:.5em;width:5px;height:5px;border-radius:50%;background:var(--brass)}
 .lb-what{margin:0 0 14px}
+.lb-opts{margin:0 0 12px;font-size:15px}
+.lb-opts .opt{padding:7px 0}
+.lb-fill{display:block;margin:2px 0 0}
+@media (pointer:coarse){.lb-opts .opt{min-height:44px}}
 .lb-what li{color:var(--ink2);font-size:15px}
 .nx-alts{display:grid;gap:8px;margin-top:20px;animation:deal .28s ease-out}
 .nx-alts h3{margin:0}
@@ -867,6 +871,31 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       Object.keys(d.seen).forEach(function (k) { var v = d.seen[k], w = got(seen, k); if (!w || v < w) seen[k] = v; });
     });
     return { books: sortObj(books), seen: sortObj(seen) };
+  }
+  // What a library file (a backup, say) can put back that merging alone doesn't, because the newer change wins: the books
+  // in it removed here since (gone, their ids), and for the books in both, the fields blank here but set in the file
+  // (fill, {id: [fields]}), such as reading details an older Shelfmark dropped. Only what describes a book is filled:
+  // its read, lent, checked and wishlist state, and its stars, are as they were last set. A book on the wishlist gets no place.
+  var FILL = DETAILS.concat(['pages', 'sub', 'authors', 'isbn', 'publisher', 'year', 'format', 'edition', 'condition', 'room', 'shelf', 'tags', 'notes', 'added']);
+  function restorable(mine, file) {
+    var merged = mergeDocs(mine, file), gone = [], fill = Object.create(null);
+    live(file).forEach(function (b) {
+      var m = merged.books[b.id], ks;
+      if (m.del) { gone.push(b.id); return; }
+      ks = FILL.filter(function (k) { return m[k] == null && b[k] != null && !(m.wanted && (k === 'room' || k === 'shelf')); });
+      if (ks.length) fill[b.id] = ks;
+    });
+    return { gone: gone, fill: fill };
+  }
+  // The library merged with the file, with the books removed since brought back (back) and the blanks filled in (fill),
+  // each changed now (or just after its last change), so that it wins over the removal or the blank on every device.
+  function restore(mine, file, back, fill, now) {
+    var r = restorable(mine, file), d = mergeDocs(mine, file), bs = d.books;
+    if (back) r.gone.forEach(function (id) { bs[id] = cleanBook(Object.assign({}, file.books[id], { t: Math.max(now, bs[id].t + 1) })); });
+    if (fill) Object.keys(r.fill).forEach(function (id) {
+      var b = Object.assign({}, bs[id], { t: Math.max(now, bs[id].t + 1) }); r.fill[id].forEach(function (k) { b[k] = file.books[id][k]; }); bs[id] = cleanBook(b);
+    });
+    return d;
   }
   function wrapDoc(d) { return { shelfmark: 1, library: d }; }
   function canon(d) { return JSON.stringify(wrapDoc(d)); }
@@ -2969,38 +2998,52 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // A library file (a backup, or the Drive file downloaded), and what merging it here would change, book by book:
   // books it adds (new here, or changed in the file after they were removed here), books here it has changed more
   // recently, books removed here since (they stay removed), and books here it removes.
+  // What a book filled in from a file gets, in words, for the sheet's "Fill in" choice.
+  var FILL_WORDS = { sub: 'subtitles', authors: 'authors', isbn: 'ISBNs', publisher: 'publishers', year: 'years', format: 'formats', pages: 'page counts', edition: 'editions',
+    condition: 'conditions', room: 'places', shelf: 'places', tags: 'tags', notes: 'notes', added: 'days added' };
   function librarySheet(doc) {
-    var mine = DOC.books, theirs = live(doc), adds = 0, here = 0, newer_ = 0, gone = 0, drops = 0;
+    var mine = DOC.books, theirs = live(doc), adds = 0, here = 0, newer_ = 0, drops = 0;
     theirs.forEach(function (b) {
       var m = mine[b.id];
       if (!m) adds++;
-      else if (m.del) { if (newer(b, m)) adds++; else gone++; }
+      else if (m.del) { if (newer(b, m)) adds++; }
       else { here++; if (newer(b, m)) newer_++; }
     });
     Object.keys(doc.books).forEach(function (id) { var x = doc.books[id], m = mine[id]; if (x.del && m && !m.del && newer(x, m)) drops++; });
-    var nothing = !adds && !newer_ && !drops, one = function (n, a, b) { return n === 1 ? a : b; };
+    // Merging can't undo a removal or bring back what's been emptied since, as the newer change wins, so the sheet offers both.
+    var r = restorable(DOC, doc), gone = r.gone.length, fills = Object.keys(r.fill), words = Object.create(null);
+    // What filling in gives, most books first: "12 books: reading details, page counts".
+    fills.forEach(function (id) { var got_ = Object.create(null); r.fill[id].forEach(function (k) { var w = FILL_WORDS[k] || 'reading details'; if (!got_[w]) { got_[w] = 1; words[w] = (words[w] || 0) + 1; } }); });
+    var wl = Object.keys(words).sort(function (a, b) { return words[b] - words[a]; });
+    var merge = adds || newer_ || drops, nothing = !merge && !gone && !fills.length, one = function (n, a, b) { return n === 1 ? a : b; };
     var what = [];
     if (adds) what.push(adds + one(adds, ' isn’t on this device yet, so merging adds it', ' aren’t on this device yet, so merging adds them'));
     if (here) what.push(here + one(here, ' is', ' are') + ' already here' + (!newer_ ? '' : ', ' + (newer_ < here ? newer_ + ' ' : here === 1 ? '' : here === 2 ? 'both ' : 'all ') + 'with newer changes in the file'));
-    if (gone) what.push(gone + one(gone, ' was removed here since, and stays removed', ' were removed here since, and stay removed'));
     if (drops) what.push(drops + one(drops, ' of your books was removed in the file, so merging removes it here too', ' of your books were removed in the file, so merging removes them here too'));
+    var choices = (gone ? '<label class="opt"><input type="checkbox" id="lbback"><span>' + (gone === 1 ? 'Bring back the book removed since this backup' : 'Bring back the ' + gone + ' books removed since this backup') + '</span></label>' : '') +
+      (fills.length ? '<label class="opt"><input type="checkbox" id="lbfill"><span>Fill in what your books are missing from this file<span class="note lb-fill">' + plural(fills.length, 'book') + ': ' +
+        (wl.length > 4 ? wl.slice(0, 3).join(', ') + ' and more' : wl.join(', ')) + '</span></span></label>' : '');
     openSheet('<div class="hd"><h2 id="sheetTitle">Open a Shelfmark library</h2><button class="btn sm quiet" type="button" id="lbx">' + (nothing ? 'Close' : 'Not now') + '</button></div><div class="bd">' +
-      (nothing ? '<p class="lede">Nothing to merge: this device already has everything in this file' + (gone ? ', apart from ' + plural(gone, 'book') + ' removed here since, which ' + one(gone, 'stays', 'stay') + ' removed' : '') + '.</p></div>'
-        : '<p class="lede">This file holds <b>' + plural(theirs.length, 'book') + '</b>.</p><ul class="nx-why lb-what">' + what.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul>' +
-          '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
-          '<div class="ft"><span class="grow"></span><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>'));
+      (nothing ? '<p class="lede">Nothing to merge: this device already has everything in this file.</p></div>'
+        : (merge ? '<p class="lede">This file holds <b>' + plural(theirs.length, 'book') + '</b>.</p><ul class="nx-why lb-what">' + what.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul>'
+          : '<p class="lede">Nothing new to merge: this device has the latest of every book in this file. It can still put back what’s gone here since.</p>') +
+          (choices ? '<div class="lb-opts">' + choices + '</div>' : '') +
+          '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes' + (choices ? ' unless you tick a choice above.' : '.') + '</p></div>' +
+          '<div class="ft"><span class="grow"></span><button class="btn primary" type="button" id="lbgo">' + (merge ? 'Merge into my library' : 'Put them back') + '</button></div>'));
     $('lbx').addEventListener('click', closeSheet);
-    // The toast says what merging did: "Merged: 1 book added, 2 updated, 1 removed".
+    // The toast says what merging did: "Merged: 1 book added, 2 brought back, 3 updated, 1 removed".
     if (!nothing) $('lbgo').addEventListener('click', function () {
-      var was = DOC.books, n = { added: 0, updated: 0, removed: 0 };
-      DOC = mergeDocs(DOC, doc);
+      var was = DOC.books, n = { added: 0, 'brought back': 0, updated: 0, removed: 0 }, back = !!$('lbback') && $('lbback').checked, fill = !!$('lbfill') && $('lbfill').checked;
+      // With nothing to merge, Put them back needs a choice ticked first.
+      if (!merge && !back && !fill) { toast('Tick what to put back first'); refocus($('lbback') || $('lbfill')); return; }
+      DOC = restore(DOC, doc, back, fill, Date.now());
       Object.keys(DOC.books).forEach(function (id) {
         var x = DOC.books[id], w = was[id];
-        if (!x.del) { if (!w || w.del) n.added++; else if (JSON.stringify(x) !== JSON.stringify(w)) n.updated++; } else if (w && !w.del) n.removed++;
+        if (!x.del) { if (!w || w.del) n[back && r.gone.indexOf(id) >= 0 ? 'brought back' : 'added']++; else if (JSON.stringify(x) !== JSON.stringify(w)) n.updated++; } else if (w && !w.del) n.removed++;
       });
-      var did = ['added', 'updated', 'removed'].filter(function (k) { return n[k]; }).map(function (k, i) { return (i ? n[k] : plural(n[k], 'book')) + ' ' + k; });
+      var did = ['added', 'brought back', 'updated', 'removed'].filter(function (k) { return n[k]; }).map(function (k, i) { return (i ? n[k] : plural(n[k], 'book')) + ' ' + k; });
       var saved = persist(); closeSheet(); render();
-      toast(!saved ? STORE_TOAST[STORE] : did.length ? 'Merged: ' + did.join(', ') : 'Your library already had everything in this file');
+      toast(!saved ? STORE_TOAST[STORE] : did.length ? (merge ? 'Merged: ' : 'Put back: ') + did.join(', ') : 'Your library already had everything in this file');
     });
   }
 

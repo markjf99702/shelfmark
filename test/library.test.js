@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { curly, hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { restorable, restore, curly, hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -109,6 +109,30 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     eq(pool.picks.map(p => p.b.id), ['b', 'bconstructor'], 'what to read next skips a book with such an id once it has been shown');
   }
   eq(S.cleanBook({ id: 'x1', t: 9, del: 1, title: 'gone' }), { id: 'x1', t: 9, del: 1 }, 'a removed book keeps only id and time');
+// A backup can put back what merging alone can't, as the newer change wins: books removed since, and blanks filled in.
+{
+  const backup = S.cleanDoc({ books: [
+    { id: 'e', t: 10, title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', moods: ['funny'], pages: 474, notes: 'Box set', room: 'Den', loan: { to: 'Sam' }, check: 'which edition?' },
+    { id: 'w', t: 10, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Study' },
+    { id: 'm', t: 10, title: 'Middlemarch', room: 'Den', shelf: 'Top', kind: 'fiction' },
+    { id: 'h', t: 10, title: 'Hamlet' }, { id: 'x', t: 10, del: 1 }] });
+  // Since then: Emma lost its reading details (an older tab), its page count and its loan, and its check was settled;
+  // Walden was removed; Middlemarch went on the wishlist; Hamlet is as it was; Ulysses is new.
+  const now = S.cleanDoc({ books: [
+    { id: 'e', t: 20, title: 'Emma', authors: ['Jane Austen'], room: 'Den', notes: 'Box set' }, { id: 'w', t: 30, del: 1 },
+    { id: 'm', t: 20, title: 'Middlemarch', wanted: true }, { id: 'h', t: 10, title: 'Hamlet' }, { id: 'u', t: 5, title: 'Ulysses' }] });
+  const r = S.restorable(now, backup);
+  eq([r.gone, r.fill], [['w'], { e: ['kind', 'moods', 'pages'], m: ['kind'] }], 'a backup can bring back a book removed since, and fill in blanks (not a place on the wishlist, a loan or a check settled)');
+  eq(S.canon(S.restore(now, backup, false, false, 1000)), S.canon(S.mergeDocs(now, backup)), 'with neither chosen it merges as before');
+  const back = S.restore(now, backup, true, true, 1000);
+  eq(back.books.w, { id: 'w', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Study' }, 'a book brought back is the backup’s copy, changed now');
+  eq(back.books.e, { id: 'e', t: 1000, title: 'Emma', authors: ['Jane Austen'], pages: 474, room: 'Den', notes: 'Box set', kind: 'fiction', moods: ['funny'] }, 'a book filled in keeps what it has and gets its blanks from the backup');
+  eq([back.books.m.wanted, back.books.m.room, back.books.m.kind, back.books.h.t, back.books.u.t], [true, undefined, 'fiction', 10, 5], 'and the books with nothing to put back are as merged');
+  // Changed now, they win over the removal and the blanks still on another device, both ways round.
+  eq([S.canon(S.mergeDocs(back, now)), S.canon(S.mergeDocs(now, back))], [S.canon(back), S.canon(back)], 'what was put back wins over the copy from before, both ways round');
+  const late = S.restore(S.cleanDoc({ books: [{ id: 'w', t: 5000, del: 1 }] }), backup, true, false, 1000);
+  eq(late.books.w.t, 5001, 'a book removed with a time later than now (another device\'s clock) comes back just after it');
+}
   eq(S.cleanBook({ id: '123', title: 'T' }).id, 'b123', 'numeric ids get a letter so key order stays stable');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
   eq(S.cleanBook({ id: 'a', title: 'T', loan: { to: 'Sam', since: 'last week' } }).loan, { to: 'Sam' }, 'a loan keeps its borrower even with a bad date');

@@ -1803,25 +1803,71 @@ step('a backup opens on another device, and the library sheet says what merging 
     assert.equal(await lede(other), 'Nothing to merge: this device already has everything in this file.');
     assert.deepEqual(await other.$$eval('#sheet button', bs => bs.map(x => x.textContent)), ['Close']);
     await other.click('#lbx');
-    // A book removed here since stays removed, and the sheet counts it.
+    // A book removed here since stays removed, unless the sheet is asked to bring it back.
+    const opts = p => p.$$eval('#sheet .lb-opts .opt', ls => ls.map(l => l.textContent));
     await other.click('#list .bk[data-id="b04"]');
     await other.click('#f-del');
     await wait(450);
     await openFile(other, backup);
-    assert.equal(await lede(other), 'Nothing to merge: this device already has everything in this file, apart from 1 book removed here since, which stays removed.');
+    assert.equal(await lede(other), 'Nothing new to merge: this device has the latest of every book in this file. It can still put back what’s gone here since.');
+    assert.deepEqual(await opts(other), ['Bring back the book removed since this backup']);
+    assert.deepEqual(await other.$$eval('#sheet button', bs => bs.map(x => x.textContent)), ['Not now', 'Put them back']);
+    await other.click('#lbgo');
+    assert.equal(await other.textContent('#toastTx'), 'Tick what to put back first');
+    assert.equal(await sheetOpen(other), true, 'Put them back with nothing ticked closed the sheet');
     await other.click('#lbx');
     // A file in which one of the books here was removed later says so before merging.
     const removed = { shelfmark: 1, library: { books: { b03: { id: 'b03', t: Date.now() + 60000, del: 1 }, b04: MIDDLEMARCH, b05: CRADLE }, seen: {} } };
     await wait(450);
     await openFile(other, JSON.stringify(removed));
     assert.equal(await lede(other), 'This file holds 2 books.');
-    assert.deepEqual(await what(other), ['1 isn’t on this device yet, so merging adds it', '1 was removed here since, and stays removed', '1 of your books was removed in the file, so merging removes it here too']);
+    assert.deepEqual(await what(other), ['1 isn’t on this device yet, so merging adds it', '1 of your books was removed in the file, so merging removes it here too']);
+    assert.deepEqual(await opts(other), ['Bring back the book removed since this backup']);
     await other.click('#lbgo');
     assert.deepEqual((await titles(other)).sort(), ['Cat’s Cradle']);
     assert.equal(await other.textContent('#toastTx'), 'Merged: 1 book added, 1 removed');
     assert.equal(await other.textContent('#toastTx'), 'Merged: 1 book added, 1 removed');
     assert.deepEqual([...page.problems, ...other.problems], []);
   } finally { await a.close(); await b.close(); }
+});
+
+step('a backup brings back the books removed since and fills in what books are missing, when asked, later than the removals', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const DETAILED = { ...MIDDLEMARCH, kind: 'fiction', genres: ['classics'], moods: ['reflective'], pace: 'slow', blurb: 'A town, its marriages and its hopes.', pages: 880 };
+    await seed(page, [PIRANESI, DETAILED, CRADLE, WALDEN]);
+    await page.click('#setBtn');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#stDl')]);
+    const backup = await readFile(await dl.path(), 'utf8');
+    await page.click('#stx');
+    // Since the backup: two books removed, and Middlemarch's reading details and page count lost (as an older tab would).
+    for (const id of ['b03', 'b05']) { await page.click('#list .bk[data-id="' + id + '"]'); await page.click('#f-del'); await wait(450); }
+    const lost = { ...MIDDLEMARCH, t: Date.now() + 5 };
+    await page.evaluate(b => { const d = JSON.parse(localStorage.getItem('shelfmark.library')); d.library.books.b04 = b; localStorage.setItem('shelfmark.library', JSON.stringify(d)); }, lost);
+    await page.reload();
+    assert.deepEqual((await titles(page)).sort(), ['Middlemarch', 'Walden']);
+    const before = (await stored(page)).library.books;
+    await page.setInputFiles('#fileIn', { name: 'shelfmark-library.json', mimeType: 'application/json', buffer: Buffer.from(backup) });
+    assert.deepEqual(await page.$$eval('#sheet .lb-opts .opt', ls => ls.map(l => l.textContent)), ['Bring back the 2 books removed since this backup', 'Fill in what your books are missing from this file1 book: reading details, page counts']);
+    await page.check('#lbback');
+    await page.check('#lbfill');
+    await page.click('#lbgo');
+    assert.equal(await page.textContent('#toastTx'), 'Put back: 2 books brought back, 1 updated');
+    assert.deepEqual((await titles(page)).sort(), ['Cat’s Cradle', 'Middlemarch', 'Piranesi', 'Walden']);
+    const m = await storedBook(page, 'b04');
+    assert.deepEqual([m.kind, m.genres, m.moods, m.pace, m.blurb, m.pages, m.room], ['fiction', ['classics'], ['reflective'], 'slow', 'A town, its marriages and its hopes.', 880, 'Den']);
+    // Opened again, there's nothing left to put back.
+    await wait(450);
+    await page.setInputFiles('#fileIn', { name: 'shelfmark-library.json', mimeType: 'application/json', buffer: Buffer.from(backup) });
+    assert.equal(await page.textContent('#sheet .lede'), 'Nothing to merge: this device already has everything in this file.');
+    await page.click('#lbx');
+    // What came back is changed after the removals and the blanks, so it wins over them on another device that still has them.
+    const mine = (await stored(page)).library.books;
+    assert.deepEqual([before.b03.del, before.b05.del], [1, 1]);
+    for (const id of ['b03', 'b05', 'b04']) assert.ok(mine[id].t > before[id].t, id + ' came back no later than it was removed or emptied');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
 });
 
 step('It’s back says who the book is back from, and Undo puts the loan back, with the card open or closed', async () => {
