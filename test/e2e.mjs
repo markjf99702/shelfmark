@@ -627,6 +627,15 @@ step('a book on the review screen that\'s here on another shelf can be moved her
     await page.goto(link);
     await page.waitForSelector('#rv-add');
     assert.equal(await li(0).locator('.rv-mv').count(), 0);
+    // The same book twice in a batch moves the one copy here once, and the button says so.
+    await wait(450);
+    await page.goto(linkTo({ name: 'Low shelf', room: 'Den', shelf: 'Low', books: [{ title: 'Piranesi', authors: ['Susanna Clarke'] }, { title: 'Piranesi', authors: ['Susanna Clarke'] }] }));
+    await page.waitForSelector('#rv-add');
+    await li(0).locator('.rv-mv').click();
+    await li(1).locator('.rv-mv').click();
+    assert.deepEqual([await page.textContent('#rv-add'), await page.textContent('#rv-n')], ['Move 1 book', '1 left out']);
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Moved 1 book to Den › Low');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

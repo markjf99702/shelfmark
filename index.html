@@ -2668,10 +2668,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (fromLink && !added) setTimeout(function () { if ($('sheet').hidden) toast('Nothing added. Tap the link in Claude again when you’re ready.'); }, 0);
     });
     var added = false;
-    // "Add 5 books", "Add 3 to your wishlist", or for a batch of both "Add 3 books, 2 to your wishlist".
+    // "Add 5 books", "Add 3 to your wishlist", or for a batch of both "Add 3 books, 2 to your wishlist". The books moved
+    // here are counted once each, though the batch may have one twice.
     function moving() { var seen = Object.create(null); return rows.filter(function (r) { var ok = r.mv && away(r) && !seen[r.dup.id]; if (ok) seen[r.dup.id] = 1; return ok; }); }
     function count() {
-      var on = rows.filter(function (r) { return r.on; }), n = on.length, w = on.filter(function (r) { return r.b.wanted; }).length, k = n - w, m = rows.filter(function (r) { return r.mv && away(r); }).length;
+      var on = rows.filter(function (r) { return r.on; }), n = on.length, w = on.filter(function (r) { return r.b.wanted; }).length, k = n - w, m = moving().length;
       $('rv-add').textContent = !n ? (m ? 'Move ' + num(m) + (m === 1 ? ' book' : ' books') : 'Add') : (!k ? 'Add ' + num(w) + ' to your wishlist' : 'Add ' + num(k) + (k === 1 ? ' book' : ' books') + (w ? ', ' + num(w) + ' to your wishlist' : '')) + (m ? ', move ' + num(m) : '');
       $('rv-add').disabled = !n && !m;
       $('rv-n').textContent = n + m === rows.length ? '' : num(rows.length - n - m) + ' left out';
