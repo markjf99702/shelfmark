@@ -1510,6 +1510,16 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
         check(volSaid.includes('  Fixed the id of “The Lantern Cycle: First Light”: l5 is “The Lantern Cycle: Second Dark” by Ada Quill; it’s l4\n'), 'and it says so: ' + volSaid);
         eq((await S.parseIncoming(/Link: (\S+)/.exec(headSaid)[1])).details.books.map(e => [e.id, e.title]), [['l5', 'The Lantern Cycle: Second Dark']], 'the head of the title alone stays with its id: ' + headSaid);
         check(!/Fixed|warning/.test(headSaid), 'and says nothing of it: ' + headSaid);
+        // An id the library file doesn't have, on a title it doesn't have either: kept, for a book added since the file
+        // was saved, with the warning that it matches no book.
+        const newIn = path.join(tmp, 'new.json');
+        fs.writeFileSync(newIn, JSON.stringify({ books: [{ id: 'n1', title: 'Housekeeping', authors: ['Marilynne Robinson'], kind: 'fiction' }] }));
+        const newSaid = execFileSync('python3', [py, newIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const newDet = (await S.parseIncoming(/Link: (\S+)/.exec(newSaid)[1])).details;
+        eq(newDet.books.map(e => e.id), ['n1'], 'an id no book in the file has is kept when no title replaces it: ' + newSaid);
+        check(/warning: “Housekeeping” matches no book in the library/.test(newSaid), 'and it says so: ' + newSaid);
+        eq(S.matchDetails(S.cleanDoc({ books: { ...libDoc.library.books, n1: { id: 'n1', t: 2, title: 'Housekeeping: A Novel', authors: ['Marilynne Robinson'] } } }), newDet).map(r => r.bs.map(b => b.id)), [['n1']],
+          'so a device that has the book since finds it by that id');
         // --redo keeps what the books have, for Replace.
         const redo = (await S.parseIncoming(/Link: (\S+)/.exec(execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--redo', '--out', chkDir], { encoding: 'utf8' }))[1])).details.books;
         eq([redo.length, redo[1].kind, redo[2].id], [7, 'nonfiction', 'l3'], 'with --redo, every detail stays');

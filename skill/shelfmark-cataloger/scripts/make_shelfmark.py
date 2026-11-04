@@ -856,10 +856,13 @@ def check_details(entries, books, redo):
             continue
         if len(bs) == 1:
             e['id'] = bs[0]['id']
-        elif not bs and n in wrong and wrong[n][1]:
+        elif not bs and n in wrong:
             # Nothing has its title: perhaps the title is written another way. Kept for the book its id names, to check.
+            # An id that names no book is kept too: a book added since the library file was saved may have it, and
+            # Shelfmark goes on to the title when no book does, so keeping it can't make the link worse.
             e['id'] = wrong[n][0]
-            did['kept'].append((full(e), e['id'], wrong[n][1]))
+            if wrong[n][1]:
+                did['kept'].append((full(e), e['id'], wrong[n][1]))
         if n in wrong and (len(bs) == 1 or len(bs) > 1 and copies(bs)):
             did['fixed'].append((e, wrong[n], bs))
     out, hit = [], set()
