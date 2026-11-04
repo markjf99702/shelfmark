@@ -1743,6 +1743,55 @@ step('the sync button is named Saving while a change waits to go to Drive, not S
   } finally { await ctx.close(); }
 });
 
+step('Drive on a second device: the page shows it working, never says the shelves are empty meanwhile, and says what came in', async () => {
+  const g = fakeGoogle();
+  const driveBooks = () => { const f = g.files().find(f => f.appProperties && f.appProperties.shelfmark === 'library' && !f.trashed); return f && f.body ? Object.keys(JSON.parse(f.body).library.books) : []; };
+  // The laptop has the library, in Drive.
+  const a = await context(DESK);
+  await g.install(a);
+  try {
+    const pa = await open(a);
+    await seed(pa, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    await connectDrive(pa);
+    await until(() => driveBooks().length === 3, 'the library to reach Drive');
+  } finally { await a.close(); }
+  // A new phone, on a slow connection: each answer from Drive takes a second and a half.
+  const b = await context();
+  await g.install(b);
+  await b.route('https://www.googleapis.com/**', async r => { await wait(1500); r.fallback(); });
+  try {
+    const page = await open(b);
+    assert.match(await page.textContent('#list'), /Your shelves are empty/);
+    assert.equal(await page.textContent('#list .empty .away'), 'Use Shelfmark on another device? Connect Google Drive to bring your library here.');
+    assert.deepEqual(page.outside, [], 'the empty page loads something from elsewhere (Google\'s sign-in loads only when Settings opens)');
+    await page.click('#list [data-act="drive"]');
+    assert.equal(await page.textContent('#sheetTitle'), 'Settings');
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await page.click('#dvGo');
+    await until(async () => /Syncing now…/.test(await page.textContent('#driveSect')), 'Settings to say it\'s syncing', 3000);
+    assert.deepEqual(await page.evaluate(() => { const s = document.getElementById('syncBtn'); return [s.hidden, s.dataset.s]; }), [false, 'busy'], 'the sync button doesn\'t show the sync under way');
+    await page.click('#stx');
+    assert.equal(await page.textContent('#list .empty h2'), 'Bringing your library from Google Drive…');
+    await until(async () => (await titles(page)).length === 3, 'the library to come in', 20000);
+    assert.equal(await page.textContent('#toastTx'), 'Brought in 3 books from your Google Drive');
+    assert.deepEqual(page.problems, []);
+  } finally { await b.close(); }
+  // Sync turned on, but Google's hour is up and nothing has come in yet: it says where the library is, and Sync brings it.
+  const c = await context();
+  await g.install(c);
+  try {
+    const page = await open(c);
+    await page.evaluate(() => localStorage.setItem('shelfmark.drive', JSON.stringify({ on: true })));
+    await page.reload();
+    assert.deepEqual([await page.textContent('#list .empty h2'), await page.textContent('#list .empty p')], ['Your library is in your Google Drive', 'Tap Sync to bring it here.']);
+    await page.waitForFunction(() => window.google && window.google.accounts);
+    await page.click('#list [data-act="sync"]');
+    await until(async () => (await titles(page)).length === 3, 'the library to come in', 10000);
+    assert.equal(await page.textContent('#toastTx'), 'Brought in 3 books from your Google Drive');
+    assert.deepEqual(page.problems, []);
+  } finally { await c.close(); }
+});
+
 step('a link opened on a device behind Drive checks its books against Drive, and the sheet catches up as a sync lands', async () => {
   // A laptop and a phone share a Drive. The phone falls behind (its tab closed, then Google's hour up), and opens
   // links for books the laptop has added meanwhile.

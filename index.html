@@ -181,6 +181,7 @@ a{color:var(--accent)}
 .steps li::before{content:counter(s);flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font:600 12px/22px var(--mono);text-align:center}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .empty .row{justify-content:center}
+.empty .away{margin:24px 0 10px;font-size:14px;color:var(--ink3)}
 
 /* buttons */
 .btn{background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:9px 15px;font:600 14.5px var(--sans);color:var(--ink);white-space:nowrap}
@@ -1286,9 +1287,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var L = $('list');
     if (!all.length) {
       $('count').textContent = '';
+      // Sync is on here but hasn't brought the library yet (a new device): the library is on its way, or in Drive.
+      if (D.on && clientId() && !D.last) {
+        L.innerHTML = '<div class="empty">' + EMPTY_ART + (hasToken() && (syncing || !D.err && !offline) ? '<h2>Bringing your library from Google Drive…</h2>'
+          : '<h2>Your library is in your Google Drive</h2><p>' + (!hasToken() ? 'Tap Sync to bring it here.' : offline ? 'It comes here once you’re back online.' : 'Shelfmark couldn’t bring it here. ' + esc(D.err)) + '</p>' +
+            (hasToken() && offline ? '' : '<div class="row"><button class="btn primary" type="button" data-act="sync">' + (hasToken() ? 'Try again' : 'Sync') + '</button></div>')) + '</div>';
+        return;
+      }
       L.innerHTML = '<div class="empty">' + EMPTY_ART + '<h2>Your shelves are empty</h2><p>A catalog for the books in your house: where each one is, what you’ve read, and who borrowed what. It stays in this browser' + (D.on ? ' and your Google Drive' : '') + ', nowhere else.</p>' +
         '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude with the Shelfmark skill.</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch).</span></li><li><span>Tap it, and check the list before anything is added.</span></li></ol>' +
-        '<div class="row"><button class="btn primary" type="button" data-act="add">Add a book by hand</button><button class="btn" type="button" data-act="import">Open a link or file</button></div></div>';
+        '<div class="row"><button class="btn primary" type="button" data-act="add">Add a book by hand</button><button class="btn" type="button" data-act="import">Open a link or file</button></div>' +
+        // Google's sign-in script isn't loaded from here: it loads when Settings opens, as the privacy page says.
+        (!D.on && clientId() ? '<p class="away">Use Shelfmark on another device? Connect Google Drive to bring your library here.</p><div class="row"><button class="btn sm" type="button" data-act="drive">Open Settings</button></div>' : '') + '</div>';
       return;
     }
     var vis = visible(all);
@@ -2251,19 +2261,24 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (!D.on) return Promise.resolve();
     if (syncing) { again = true; return syncP; }
     if (!hasToken()) { renderSync(); return Promise.resolve(); }
-    syncing = true; clearTimeout(syncT); var seq = editSeq; setSync('busy'); if (sheetRefresh) sheetRefresh(false);
+    // The button and Settings say it's syncing straight away (the first time on a device, it can take a while), and so
+    // does the list while it has nothing to show. first: this device's first sync, which says what it brought in.
+    syncing = true; clearTimeout(syncT); var seq = editSeq, first = !D.last, bare = !live(DOC).length, brought = 0;
+    renderSync(); renderDrive(); if (bare) render();
     return syncP = ensureFile().then(function (f) {
       if (f.made || f.version === D.version && !D.pending) return;
       var got = f.version === D.version ? Promise.resolve(null) : download_(f.id);
       return got.then(function (remote) {
         var merged = remote ? mergeDocs(DOC, remote) : DOC;
-        if (remote && canon(merged) !== canon(DOC)) { DOC = merged; persist(true); render(); changedElsewhere(); }
+        if (remote && canon(merged) !== canon(DOC)) { brought += live(merged).length - live(DOC).length; DOC = merged; persist(true); render(); changedElsewhere(); }
         if (!remote || canon(merged) !== canon(remote)) return upload(f.id, merged).then(function (v) { D.version = v; });
         D.version = f.version;
       });
     }).then(function () {
       if (editSeq === seq) D.pending = false;
       D.last = Date.now(); D.err = ''; offline = false; saveDrive(); syncing = false; renderSync(); renderDrive();
+      if (bare) render();
+      if (first && brought > 0) toast('Brought in ' + plural(brought, 'book') + ' from your Google Drive');
       if (again || D.pending) { again = false; syncSoon(); }
     }, function (e) {
       syncing = false; again = false; offline = false;
@@ -2272,6 +2287,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       else if (e.net || navigator.onLine === false || e.name === 'TypeError' && /fetch|network|load failed/i.test(e.message)) { offline = true; D.err = ''; }
       else D.err = e.message || 'Sync failed';
       saveDrive(); renderSync(); renderDrive();
+      if (bare) render();
     });
   }
   function syncSoon() { if (!D.on || !hasToken()) { renderSync(); return; } clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
@@ -2339,13 +2355,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   $('addBtn').addEventListener('click', function () { bookSheet({ title: '', room: UI.room && UI.room !== NOROOM ? UI.room : '' }, true); });
   $('importBtn').addEventListener('click', importSheet);
   $('nextBtn').addEventListener('click', nextSheet);
-  $('setBtn').addEventListener('click', function () { loadGis(); settingsSheet(); });
+  function openSettings() { loadGis(); settingsSheet(); }
+  $('setBtn').addEventListener('click', openSettings);
   $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err || offline) { D.err = ''; sync(); } else { settingsSheet(); } });
   $('list').addEventListener('click', function (e) {
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') $('addBtn').click();
     else if (a.dataset.act === 'import') importSheet();
+    else if (a.dataset.act === 'drive') openSettings();
+    else if (a.dataset.act === 'sync') syncNow(); // signing in to Google has to happen inside the tap
     else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
     // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
     else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
