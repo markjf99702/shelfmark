@@ -349,6 +349,9 @@ details.more .fs{padding:2px 12px 12px}
 /* import review */
 .lede{margin:0 0 12px;color:var(--ink2)}
 .lede b{color:var(--ink);font-weight:600}
+.noskill{margin:0 0 16px}
+.noskill .note{margin:0 0 8px}
+.noskill textarea{width:100%;margin-top:8px;line-height:1.45;resize:vertical}
 .bulk{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 .bulk .two{margin-top:6px}
 .bulk .opt{margin:6px 0 -4px;padding:8px 0;font-size:14.5px}
@@ -1889,6 +1892,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
   // The skill isn't on the page: a friend who comes from the drawer finds how to add it to Claude in the README.
+  // For anyone without the skill: instructions for any Claude, whose reply is a plain list the paste box reads (listBooks).
+  var ASK_CLAUDE = 'Please list every book you can see in these photos as a numbered list, one book a line: Title by Author. Go shelf by shelf, left to right. ' +
+    'Copy titles and authors as they’re printed, and don’t guess: if you’re not sure of a book, add (check: what to check) at the end of its line. ' +
+    'Leave out any you can’t read, and tell me where they are after the list.';
   var SKILL_HOW = '<a class="how" href="https://github.com/markjf99702/shelfmark#adding-books-with-claude">How to add the skill</a>';
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   // The list and the chips are drawn afresh, so the keyboard would lose its place when a chip is pressed, another tab
@@ -2958,6 +2965,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function importSheet(paste) {
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
       '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
+      '<div class="noskill"><p class="note"><b>No skill?</b> Copy these instructions and send them to Claude with your photos, then paste its reply below.</p><button class="btn sm" type="button" id="imcopy">Copy instructions for Claude</button>' +
+      '<textarea id="imsay" readonly rows="6" aria-label="Instructions for Claude" hidden>' + esc(ASK_CLAUDE) + '</textarea></div>' +
       '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A file from Claude, or a Shelfmark backup (.json)</span></div>' +
       '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, the JSON text, or a list of books" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
       '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>' +
@@ -2970,6 +2979,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('impaste').addEventListener('paste', function () {
       var box = this;
       setTimeout(function () { var t = box.value; if (box.isConnected && (/#(s1[zj]|batch=)/.test(t) || t.indexOf('{') >= 0 || listBooks(t).length)) takeIncoming(parseIncoming(t)); }, 0);
+    });
+    // The instructions, copied; where the browser won't copy, they're shown, selected, to copy by hand.
+    $('imcopy').addEventListener('click', function () {
+      var btn = this;
+      copyText(ASK_CLAUDE, btn).then(function (ok) {
+        if (ok) { toast('Copied. Send them to Claude with your photos, then paste its reply here.'); return; }
+        var box = $('imsay'); box.hidden = false; box.focus(); box.select();
+        toast('Couldn’t copy them. They’re shown under the button to copy by hand.');
+      });
     });
   }
   $('fileIn').addEventListener('change', function () {
@@ -3625,18 +3643,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var chip = { unread: 'Unread', reading: 'Reading', read: 'Read', aside: 'Set aside', lent: 'Lent out', check: 'To check', wanted: 'Wishlist' }[UI.status];
     return [UI.facet && facetName(UI.facet), chip, UI.room === NOROOM ? 'No room yet' : UI.room, UI.tag ? 'Tag: ' + UI.tag : '', UI.q.trim() ? 'Search: ' + str(UI.q, 300) : ''].filter(Boolean);
   }
+  // Text to the clipboard: a promise of whether it got there. The old way, for a browser without the clipboard's own,
+  // selects the text in a box of its own and copies it, and gives the keyboard back to the button (back).
+  function copyText(text, back) {
+    function oldCopy() {
+      var a = document.createElement('textarea'), ok = false; a.value = text; a.setAttribute('readonly', ''); a.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(a); a.select(); try { ok = document.execCommand('copy'); } catch (x) { } a.remove(); if (back) refocus(back);
+      return ok;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(function () { return true; }, oldCopy);
+    return Promise.resolve(oldCopy());
+  }
   function shareList(e) {
     if (!onList) return;
     var n = onList.books.length, text = listText({ head: viewHead(), lent: UI.status === 'lent', wish: UI.status === 'wanted' }, onList.books, onList.groups), btn = $('shareBtn');
-    function copied() { toast('Copied ' + plural(n, 'book')); }
-    function failed() { toast('Couldn’t copy the list. Try again.'); }
-    // The old way, for a browser without the clipboard's own: the text selected in a box of its own, and copied.
-    function oldCopy() {
-      var a = document.createElement('textarea'), ok = false; a.value = text; a.setAttribute('readonly', ''); a.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-      document.body.appendChild(a); a.select(); try { ok = document.execCommand('copy'); } catch (x) { } a.remove(); refocus(btn);
-      return ok;
-    }
-    function copy() { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, function () { if (oldCopy()) copied(); else failed(); }); else if (oldCopy()) copied(); else failed(); }
+    function copy() { copyText(text, btn).then(function (ok) { toast(ok ? 'Copied ' + plural(n, 'book') : 'Couldn’t copy the list. Try again.'); }); }
     if (navigator.share && window.matchMedia && matchMedia('(pointer: coarse)').matches) navigator.share({ text: text }).catch(function (x) { if (!x || x.name !== 'AbortError') copy(); });
     else copy();
   }

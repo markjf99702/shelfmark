@@ -777,6 +777,38 @@ step('pasting a link, Claude\'s JSON or a plain list of books into Import opens 
   } finally { await ctx.close(); }
 });
 
+// For anyone without the skill: Import copies instructions for any Claude, whose reply the paste box reads.
+step('Copy instructions for Claude copies them, or shows them where the browser won\'t copy, and a reply that follows them opens', async () => {
+  const ctx = await context();
+  await ctx.addInitScript(() => { window.copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => window.refuse ? Promise.reject(new Error('no')) : (window.copied.push(t), Promise.resolve()) } }); });
+  try {
+    const page = await open(ctx);
+    await page.click('#importBtn');
+    await page.click('#imcopy');
+    await until(() => page.evaluate(() => window.copied.length), 'the instructions to be copied');
+    const said = await page.evaluate(() => window.copied[0]);
+    assert.match(said, /numbered list, one book a line: Title by Author/);
+    assert.match(said, /\(check: what to check\)/);
+    assert.equal(await page.textContent('#toastTx'), 'Copied. Send them to Claude with your photos, then paste its reply here.');
+    assert.equal(await page.isVisible('#imsay'), false);
+    // A browser that won't copy (and has no old way either) shows them, selected, to copy by hand.
+    await page.evaluate(() => { window.refuse = true; document.execCommand = () => false; });
+    await page.click('#imcopy');
+    await page.waitForSelector('#imsay', { state: 'visible' });
+    assert.equal(await page.inputValue('#imsay'), said);
+    assert.equal(await page.evaluate(() => { const b = document.getElementById('imsay'); return document.activeElement === b && b.selectionEnd - b.selectionStart === b.value.length; }), true, 'the instructions aren\'t selected');
+    assert.equal(await page.textContent('#toastTx'), 'Couldn’t copy them. They’re shown under the button to copy by hand.');
+    // A reply that does as they say.
+    await page.fill('#impaste', 'Here they are:\n\n1. Middlemarch by George Eliot\n2. Emma by Jane Austen (check: only the top of the spine shows)\n3. Walden by Henry David Thoreau\n\nI couldn’t read the thin red spine at the far right.');
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await page.$$eval('#rv [data-f="title"]', els => els.map(e => e.value)), ['Middlemarch', 'Emma', 'Walden']);
+    assert.equal(await page.textContent('#rv .rv-flag'), 'Check: only the top of the spine shows');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a spreadsheet export, pasted or opened, says to send it to Claude', async () => {
   const ctx = await context();
   try {
