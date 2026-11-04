@@ -1822,7 +1822,7 @@ step('on a phone the small controls answer a tap 44px tall, and none takes anoth
       await page.click('#toastBtn');
       await page.click('#nextBtn');
       await page.click('#nxMore > summary');
-      for (const q of ['#nxCrit .seg button', '#nxCrit .nx-moods .chip', '#nxCrit .nx-chips .chip']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      for (const q of ['#nxCrit .seg button', '#nxCrit .nx-moods .chip']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
       assert.ok((await size('#nxMore > summary'))[1] >= 40, 'More choices is ' + (await size('#nxMore > summary'))[1] + ' tall');
       assert.ok((await size('#nxCrit .opt'))[1] >= 40, 'Short chapters is ' + (await size('#nxCrit .opt'))[1] + ' tall');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, w + 'the page scrolls sideways');

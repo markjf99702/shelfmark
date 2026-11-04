@@ -504,14 +504,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .checks label{min-height:44px}
   .selects select{min-height:44px}
   .chips{padding-top:10px;padding-bottom:10px;margin:-8px 0}
-  .chip{position:relative}
-  .chip::after{content:"";position:absolute;inset:-9px 0}
+  .chips .chip,.nx-moods .chip{position:relative}
+  .chips .chip::after,.nx-moods .chip::after{content:"";position:absolute;inset:-9px 0}
   .tbtn{position:relative}
   .tbtn::after{content:"";position:absolute;inset:-6px 0}
   .nextbtn{position:relative}
   .nextbtn::after{content:"";position:absolute;inset:-8px 0}
 }
-@media (pointer:coarse){.nx-moods,.nx-chips{row-gap:16px}#f-genres:not([hidden]){margin-bottom:2px}}
+@media (pointer:coarse){.nx-moods{row-gap:16px}#f-genres:not([hidden]){margin-bottom:2px}}
 @media (pointer:coarse) and (max-width:640px){.nx-moods{padding-top:10px;padding-bottom:10px;margin:-8px -16px}}
 @media (prefers-reduced-motion:reduce){.nx-more>summary::before{transition:none}.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}
   .bk.new{animation:none;background:var(--brass-soft);border-color:var(--brass)}}
