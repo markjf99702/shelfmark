@@ -166,6 +166,9 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .grp .n{font:500 11.5px var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink3);margin-left:.2em}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
 @media (hover:hover){.bk:hover{border-color:var(--line2)}}
+/* a book just added by hand, tinted a moment where the list was scrolled to show it */
+.bk.new{animation:justin 2s ease-in}
+@keyframes justin{0%,25%{background:var(--brass-soft);border-color:var(--brass)}}
 /* rows out of sight aren't laid out until they come near, so a long list redraws quickly on a slow phone, and
    find-in-page still finds them. Until then a row counts as the height it last had, or as an average row (74px inside
    its padding); render() carries those heights across a redraw and keeps the reader's place. */
@@ -255,6 +258,9 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 /* the catalog card */
 .card-top{display:flex;gap:14px;align-items:flex-start;padding-bottom:14px;margin-bottom:14px;border-bottom:3px double var(--rule)}
 .card-tt{flex:1;min-width:0;display:grid;gap:8px}
+/* Add a book: a book that's here already says so under Author (out of the way while there's nothing to say) */
+#f-dup{margin:-2px 0 0}
+#f-dup:empty{position:absolute;margin:0}
 /* the title is a box of one line that grows to show a long one whole */
 .card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px;min-height:0;resize:none;overflow:hidden;display:block}
 .flag{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:9px 11px;margin:0 0 14px;font-size:14px}
@@ -468,7 +474,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 @media (max-width:340px){
   .two,.loan{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){.nx-more>summary::before{transition:none}.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}}
+@media (prefers-reduced-motion:reduce){.nx-more>summary::before{transition:none}.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}
+  .bk.new{animation:none;background:var(--brass-soft);border-color:var(--brass)}}
 </style>
 </head>
 <body>
@@ -1392,6 +1399,45 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     toast('Removed “' + short(old.title) + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); return rowOf(id); }, kb, next);
   }
   function rowOf(id) { return id ? [].filter.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id === id; })[0] : null; }
+  // Undo for books just added: each is taken out the way Remove takes one out ({id, t, del: 1}), so a sync takes it out
+  // of Drive and the other devices too, if it got there meanwhile.
+  function takeBack(ids) {
+    var n = 0;
+    ids.forEach(function (id) { var old = DOC.books[id]; if (old && !old.del) { DOC.books[id] = stamp({ id: id, del: 1 }, old); n++; } });
+    if (!n) return;
+    persist(); render(); toast(n > 1 ? 'Took them back out' : 'Took it back out');
+  }
+  // What Add a book starts with. The title is the search that found nothing (Add “…”), or its ISBN when it is one; the
+  // status is Reading or Read while that chip is chosen; the room is the one chosen in the room menu, or else the room
+  // and shelf of the last book added by hand this visit (kept in memory only), so a shelf goes in a book at a time.
+  // Another room chosen in the menu wins, without that shelf.
+  var handPlace = null;
+  function newBook(q) {
+    q = str(q, 300); var b = { title: '' }, i = /^[\d\s-]+[\dXx]$/.test(q) && isbn13(q), room = UI.room && UI.room !== NOROOM ? UI.room : '';
+    if (i) b.isbn = i; else b.title = q;
+    if (UI.status === 'reading' || UI.status === 'read') b.status = UI.status;
+    if (handPlace) { b.room = handPlace.room; b.shelf = handPlace.shelf; }
+    if (room && placeKey(room) !== placeKey(b.room || '')) { b.room = room; b.shelf = ''; }
+    return b;
+  }
+  // A book just added by hand is shown in the list: the search, chip, room or tag that would hide it are cleared, and
+  // it's brought to the middle of the screen and tinted a moment (.bk.new). A long list's rows out of sight count as an
+  // average row until they're drawn (see .bk), so a row a long way down can end up off the screen by the time a smooth
+  // scroll gets there: then it's put in the middle again.
+  function showAdded(id) {
+    var b = DOC.books[id], by; if (!b || b.del) return;
+    while ((by = hiddenBy(b, searchWords(UI.q), roomKey()))) { if (by === 'q') { UI.q = ''; $('q').value = ''; } else UI[by] = ''; }
+    render();
+    var r = rowOf(id), calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; if (!r) return;
+    function mid(how) { try { r.scrollIntoView({ block: 'center', behavior: how }); } catch (e) { r.scrollIntoView(); } }
+    mid(calm ? 'auto' : 'smooth');
+    r.classList.add('new');
+    setTimeout(function () {
+      if (!document.contains(r)) return;
+      var g = r.getBoundingClientRect(); if (g.top < document.querySelector('.top').getBoundingClientRect().bottom || g.bottom > innerHeight) mid('auto');
+    }, 900);
+    setTimeout(function () { r.classList.remove('new'); }, 2400);
+  }
 
   // ---------- covers ----------
   // With lookups on, each book's cover is found once through Open Library's search, by ISBN or by title and
@@ -1464,16 +1510,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       (by ? '<span class="bk-a">' + esc(by) + '</span>' : '') +
       (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + (why ? '<span class="bk-ck">Check: ' + esc(b.check) + '</span>' : '') + '</span></button>';
   }
+  // What keeps a book out of the list: 'status' (the chip chosen), 'room', 'tag' or 'q' (the search), or '' for nothing.
+  // q is the search's words, rk the room chosen's key.
+  function hiddenBy(b, q, rk) {
+    if (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && (b.status || 'unread') !== UI.status) return 'status';
+    if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return 'room';
+    if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return 'tag';
+    if (q.length && !searchHit(b, q)) return 'q';
+    return '';
+  }
+  function roomKey() { return UI.room && UI.room !== NOROOM ? placeKey(UI.room) : ''; }
   function visible(all) {
-    var q = searchWords(UI.q), rk = UI.room && UI.room !== NOROOM ? placeKey(UI.room) : '';
-    return all.filter(function (b) {
-      if (UI.status === 'lent') { if (!b.loan) return false; }
-      else if (UI.status === 'check') { if (!b.check) return false; }
-      else if (UI.status && (b.status || 'unread') !== UI.status) return false;
-      if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return false;
-      if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return false;
-      return !q.length || searchHit(b, q);
-    });
+    var q = searchWords(UI.q), rk = roomKey();
+    return all.filter(function (b) { return !hiddenBy(b, q, rk); });
   }
   // A row of chips that scrolls sideways fades at an edge with more past it (see .fade-l, .fade-r).
   function fades(el) {
@@ -1584,7 +1633,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       L.innerHTML = '<div class="empty">' + (elsewhere
         ? '<h2>Not with these filters</h2><p>Nothing here matches “' + esc(UI.q) + '”, but ' + plural(elsewhere, 'book') + ' in your whole library ' + (elsewhere === 1 ? 'does' : 'do') + '.</p>' +
           '<div class="row"><button class="btn primary" type="button" data-act="all">Search all books</button><button class="btn" type="button" data-act="clear">Show everything</button></div>'
-        : '<h2>Nothing matches</h2><p>' + (UI.q ? 'No book matches “' + esc(UI.q) + '”' : 'No books match these filters') + '.</p><div class="row"><button class="btn" type="button" data-act="clear">Show everything</button></div>') + '</div>';
+        : '<h2>Nothing matches</h2><p>' + (UI.q ? 'No book matches “' + esc(UI.q) + '”' : 'No books match these filters') + '.</p><div class="row">' +
+          (words.length ? '<button class="btn primary" type="button" data-act="addq">Add “' + esc(clip(UI.q.trim())) + '”</button>' : '') + '<button class="btn" type="button" data-act="clear">Show everything</button></div>') + '</div>';
       return;
     }
     var html = '';
@@ -1750,7 +1800,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
       '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
-      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" autocomplete="off"></label></div></div>' +
+      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" autocomplete="off"></label>' +
+      (isNew ? '<p class="note" id="f-dup" role="status"></p>' : '') + '</div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
@@ -1866,7 +1917,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('f-genre').hidden = st.genres.length >= 4;
       $('f-rdsum').textContent = [label(st.kind, KINDS), st.way === 'dip' || st.way === 'browse' ? label(st.way, WAYS) : '', label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
     }
+    // Adding a book that's here already says so, and where the first copy is, as the title, author or ISBN is typed.
+    var dupT;
+    function drawDup() {
+      clearTimeout(dupT); if (!isNew || !panel.isConnected) return;
+      var n = read(), d = n && findDup(dupIndex(DOC), n), at = d && where(d);
+      $('f-dup').textContent = !d ? '' : otherEdition(d, n) ? 'You already have another edition' + (at ? ' — ' + at : '') + '.' : 'You already have this' + (at ? ' — ' + at : '') + '. Add another copy?';
+    }
     panel.addEventListener('input', function (e) {
+      if (isNew && /^f-(title|authors|isbn)$/.test(e.target.id)) { clearTimeout(dupT); dupT = setTimeout(drawDup, 250); }
       if (e.target.id === 'f-title') { if (/[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' '); growTitle(); }
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
       if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
@@ -1941,19 +2000,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         var did = [];
         [['f-title', r.title, 'title'], ['f-sub', r.sub, 'subtitle'], ['f-authors', r.authors.join(', '), r.authors.length > 1 ? 'authors' : 'author'], ['f-publisher', r.publisher, 'publisher'],
           ['f-year', r.year || '', 'year'], ['f-pages', r.pages || '', 'pages']].forEach(function (p) { if (!$(p[0]).value.trim() && p[1]) { $(p[0]).value = p[1]; did.push(p[2]); } });
-        $('f-isbn').value = i; head(); growTitle(); later();
+        $('f-isbn').value = i; head(); growTitle(); later(); drawDup();
         toast(did.length ? 'Filled in the ' + did.slice(0, -1).join(', ') + (did.length > 1 ? ' and ' : '') + did[did.length - 1] : 'Open Library had nothing to add');
       }).catch(function () { if (panel.isConnected) toast('Couldn’t reach Open Library. Try again in a moment.'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
     });
     $('bkx').addEventListener('click', closeSheet); $('bkx2').addEventListener('click', closeSheet);
-    if (isNew) $('f-add').addEventListener('click', function () {
+    // Added, the book is shown in the list (see showAdded), and the toast says where it's shelved, or where the copy
+    // already here is, with Undo. From the keyboard, Undo takes the keyboard, and then it goes to the book.
+    if (isNew) $('f-add').addEventListener('click', function (e) {
       var n = read();
       if (!n) { $('f-title').focus(); toast('A book needs a title'); return; }
       if (!n.added) n.added = today();
       placed(n, placeIndex(live(DOC)));
       var dup = findDup(dupIndex(DOC), n);
-      n = putBook(n); closeSheet();
-      toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy' + (dup.room ? ' in ' + dup.room : '') : 'Added “' + short(n.title) + '”');
+      n = putBook(n); closeSheet(); if (!n) return;
+      handPlace = { room: n.room || '', shelf: n.shelf || '' };
+      showAdded(n.id);
+      if (STORE) { toast(STORE_TOAST[STORE]); return; }
+      var at = clip(where(dup || n)), stop = /…$/.test(at) ? '' : '.', id = n.id;
+      toast(!dup ? 'Added “' + short(n.title) + '”' + (at ? ' to ' + at : '') : 'Added another ' + (otherEdition(dup, n) ? 'edition' : 'copy') + (at ? '. The first is in ' + at + stop : ' of “' + short(n.title) + '”'),
+        'Undo', function () { takeBack([id]); return $('addBtn'); }, !e.detail, function () { return rowOf(id); });
     });
     else $('f-del').addEventListener('click', function (e) { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id, !e.detail); });
     head(); growTitle(); drawState();
@@ -2740,7 +2806,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
 
   // ---------- wiring ----------
-  $('addBtn').addEventListener('click', function () { bookSheet({ title: '', room: UI.room && UI.room !== NOROOM ? UI.room : '' }, true); });
+  $('addBtn').addEventListener('click', function () { bookSheet(newBook(''), true); });
   $('importBtn').addEventListener('click', importSheet);
   $('nextBtn').addEventListener('click', nextSheet);
   function openSettings() { loadGis(); settingsSheet(); }
@@ -2750,6 +2816,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') $('addBtn').click();
+    else if (a.dataset.act === 'addq') bookSheet(newBook(UI.q), true);
     else if (a.dataset.act === 'import') importSheet();
     else if (a.dataset.act === 'drive') openSettings();
     else if (a.dataset.act === 'sync') syncNow(); // signing in to Google has to happen inside the tap

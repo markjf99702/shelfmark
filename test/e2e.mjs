@@ -1922,6 +1922,121 @@ step('stars given to an unread book mark it Read, in a card and in Add a book, a
   } finally { await ctx.close(); }
 });
 
+// Made-up books, by made-up authors, for a list long enough to scroll a long way.
+const MANY = Array.from({ length: 60 }, (_, i) => ({ id: 'm' + i, t: 1000, title: 'Volume of Tales ' + (i + 1), authors: ['Author ' + String.fromCharCode(65 + Math.floor(i / 26)) + String.fromCharCode(65 + i % 26) + ' Quill'], added: '2026-10-01', room: 'Study', shelf: 'Shelf ' + (1 + i % 5) }));
+const inView = (page, id) => page.evaluate(id => {
+  const r = document.querySelector('#list .bk[data-id="' + id + '"]'); if (!r) return 'not in the list';
+  const g = r.getBoundingClientRect(), top = document.querySelector('.top').getBoundingClientRect().bottom;
+  return g.top >= top && g.bottom <= innerHeight ? true : 'at ' + Math.round(g.top) + '-' + Math.round(g.bottom) + ', the screen ' + Math.round(top) + '-' + innerHeight;
+}, id);
+const newId = async (page, title) => Object.values((await stored(page)).library.books).filter(b => b.title === title && !b.del).map(b => b.id)[0];
+
+step('Add a book starts from the chip and the search, and the book added is shown in the list, with Undo', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [...MANY, { ...WALDEN, status: 'read' }]);
+    // With Read chosen, a new book starts at Read; added, it's in view and tinted, the toast saying where it went.
+    await page.click('#chips .chip[data-s="read"]');
+    await page.click('#addBtn');
+    assert.equal(await page.getAttribute('#f-status button[data-v="read"]', 'aria-pressed'), 'true', 'Add a book didn\'t start at Read');
+    await page.fill('#f-title', 'An Almanac of Small Rooms');
+    await page.fill('#f-authors', 'Zelda Zimmer');
+    await page.fill('#f-room', 'Hall');
+    await page.fill('#f-shelf', 'Console table');
+    await page.click('#f-add');
+    const id = await newId(page, 'An Almanac of Small Rooms');
+    assert.equal((await storedBook(page, id)).status, 'read');
+    await wait(1000);
+    assert.equal(await inView(page, id), true, 'the new book is out of sight');
+    assert.equal(await page.textContent('#toastTx'), 'Added “An Almanac of Small Rooms” to Hall › Console table');
+    assert.equal(await page.textContent('#toastBtn'), 'Undo');
+    // Undo takes it back out, as a removal that a sync carries to other devices.
+    await page.click('#toastBtn');
+    assert.deepEqual(Object.keys(await storedBook(page, id)).sort(), ['del', 'id', 't']);
+    assert.equal(await page.textContent('#toastTx'), 'Took it back out');
+    assert.equal(await page.locator('#list .bk[data-id="' + id + '"]').count(), 0);
+    // The next book starts on the shelf the last one went to. A room chosen in the menu that's another room wins.
+    await wait(450);
+    await page.click('#addBtn');
+    assert.deepEqual([await page.inputValue('#f-room'), await page.inputValue('#f-shelf')], ['Hall', 'Console table'], 'the shelf isn\'t remembered');
+    await page.click('#bkx2');
+    await wait(450);
+    await page.click('#chips .chip[data-s=""]');
+    await page.selectOption('#roomSel', 'Study');
+    await page.click('#addBtn');
+    assert.deepEqual([await page.inputValue('#f-room'), await page.inputValue('#f-shelf')], ['Study', '']);
+    assert.equal(await page.getAttribute('#f-status button[data-v="unread"]', 'aria-pressed'), 'true');
+    await page.click('#bkx2');
+    // A search that finds nothing offers to add that title. Added, the search and the room hiding it are cleared.
+    await wait(450);
+    await page.fill('#q', 'zzz');
+    await page.click('#list [data-act="addq"]');
+    assert.equal(await page.inputValue('#f-title'), 'zzz');
+    await page.fill('#f-title', 'Zany Zoology');
+    await page.fill('#f-room', 'Hall');
+    await page.click('#f-add');
+    const z = await newId(page, 'Zany Zoology');
+    assert.deepEqual([await page.inputValue('#q'), await page.inputValue('#roomSel')], ['', ''], 'the search or the room still hides the new book');
+    await wait(1000);
+    assert.equal(await inView(page, z), true);
+    // Typing a book that's here already says so, and where; added, the toast says where the first copy is.
+    await wait(450);
+    await page.click('#addBtn');
+    assert.equal(await page.textContent('#f-dup'), '');
+    await page.fill('#f-title', 'walden');
+    await page.fill('#f-authors', 'Henry D. Thoreau');
+    await until(() => page.$eval('#f-dup', e => e.textContent !== ''), 'the note that it\'s here already', 3000);
+    assert.equal(await page.textContent('#f-dup'), 'You already have this — Study. Add another copy?');
+    await page.click('#f-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added another copy. The first is in Study.');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('a book added by hand to a long list sorted by author is in view, on a phone and with a mouse', async () => {
+  for (const opts of [PHONE, DESK, { ...PHONE, reducedMotion: 'reduce' }]) {
+    const ctx = await context(opts);
+    try {
+      const page = await open(ctx);
+      await seed(page, MANY);
+      await page.click('#addBtn');
+      await page.fill('#f-title', 'Nightingale Lane');
+      await page.fill('#f-authors', 'Author CB Quill'); // near the end, by author
+      await page.click('#f-add');
+      const id = await newId(page, 'Nightingale Lane');
+      await wait(opts.reducedMotion ? 100 : 1200);
+      assert.equal(await inView(page, id), true, (opts.reducedMotion ? 'reduced motion: ' : '') + opts.viewport.width + 'px: the new book is out of sight');
+      assert.equal(await page.$eval('#list .bk[data-id="' + id + '"]', e => e.classList.contains('new')), true, 'the new book isn\'t tinted');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
+step('Undo after Add a book takes it out of Drive too', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    await connectDrive(page);
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the first sync');
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Moby-Dick');
+    await page.fill('#f-authors', 'Herman Melville');
+    await page.click('#f-add');
+    const id = await newId(page, 'Moby-Dick');
+    await page.focus('#toastBtn'); // the toast stays while Undo has the keyboard, however long the sync takes
+    const inDrive = () => { const f = g.files().find(f => f.name === 'Shelfmark library.json'); return f && JSON.parse(f.body).library.books[id]; };
+    await until(() => inDrive() && !inDrive().del, 'the new book to reach Drive', 15000);
+    await page.click('#toastBtn');
+    await until(() => inDrive() && inDrive().del === 1, 'the removal to reach Drive', 15000);
+    assert.equal(await page.locator('#list .bk[data-id="' + id + '"]').count(), 0);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a quick second tap on Add to library doesn\'t open the book underneath', async () => {
   const ctx = await context();
   try {
