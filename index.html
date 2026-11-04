@@ -841,7 +841,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function authorsKey(b) { return (b.authors || []).map(authorKey).sort().join('|'); }
   // What a details link would change: each book it finds, with every entry for it put in, in order. A book two entries
-  // find (two copies, both matched by title and author) counts once. {id: the book as it would be}.
+  // find (two copies, both matched by title and author) counts once, and one that two entries change and change back
+  // (with Replace, one saying fiction and the next nonfiction) doesn't count. {id: the book as it would be}.
   function detailChanges(doc, rows, replace) {
     var out = {};
     rows.forEach(function (r) {
@@ -850,6 +851,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (x) out[b.id] = x;
       });
     });
+    Object.keys(out).forEach(function (id) { if (JSON.stringify(out[id]) === JSON.stringify(doc.books[id])) delete out[id]; });
     return out;
   }
   // A book with an entry's details put in, or null if nothing would change. Details fill blanks, or replace what the

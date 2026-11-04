@@ -552,6 +552,25 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   check(every, 'and find every copy they’re for: the book named by id, or each copy with the ISBN or title and author');
   check(byIsbn, 'and a copy with the entry’s ISBN always gets it');
 
+  // What a details link would change is each book that ends up different, with every entry that finds it put in, in
+  // order: with Replace, one entry saying fiction and the next nonfiction leave a nonfiction book as it was, uncounted.
+  let differ = true, each = true;
+  for (let k = 0; k < 400; k++) {
+    const lib = S.cleanDoc({ books: Array.from({ length: 1 + Math.floor(r() * 3) }, (_, i) => ({ id: 'w' + i, t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: any(['', 'fiction', 'nonfiction']), pace: any(['', 'slow', 'fast']) })) });
+    const det = S.cleanDetails({ details: { books: Array.from({ length: 1 + Math.floor(r() * 4) }, () => ({ id: any(['', '', 'w0', 'w1']), title: 'Walden', authors: ['Henry David Thoreau'], kind: any(['fiction', 'nonfiction']), pace: any(['', 'slow', 'fast']) })) } });
+    for (const replace of [false, true]) {
+      const rows = S.matchDetails(lib, det), ch = S.detailChanges(lib, rows, replace), want = {};
+      for (const id of Object.keys(lib.books)) {
+        let b = lib.books[id]; rows.forEach(x => { if (x.bs.some(y => y.id === id)) b = S.withDetails(b, x.e, replace) || b; });
+        if (JSON.stringify(b) !== JSON.stringify(lib.books[id])) want[id] = b;
+      }
+      if (Object.keys(ch).some(id => JSON.stringify(ch[id]) === JSON.stringify(lib.books[id]))) differ = false;
+      if (JSON.stringify(Object.keys(ch).sort().map(id => ch[id])) !== JSON.stringify(Object.keys(want).sort().map(id => want[id]))) each = false;
+    }
+  }
+  check(differ, 'a details link counts only books it changes, with Replace and without');
+  check(each, 'and counts each book it changes, as every entry for it leaves it');
+
   // What to read next, dealt again and again as its sheet does: no book twice in a deal, books not yet shown first,
   // and nothing lent out, being read, read (unless rereads are asked for) or browsed (unless asked for).
   const now = new Date('2026-11-03T12:00:00').getTime();
@@ -734,6 +753,9 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     eq(twice.map(r => r.bs.map(b => b.id)), [['a1', 'a2'], ['a1', 'a2']], 'two entries for a book with two copies find both');
     eq([Object.keys(S.detailChanges(waldens, twice, false)).length, Object.keys(S.detailChanges(waldens, twice, true)).length], [2, 2], 'and change two books, not four');
     eq(S.detailChanges(waldens, twice, false).a1.pace, 'medium', 'filling in, the first entry’s details stay');
+    const middlemarch = S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] });
+    const back = S.matchDetails(middlemarch, S.cleanDetails({ details: { books: [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }, { title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] } }));
+    eq([S.detailChanges(middlemarch, back, true), Object.keys(S.detailChanges(middlemarch, back, false))], [{}, []], 'two entries that change a book and change it back, with Replace, change nothing');
     const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
     eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
