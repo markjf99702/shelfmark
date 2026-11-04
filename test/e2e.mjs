@@ -2683,6 +2683,29 @@ step('titles and lines about books show curly apostrophes, and are saved and sea
   } finally { await ctx.close(); }
 });
 
+step('a card\'s moods look like What to read next\'s mood chips, not like the + tag suggestions', async () => {
+  for (const scheme of ['light', 'dark']) {
+    const ctx = await context({ ...DESK, colorScheme: scheme });
+    try {
+      const page = await open(ctx);
+      await seed(page, [{ ...PIRANESI, kind: 'fiction', moods: ['dark'], tags: ['gift'] }, { ...MIDDLEMARCH, kind: 'fiction', moods: ['funny', 'reflective'] }]);
+      const look = q => page.$eval(q, e => { const c = getComputedStyle(e); return [c.backgroundColor, c.borderTopColor, c.color, c.fontWeight, c.borderTopLeftRadius]; });
+      await page.click('#nextBtn');
+      const chip = await look('.nx-moods .chip:not([aria-pressed="true"])');
+      await page.click('.nx-moods .chip >> nth=0');
+      const chipOn = await look('.nx-moods .chip[aria-pressed="true"]');
+      await page.click('#nxx');
+      await until(async () => !(await sheetOpen(page)), 'What to read next to close');
+      await page.click('#list .bk[data-id="b04"]');
+      await page.click('summary:has-text("Reading details")');
+      assert.deepEqual(await look('#f-moods button:not([aria-pressed="true"])'), chip, scheme + ': a mood on the card looks unlike one in What to read next');
+      assert.deepEqual(await look('#f-moods button[aria-pressed="true"]'), chipOn, scheme + ': a chosen mood on the card looks unlike one in What to read next');
+      assert.notDeepEqual(await look('#f-tagpicks button'), chip, scheme + ': a mood looks like a + tag suggestion');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {

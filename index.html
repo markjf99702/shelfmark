@@ -349,6 +349,12 @@ details.more .fs{padding:2px 12px 12px}
 .tagpicks.picks{margin-top:0;gap:6px}
 .tagpicks.picks button{padding:5px 11px;font-size:13px}
 .tagpicks button[aria-pressed="true"],#f-genres button{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+/* The card's moods are drawn as What to read next's mood chips (.chip), outlined, so choosing a mood doesn't look like
+   adding one of the '+ tag' suggestions above them. */
+.tagpicks.moods button{font-weight:600}
+.tagpicks.moods button:not([aria-pressed="true"]){background:var(--surface);border-color:var(--line2)}
+.tagpicks.moods button:not([aria-pressed="true"]):active{background:var(--sunk)}
+@media (hover:hover){.tagpicks.moods button:not([aria-pressed="true"]):hover{border-color:var(--ink3);color:var(--ink)}}
 #f-genre{justify-self:start;width:auto;max-width:100%;padding:5px 28px 5px 10px;font-size:16px;border-radius:999px}
 .isbnrow{display:flex;gap:8px}
 .isbnrow input{flex:1}
@@ -2312,7 +2318,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<details class="more"><summary><span class="sum-l">Reading details</span><span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
       seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS, '<span class="note">Books you browse (cookbooks, reference, picture books) aren’t suggested in What to read next unless you ask for them.</span>') +
       seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
-      '<div class="fl"><span>Moods</span><div class="tagpicks picks" id="f-moods" role="group" aria-label="Moods">' + MOODS.map(function (m) { return '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="fl"><span>Moods</span><div class="tagpicks picks moods" id="f-moods" role="group" aria-label="Moods">' + MOODS.map(function (m) { return '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
       '<div class="fl"><span>Genres</span><div class="tagpicks picks" id="f-genres" role="group" aria-label="Genres"></div><select id="f-genre" aria-label="Add a genre"></select></div>' +
       '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
       '</div></details>' +
