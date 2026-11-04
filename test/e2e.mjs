@@ -417,6 +417,53 @@ step('changing only the room on the review screen keeps each book\'s own shelf',
   } finally { await ctx.close(); }
 });
 
+step('the review screen shows what the batch says of each book, and a long title whole on a phone', async () => {
+  const ctx = await context();
+  try {
+    const long = 'Middlemarch: A Study of Provincial Life, with an Introduction and Notes by the Editor';
+    const page = await open(ctx, linkTo({ name: 'Den', books: [
+      { title: long, authors: ['George Eliot'], status: 'read', rating: 4, signed: true, first: true, format: 'hardcover' },
+      { title: 'Gilead', authors: ['Marilynne Robinson'], status: 'reading', loan: { to: 'Sam' }, format: 'paperback', kind: 'fiction', chapters: 'short', way: 'dip' },
+      { title: 'The Overstory', authors: ['Richard Powers'], kind: 'fiction', genres: ['literary'], moods: ['reflective'], pace: 'slow', blurb: 'Nine strangers and the trees that bring them together.' },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    const rows = () => page.$$eval('#rv > li', els => els.map(li => {
+      const q = s => li.querySelector(s), st = q('.rv-st');
+      return [st.hidden ? '' : [...st.children].map(x => x.getAttribute('aria-label') || x.textContent).join(' | '), (q('.rv-det') || {}).textContent?.replace(/\u00a0/g, ' ') || '', (q('.rv-blurb') || {}).textContent || ''];
+    }));
+    assert.deepEqual(await rows(), [
+      ['Read | 4 of 5 stars | Signed · First edition · Hardcover', '', ''],
+      ['Reading | Lent to Sam | Paperback', 'Fiction · Short chapters · Dip in and out', ''],
+      ['', 'Fiction · Literary fiction · Reflective · Slow pace', 'Nine strangers and the trees that bring them together.'],
+    ]);
+    await page.check('#rv-read');
+    assert.deepEqual((await rows()).map(r => r[0]), ['Read | 4 of 5 stars | Signed · First edition · Hardcover', 'Reading | Lent to Sam | Paperback', 'Read'], 'I’ve read all of these doesn\'t show which books it marks Read');
+    await page.uncheck('#rv-read');
+    // The long title shows whole, over three lines, and keeps growing as it's typed into; Enter finishes it.
+    const title = page.locator('#rv li').first().locator('[data-f="title"]');
+    const box = () => title.evaluate(t => ({ h: t.clientHeight, all: t.scrollHeight <= t.clientHeight + 1, line: parseFloat(getComputedStyle(t).lineHeight) }));
+    let b = await box();
+    assert.ok(b.all && b.h > 2.5 * b.line, 'the long title isn\'t whole: ' + JSON.stringify(b));
+    await title.click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type(', Volume One of Three, Revised and Expanded, with a New Preface');
+    b = await box();
+    assert.ok(b.all && b.h > 3.5 * b.line, 'the title didn\'t grow as it was typed: ' + JSON.stringify(b));
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.f || ''), '', 'Enter didn\'t finish the title');
+    assert.equal(await title.inputValue(), long + ', Volume One of Three, Revised and Expanded, with a New Preface');
+    assert.equal((await page.locator('#rv li').nth(1).boundingBox()).y > (await page.locator('#rv li').first().boundingBox()).y + 4 * b.line, true, 'the next row is under the title');
+    const third = page.locator('#rv li').nth(2).locator('[data-f="title"]');
+    await third.fill('The Overstory\nA Novel');
+    assert.equal(await third.inputValue(), 'The Overstory A Novel', 'a line break pasted into a title stays');
+    await page.click('#rv-add');
+    const lib = await stored(page);
+    assert.ok(Object.values(lib.library.books).some(x => x.title === long + ', Volume One of Three, Revised and Expanded, with a New Preface' && x.status === 'read' && x.signed), 'the edited title wasn\'t added');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('I’ve read all of these marks Read the books added that the batch doesn\'t say are being read', async () => {
   const ctx = await context();
   try {
@@ -519,7 +566,7 @@ step('a link cut short says so, and a hand-written link with a % opens', async (
     assert.deepEqual(await stored(page), null, 'something was saved');
     await page.goto(base + '#batch={"books":[{"title":"100% Fun"}]}');
     await page.waitForSelector('#rv-add');
-    assert.equal(await page.inputValue('#rv input[data-f="title"]'), '100% Fun');
+    assert.equal(await page.inputValue('#rv [data-f="title"]'), '100% Fun');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -532,7 +579,7 @@ step('a link pasted into Import with a full stop after it opens, and so does Cla
     await page.fill('#impaste', 'Here are your books: ' + linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }) + '.');
     await page.click('#imgo');
     await page.waitForSelector('#rv-add');
-    assert.equal(await page.inputValue('#rv input[data-f="title"]'), 'Middlemarch');
+    assert.equal(await page.inputValue('#rv [data-f="title"]'), 'Middlemarch');
     await page.click('#rvx');
     await wait(450);
     // Without code tools, Claude writes the JSON by hand, in a code block between two lines of its own.
@@ -540,7 +587,7 @@ step('a link pasted into Import with a full stop after it opens, and so does Cla
     await page.fill('#impaste', 'Here are the 2 books from the den:\n\n```json\n' + JSON.stringify({ shelfmark: 1, batch: { name: 'Den', books: [{ title: 'Walden', authors: ['Henry David Thoreau'] }, { title: 'Emma', authors: ['Jane Austen'] }] } }, null, 2) + '\n```\n\nPaste it into Shelfmark (Import › paste box).');
     await page.click('#imgo');
     await page.waitForSelector('#rv-add');
-    assert.deepEqual(await page.$$eval('#rv input[data-f="title"]', els => els.map(e => e.value)), ['Walden', 'Emma']);
+    assert.deepEqual(await page.$$eval('#rv [data-f="title"]', els => els.map(e => e.value)), ['Walden', 'Emma']);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -3051,7 +3098,7 @@ step('a link opened on a device behind Drive checks its books against Drive, and
     assert.match(await b.textContent('#behind'), /^This device last synced with Drive (just now|\d+ min ago), so books added on your other devices may not show here yet\.Sync now$/);
     // The person unticks one and corrects a title, then syncs.
     await rowOf(b, 1).locator('.rv-tick').click();
-    await rowOf(b, 2).locator('input[data-f="title"]').fill('Sense and Sensibility: A Novel');
+    await rowOf(b, 2).locator('[data-f="title"]').fill('Sense and Sensibility: A Novel');
     await b.waitForFunction(() => window.google && window.google.accounts);
     await b.click('#behindGo');
     await until(async () => (await b.locator('#behind').count()) === 0, 'the sync to land and the flag to go');
@@ -3059,7 +3106,7 @@ step('a link opened on a device behind Drive checks its books against Drive, and
     assert.deepEqual(await b.$$eval('#rv .rv-tick input', els => els.map(e => e.checked)), [false, false, true], 'a row the person touched changed its tick, or a book found in Drive stayed ticked');
     assert.match(await rowOf(b, 0).textContent(), /Already in your library\. Tick it to add another copy\./);
     assert.equal(await rowOf(b, 0).getAttribute('class'), 'off');
-    assert.equal(await rowOf(b, 2).locator('input[data-f="title"]').inputValue(), 'Sense and Sensibility: A Novel', 'the corrected title was undone');
+    assert.equal(await rowOf(b, 2).locator('[data-f="title"]').inputValue(), 'Sense and Sensibility: A Novel', 'the corrected title was undone');
     assert.match(await rowOf(b, 2).textContent(), /Already in your library/, 'the corrected title wasn\'t checked against Drive');
     assert.equal(await b.textContent('#rv-add'), 'Add 1 book');
     await b.click('#rvx');
