@@ -4095,6 +4095,54 @@ step('a details link fills in reading details, and a book\'s card shows and chan
   } finally { await ctx.close(); }
 });
 
+step('the details review sums up the file, and lists the books it leaves without details, to copy for Claude', async () => {
+  const ctx = await context();
+  await ctx.addInitScript(() => { window.copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => window.refuse ? Promise.reject(new Error('no')) : (window.copied.push(t), Promise.resolve()) } }); });
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, { ...CRADLE, kind: 'fiction' }, { id: 'b07', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'] },
+      { id: 'b08', t: 1000, title: 'Emma', sub: 'A Novel', authors: ['Jane Austen'] }, { id: 'b09', t: 1000, title: 'Ulysses', authors: ['James Joyce'], wanted: true },
+      { id: 'b10', t: 1000, title: 'The Weekday Pantry', authors: ['Ida Marsh'], pages: 480 }]);
+    await page.goto(detailsLink([
+      { id: 'b03', title: 'Piranesi', authors: ['Susanna Clarke'], kind: 'fiction', pages: 272 },
+      { id: 'b04', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', pages: 880 },
+      { id: 'b10', title: 'The Weekday Pantry', authors: ['Ida Marsh'], kind: 'nonfiction', way: 'browse', pages: 470 },
+      { id: 'b99', title: 'A Book Not Here', authors: ['Nobody'], kind: 'poetry' },
+    ]));
+    await page.waitForSelector('#dtgo');
+    assert.equal(await page.textContent('.lede'), '4 books · 1 not in your library');
+    assert.equal(await page.textContent('.dt-sum'), '2 fiction · 1 nonfiction · 1 you browse · 2 page counts', 'the summary under the heading');
+    // Walden and Emma have no details and aren't in the file; Cat's Cradle has some, and Ulysses is on the wishlist.
+    assert.equal(await page.textContent('#dtLeft > summary'), '2 books in your library aren\u2019t in this file and have no reading details yet');
+    assert.equal(await page.isVisible('#dtCopy'), false, 'the list starts closed');
+    await page.click('#dtLeft > summary');
+    assert.deepEqual(await page.$$eval('.dt-books li', els => els.map(e => e.textContent)), ['Emma · Jane Austen', 'Walden · Henry David Thoreau']);
+    await page.click('#dtCopy');
+    await until(() => page.evaluate(() => window.copied.length), 'the list to be copied');
+    const said = 'Please add reading details for Shelfmark to these 2 books in my library:\n\nEmma: A Novel by Jane Austen\nWalden by Henry David Thoreau\n';
+    assert.equal(await page.evaluate(() => window.copied[0]), said);
+    assert.equal(await page.textContent('#toastTx'), 'Copied 2 books. Send them to Claude with the Shelfmark skill.');
+    // A browser that won't copy shows the list, selected, to copy by hand.
+    await page.evaluate(() => { window.refuse = true; document.execCommand = () => false; });
+    await page.click('#dtCopy');
+    await page.waitForSelector('#dtSay', { state: 'visible' });
+    assert.equal(await page.inputValue('#dtSay'), said);
+    assert.equal(await page.evaluate(() => { const b = document.getElementById('dtSay'); return document.activeElement === b && b.selectionEnd - b.selectionStart === b.value.length; }), true, 'the list isn\'t selected');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
+    // A change from elsewhere (another tab, a sync) draws it again, still open, with one book fewer.
+    await page.evaluate(() => {
+      const l = JSON.parse(localStorage.getItem('shelfmark.library')); l.library.books.b07 = { ...l.library.books.b07, t: Date.now(), kind: 'nonfiction' };
+      window.dispatchEvent(new StorageEvent('storage', { key: 'shelfmark.library', newValue: JSON.stringify(l) }));
+    });
+    await until(async () => (await page.textContent('#dtLeft > summary')).startsWith('1 book in'), 'the list to be drawn again');
+    assert.equal(await page.evaluate(() => document.getElementById('dtLeft').open), true, 'drawn again, the list closed');
+    assert.deepEqual(await page.$$eval('.dt-books li', els => els.map(e => e.textContent)), ['Emma · Jane Austen']);
+    await page.click('#dtgo');
+    assert.match(await page.textContent('#toastTx'), /Added reading details to 3 books/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('reading details wrap between facets on a narrow phone: a dot never starts a line, and Slow pace stays whole', async () => {
   for (const width of [320, 360, 390]) {
     const ctx = await context({ ...PHONE, viewport: { width, height: 740 } });

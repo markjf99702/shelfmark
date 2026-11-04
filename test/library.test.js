@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -893,6 +893,25 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     const middlemarch = S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] });
     const back = S.matchDetails(middlemarch, S.cleanDetails({ details: { books: [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }, { title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] } }));
     eq([S.detailChanges(middlemarch, back, true), Object.keys(S.detailChanges(middlemarch, back, false))], [{}, []], 'two entries that change a book and change it back, with Replace, change nothing');
+    {
+      // The review's summary of a file, and the books it leaves without details.
+      const lib3 = S.cleanDoc({ books: [{ id: 'p', t: 1, title: 'Piranesi', authors: ['Susanna Clarke'] }, { id: 's', t: 1, title: 'The Weekday Pantry', authors: ['Ida Marsh'], pages: 480 },
+        { id: 'w1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }, { id: 'w2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] },
+        { id: 'e', t: 1, title: 'emma', sub: 'A Novel', authors: ['Jane Austen'] }, { id: 'c', t: 1, title: 'Cat’s Cradle', kind: 'fiction' }, { id: 'u', t: 1, title: 'Ulysses', wanted: true },
+        { id: 'g', t: 1, title: 'Gone', del: 1 }, { id: 'a', t: 1, title: 'Aesop’s Fables' }] });
+      const rows3 = S.matchDetails(lib3, S.cleanDetails({ details: { books: [
+        { id: 'p', title: 'Piranesi', authors: ['Susanna Clarke'], kind: 'fiction', pages: 272 }, { title: 'The Weekday Pantry', authors: ['Ida Marsh'], kind: 'nonfiction', way: 'browse', pages: 500 },
+        { title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pages: 352 }, { title: 'Not Here', authors: ['Nobody'], kind: 'poetry', pages: 90 }, { id: 'a', title: 'Aesop’s Fables', pages: 200 }] } }));
+      eq(S.detailsSum(rows3), ['1 fiction', '2 nonfiction', '1 you browse', '3 page counts'],
+        'the summary counts each entry for a book here once, a page count only where the book has none, and leaves out what has none');
+      eq(S.detailsSum([]), [], 'an empty file sums to nothing');
+      const left = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3);
+      eq(left.map(b => b.id), ['e'], 'left without details: a book no entry finds and that has none, not one with details, a wishlist book, a removed one, or one an entry finds (even for a page count only)');
+      const more = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3.slice(0, 1));
+      eq(more.map(b => b.title), ['Aesop’s Fables', 'emma', 'The Weekday Pantry', 'Walden', 'Walden'], 'in title order, whatever the capitals, every copy');
+      eq(S.leftText(more.slice(0, 2)), 'Please add reading details for Shelfmark to these 2 books in my library:\n\nAesop’s Fables\nemma: A Novel by Jane Austen\n', 'the list to copy for Claude: a line a book, with its subtitle and author');
+      eq(S.leftText(left).split('\n')[0], 'Please add reading details for Shelfmark to this book in my library:', 'one book is this book');
+    }
     const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
     eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
