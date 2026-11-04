@@ -1715,6 +1715,34 @@ step('losing the connection mid-sync shows Offline, not Sync failed, and coming 
   } finally { await ctx.close(); }
 });
 
+step('the sync button is named Saving while a change waits to go to Drive, not Synced', async () => {
+  const g = fakeGoogle();
+  const ctx = await context(DESK);
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    await connectDrive(page);
+    // A change made while a sync is sending the one before waits for the next sync.
+    let sending = 0;
+    await ctx.route('https://www.googleapis.com/upload/drive/v3/files/**', async r => { if (r.request().method() === 'PATCH') { sending++; await wait(1500); } r.fallback(); });
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    await until(() => sending > 0, 'the change to be sent');
+    await wait(450);
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    const sync = () => page.evaluate(() => { const b = document.getElementById('syncBtn'); return [b.dataset.s, document.getElementById('syncTx').textContent, b.title]; });
+    await until(async () => (await sync())[1] === 'Saving', 'the button to say Saving', 8000);
+    assert.deepEqual(await sync(), ['ok', 'Saving', 'Saving to Google Drive'], 'the button is named Synced while a change waits');
+    await until(async () => (await sync())[1] === 'Synced', 'the next sync', 10000);
+    assert.match((await sync())[2], /^Synced with Google Drive/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a link opened on a device behind Drive checks its books against Drive, and the sheet catches up as a sync lands', async () => {
   // A laptop and a phone share a Drive. The phone falls behind (its tab closed, then Google's hour up), and opens
   // links for books the laptop has added meanwhile.

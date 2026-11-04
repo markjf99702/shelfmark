@@ -2285,7 +2285,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (!hasToken()) { setSync('tap'); $('syncTx').textContent = 'Sync'; b.title = 'Google needs you to sign in again to sync'; return; }
     if (offline) { setSync('offline'); $('syncTx').textContent = 'Offline'; b.title = 'Offline: your changes are kept here and go to Drive when you’re back'; return; }
     if (D.err) { setSync('err'); $('syncTx').textContent = 'Sync failed'; b.title = D.err; return; }
-    setSync('ok'); $('syncTx').textContent = D.pending ? 'Saving' : 'Synced'; b.title = D.last ? 'Synced with Google Drive ' + ago(D.last) : 'Synced with Google Drive';
+    // On a phone the word is hidden and the title is the button's only name, so it says Saving too.
+    setSync('ok'); $('syncTx').textContent = D.pending ? 'Saving' : 'Synced'; b.title = D.pending ? 'Saving to Google Drive' : D.last ? 'Synced with Google Drive ' + ago(D.last) : 'Synced with Google Drive';
   }
   function renderDrive() {
     var s = $('driveSect'); if (!s) return;
