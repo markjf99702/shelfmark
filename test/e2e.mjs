@@ -538,6 +538,57 @@ step('a long list draws rows out of sight only as they come near, and the last o
   } finally { await ctx.close(); }
 });
 
+// A long made-up library whose rows are of every height: titles of one to three lines, and some with a place,
+// a status or a loan under them.
+function longList(n) {
+  const words = ['Lantern', 'Harbor', 'Orchard', 'Winter', 'Glass', 'River', 'Meadow', 'Signal', 'Copper', 'Thistle', 'Ember', 'Quarry'];
+  return Array.from({ length: n }, (_, i) => ({
+    id: 'p' + String(i).padStart(3, '0'), t: 1000 + i, added: '2026-10-01',
+    title: 'The ' + words[i % 12] + ' ' + words[(i * 5) % 12] + (i % 3 ? '' : ' and the Long Road Back to ' + words[(i * 7) % 12]) + (i % 7 ? '' : ': A Story of the Far North, the Sea and the Years Between'),
+    authors: [['Ann Lee'], ['Maria Delgado-Fernández', 'Tomasz Wiśniewski'], ['B. Okafor']][i % 3],
+    ...(i % 2 ? { room: 'Living room', shelf: 'Tall bookcase by the window, second from the top' } : {}),
+    ...(i % 5 ? {} : { status: 'read', rating: 4 }), ...(i % 11 ? {} : { loan: { to: 'Sam', since: '2026-10-02' } }),
+  }));
+}
+
+step('the list keeps its place when it\'s drawn again: a chip, a book marked Read, another tab', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, longList(260));
+    // The first row wholly below the top bar (and clear of the room kept for the keyboard under it), and where it is.
+    const first = () => page.evaluate(() => {
+      const bar = document.querySelector('.top').getBoundingClientRect().bottom;
+      const r = [...document.querySelectorAll('#list .bk')].find(e => e.getBoundingClientRect().top >= bar + 16);
+      return { id: r.dataset.id, top: r.getBoundingClientRect().top };
+    });
+    const topOf = id => page.$eval(`#list .bk[data-id="${id}"]`, e => e.getBoundingClientRect().top);
+    const settle = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 100)))));
+    await page.evaluate(() => scrollTo(0, 6000));
+    await settle();
+    const at = await first();
+    // A tap on the chip already chosen draws the list again, with nothing changed (the chips are scrolled off, so it's clicked from the page).
+    await page.$eval('#chips .chip[data-s=""]', e => e.click());
+    await settle();
+    assert.ok(Math.abs(await topOf(at.id) - at.top) <= 2, 'a redraw moved the row in view from ' + at.top + ' to ' + await topOf(at.id));
+    // Opening the row, marking it Read and closing its card saves it, which draws the list again behind the card.
+    await page.click(`#list .bk[data-id="${at.id}"]`);
+    await page.click('#f-status button[data-v="read"]');
+    await wait(700);
+    await page.click('#bkx2');
+    await settle();
+    assert.equal((await storedBook(page, at.id)).status, 'read');
+    assert.ok(Math.abs(await topOf(at.id) - at.top) <= 2, 'marking a book Read moved it from ' + at.top + ' to ' + await topOf(at.id));
+    // Another tab changes a book far down the list.
+    const other = await open(ctx);
+    await other.evaluate(() => { const d = JSON.parse(localStorage.getItem('shelfmark.library')); const b = d.library.books.p250; b.title += ' (Revised)'; b.t = Date.now(); localStorage.setItem('shelfmark.library', JSON.stringify(d)); });
+    await until(async () => (await page.textContent('#list .bk[data-id="p250"] .bk-t')).includes('Revised'), 'the other tab\'s change');
+    await settle();
+    assert.ok(Math.abs(await topOf(at.id) - at.top) <= 2, 'another tab\'s change moved the row in view from ' + at.top + ' to ' + await topOf(at.id));
+    assert.deepEqual([...page.problems, ...other.problems], []);
+  } finally { await ctx.close(); }
+});
+
 step('search finds a book by the ISBN printed on it', async () => {
   const ctx = await context();
   try {
