@@ -1174,7 +1174,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function short(t) {
     t = str(t, 300); var i = t.indexOf(':');
     if (i >= 3) t = t.slice(0, i).trim();
-    return clip(t);
+    return curly(clip(t));
+  }
+  // A title or a line about a book as it's shown, with its straight apostrophes curly like Shelfmark's own words
+  // ("Pilgrim’s", "’Salem’s Lot", "Rock ’n’ Roll"), and a quote of a few words opened with ‘ ("‘The Raven’ and Other
+  // Poems"). Only for showing: what's saved, searched, shared, copied and exported is as it was typed.
+  function curly(s) {
+    s = String(s == null ? '' : s);
+    return s.indexOf("'") < 0 ? s : s.replace(/'/g, function (q, i) {
+      return !/[\p{L}\p{N}]/u.test(s.charAt(i - 1)) && /\p{L}/u.test(s.charAt(i + 1)) && /^[^']{2,}?[^\s']'(?![\p{L}\p{N}])/u.test(s.slice(i + 1)) ? '‘' : '’';
+    });
   }
   // The letters on a small cloth cover: the first letters of the title's first two words that start with a letter,
   // after a leading article and leaving out small words after the first ("The Adventures of Sherlock Holmes": AS), or
@@ -1904,7 +1913,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // ---------- rendering ----------
   function cover(b, size, noQueue) {
     var c = CLOTH[hash(fold(b.title)) % CLOTH.length], id = PREF.lookups ? coverId(b, noQueue) : 0;
-    var tx = size === 'lg' ? b.title : monogram(b.title), by = size === 'lg' && b.authors && b.authors[0] ? surname(b.authors[0]) : '';
+    var tx = size === 'lg' ? curly(b.title) : monogram(b.title), by = size === 'lg' && b.authors && b.authors[0] ? surname(b.authors[0]) : '';
     var img = id ? '<img src="https://covers.openlibrary.org/b/id/' + id + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add(\'on\')" onerror="this.remove()">' : '';
     return '<span class="cv' + (size ? ' ' + size : '') + (by ? ' by' : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t' + (size !== 'lg' && tx.length > 2 ? ' wide' : '') + '">' + esc(tx) + '</span>' +
       (by ? '<span class="cv-a">' + esc(by) + '</span>' : '') + img + '</span>';
@@ -1926,13 +1935,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (b.rating) m.push(stars(b.rating));
     var by = byLine(b) + (b.year ? (byLine(b) ? ' · ' : '') + b.year : '');
     return '<button class="bk" type="button" data-id="' + esc(b.id) + '"' + (now ? ' data-now="1"' : '') + '>' + cover(b) + '<span class="bk-tx">' +
-      '<span class="bk-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
+      '<span class="bk-t">' + esc(curly(b.title)) + (b.sub ? '<span class="s">: ' + esc(curly(b.sub)) + '</span>' : '') + '</span>' +
       (by ? '<span class="bk-a">' + esc(by) + '</span>' : '') +
       (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + (why ? '<span class="bk-ck">Check: ' + esc(b.check) + '</span>' : '') + '</span></button>';
   }
   // A book in Reading now: its row, with Finished and Set aside under it (each named with the book, for a screen reader).
   function nowRow(b) {
-    var t = esc(b.title);
+    var t = esc(curly(b.title));
     return '<div class="nowbk">' + row(b, false, true) + '<div class="now-acts"><button class="btn sm" type="button" data-fin="' + esc(b.id) + '" aria-label="Finished “' + t + '”">Finished</button>' +
       '<button class="btn sm quiet" type="button" data-aside="' + esc(b.id) + '" aria-label="Set aside “' + t + '”">Set aside</button></div></div>';
   }
@@ -2279,7 +2288,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var view = UI.status, had = { check: !!b.check, loan: b.loan ? b.loan.to : '' }, backTold = null;
     var panel = openSheet(
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
-      '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2>' +
+      '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(curly(b.title))) + '</h2>' +
       (clear ? '<div class="kept"><span class="note">Kept from before</span><button class="btn sm" type="button" id="f-clear">Clear</button></div>' : '') + '<div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
       '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" maxlength="300" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
@@ -2818,7 +2827,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           '<input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocapitalize="words" autocorrect="off" autocomplete="off">' +
           '<span class="rv-st"' + (st ? '>' + st : ' hidden>') + '</span>' +
           (detailParts(b).length ? '<span class="rv-det">' + detailHtml(b) + '</span>' : '') +
-          (b.blurb ? '<span class="rv-blurb">' + esc(b.blurb) + '</span>' : '') +
+          (b.blurb ? '<span class="rv-blurb">' + esc(curly(b.blurb)) + '</span>' : '') +
           '<span class="rv-meta"' + (mt ? '>' + esc(mt) : ' hidden>') + '</span>' +
           (b.check ? '<span class="rv-flag" id="rv-c-' + i + '">Check: ' + esc(b.check) + '</span>' : '') +
           '<span class="rv-dup rv-have" id="rv-n-' + i + '"' + (r.dup || r.near || r.wish ? '' : ' hidden') + '>' + have(r) + '</span>' +
@@ -3037,7 +3046,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         ' in this file and ' + (left.length === 1 ? 'has' : 'have') + ' no reading details yet</summary><div class="dt-leftin">' +
         '<p class="note">Copy the list, and send it to Claude with the Shelfmark skill to get ' + (left.length === 1 ? 'its' : 'theirs') + ' too.</p>' +
         '<button class="btn sm" type="button" id="dtCopy">Copy the list</button><textarea id="dtSay" readonly rows="6" aria-label="The list for Claude" hidden>' + esc(leftText(left)) + '</textarea>' +
-        '<ul class="dt-books">' + left.map(function (b) { return '<li>' + esc(b.title) + (byLine(b) ? ' <span class="rv-by">· ' + esc(byLine(b)) + '</span>' : '') + '</li>'; }).join('') + '</ul></div></details>';
+        '<ul class="dt-books">' + left.map(function (b) { return '<li>' + esc(curly(b.title)) + (byLine(b) ? ' <span class="rv-by">· ' + esc(byLine(b)) + '</span>' : '') + '</li>'; }).join('') + '</ul></div></details>';
     }
     // A title that's here more than once says which copy each is: where it's shelved, or how many copies.
     function items() {
@@ -3045,9 +3054,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       found.forEach(function (r) { var k = fold(r.bs[0].title); twice[k] = k in twice; });
       return found.map(function (r) {
         var b = r.bs[0], e = r.e, by = [byLine(b), r.bs.length > 1 ? r.bs.length + ' copies' : twice[fold(b.title)] ? where(b) : ''].filter(Boolean).join(' · ');
-        return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (by ? '<span class="rv-by">' + esc(by) + '</span>' : '') +
+        return '<li><div class="rv-main"><span class="rt">' + esc(curly(b.title)) + '</span>' + (by ? '<span class="rv-by">' + esc(by) + '</span>' : '') +
           (detailLine(e) ? '<span class="rv-det">' + detailHtml(e, e.pages && !b.pages ? [['pages', plural(e.pages, 'page')]] : []) + '</span>' : '') +
-          (e.blurb ? '<span class="rv-blurb">' + esc(e.blurb) + '</span>' : '') + '</div></li>';
+          (e.blurb ? '<span class="rv-blurb">' + esc(curly(e.blurb)) + '</span>' : '') + '</div></li>';
       }).join('') +
       rows.filter(function (r) { return !r.bs.length; }).map(function (r) {
         return '<li class="off"><div class="rv-main"><span class="rt">' + esc(r.e.title || r.e.id) + '</span><span class="rv-dup">Not in your library, so it’s left out.</span></div></li>';
@@ -3250,7 +3259,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function items() {
       return groups.filter(function (g) { return !markShelf || g.k === markShelf; }).map(function (g) {
         return '<section class="mr-shelf"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3><ul class="rv">' + g.bs.map(function (b) {
-          return '<li><label class="mr-row"><input type="checkbox" data-id="' + esc(b.id) + '"' + (ticked[b.id] ? ' checked' : '') + '><span class="rv-main"><span class="rt">' + esc(b.title) + '</span>' +
+          return '<li><label class="mr-row"><input type="checkbox" data-id="' + esc(b.id) + '"' + (ticked[b.id] ? ' checked' : '') + '><span class="rv-main"><span class="rt">' + esc(curly(b.title)) + '</span>' +
             (byLine(b) ? '<span class="rv-by">' + esc(byLine(b)) + '</span>' : '') + '</span></label></li>';
         }).join('') + '</ul></section>';
       }).join('');
@@ -3383,19 +3392,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       }
       var t = p[top], b = t.b, dl = detailHtml(b);
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
-        '<h3 class="nx-t" tabindex="-1">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</h3>' +
+        '<h3 class="nx-t" tabindex="-1">' + esc(curly(b.title)) + (b.sub ? '<span class="s">: ' + esc(curly(b.sub)) + '</span>' : '') + '</h3>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
-        (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
+        (b.blurb ? '<span class="nx-blurb">' + esc(curly(b.blurb)) + '</span>' : '') +
         (dl ? '<span class="nx-dl">' + dl + '</span>' : '') +
         (t.note ? '<span class="nx-note">' + esc(t.note) + '</span>' : '') +
-        (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
+        (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(curly(w)) + '</li>'; }).join('') + '</ul>' : '') +
         '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span>' +
         (b.status === 'read' ? '' : '<button class="btn sm quiet nx-done" type="button" id="nxRead">Already read it</button>') + '</div></div>' +
         (p.length > 1 ? '<div class="nx-alts"><h3 class="lbl">Or one of these</h3>' + p.map(function (x, i) {
           if (i === top) return '';
           var w = x.b.blurb || x.why[0];
-          return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
-            (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
+          return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(curly(x.b.title)) + '</span>' +
+            (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(curly(w)) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
         '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' +
         // With no book marked read yet (a library that came in unread), the pick could well be one already read.

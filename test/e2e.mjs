@@ -2662,6 +2662,27 @@ step('the big stand-in cover ends a long title with its … instead of showing m
   } finally { await ctx.close(); }
 });
 
+step('titles and lines about books show curly apostrophes, and are saved and searched as typed', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'p1', t: 1000, title: "The Pilgrim's Progress", authors: ['John Bunyan'], kind: 'fiction', blurb: "A dreamer's allegory of a long walk.", added: '2026-10-01' }]);
+    assert.deepEqual(await titles(page), ['The Pilgrim\u2019s Progress']);
+    await page.fill('#q', "pilgrim's progress");
+    await until(async () => (await titles(page)).length === 1 && await page.inputValue('#q') === "pilgrim's progress", 'the search');
+    await page.fill('#q', '');
+    await page.click('#list .bk[data-id="p1"]');
+    assert.equal(await page.inputValue('#f-title'), "The Pilgrim's Progress", 'the title field shows the title as typed');
+    assert.equal(await page.$eval('#bkcv .cv-t', e => e.textContent), 'The Pilgrim\u2019s Progress');
+    await page.click('#bkx2');
+    assert.equal((await storedBook(page, 'p1')).title, "The Pilgrim's Progress", 'the title was saved with a curly apostrophe');
+    await page.click('#nextBtn');
+    assert.deepEqual(await page.$eval('#nxOut', o => [o.querySelector('.nx-t').textContent, o.querySelector('.nx-blurb').textContent]), ['The Pilgrim\u2019s Progress', 'A dreamer\u2019s allegory of a long walk.']);
+    assert.equal((await storedBook(page, 'p1')).blurb, "A dreamer's allegory of a long walk.");
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {

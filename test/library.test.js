@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { curly, hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -368,6 +368,11 @@ eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life o
   ['Middlemarch', 'Piranesi', 'The Interesting Narrative of the Life of…', 'Dr. No', 'A: Life', 'Ab: the rest', 'Supercalifragilisticexpialidocious-Antid…', 'Gilead'],
   'a toast quotes a title up to its colon, cut at a word near 40 characters');
 eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
+// Titles and lines about books are shown with curly apostrophes, like Shelfmark's own words.
+eq(["The Pilgrim's Progress", "'Salem's Lot", "Rock 'n' Roll", "'The Raven' and Other Poems", "Songs of the '90s", "Dickens' London", "'Tis the Season", "O'Brien's 'Going After Cacciato'", "Jane Eyre", ''].map(S.curly),
+  ['The Pilgrim’s Progress', '’Salem’s Lot', 'Rock ’n’ Roll', '‘The Raven’ and Other Poems', 'Songs of the ’90s', 'Dickens’ London', '’Tis the Season', 'O’Brien’s ‘Going After Cacciato’', 'Jane Eyre', ''],
+  'straight apostrophes are shown curly, and a quote of a few words opens with ‘');
+eq(S.short("The Pilgrim's Progress: from This World"), 'The Pilgrim’s Progress', 'and so are they in a toast');
 eq(['Den › Tall bookcase', 'Study › Window bookcase, brass owl bookend shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
   ['Den › Tall bookcase', 'Study › Window bookcase, brass owl…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
 
