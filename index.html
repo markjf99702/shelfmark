@@ -332,7 +332,10 @@ details.more .fs{padding:2px 12px 12px}
 .rv li.off{background:var(--surface2)}
 .rv li.off .rv-main{opacity:.62}
 /* reading details from Claude */
+.rv.dt{margin-top:12px}
 .rv.dt li{padding:9px 12px}
+#dt-opt{margin-top:8px}
+.df.nw{white-space:nowrap}
 .rv-by{font-size:13.5px;color:var(--ink2)}
 .rv-det{font-size:13px;color:var(--ink);margin-top:2px}
 .rv-blurb{font:italic 14px/1.35 var(--serif);color:var(--ink2)}
@@ -2381,11 +2384,25 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
   }
 
-  // The reading details on a book, in a line: "Nonfiction · History · Informative, reflective · Slow · Short chapters".
-  function detailLine(b) {
+  // The reading details on a book, facet by facet, [[field, words]]: Nonfiction, History, Informative, reflective, Slow
+  // pace, Short chapters.
+  function detailParts(b) {
     var moods = labels(b.moods, MOODS).join(', ').toLowerCase();
-    return [label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), moods && moods.charAt(0).toUpperCase() + moods.slice(1),
-      b.pace ? label(b.pace, PACES) + ' pace' : '', b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', b.way && b.way !== 'through' ? label(b.way, WAYS) : ''].filter(Boolean).join(' · ');
+    return [['kind', label(b.kind, KINDS)], ['genres', labels(b.genres, GENRES).join(', ')], ['moods', moods && moods.charAt(0).toUpperCase() + moods.slice(1)],
+      ['pace', b.pace ? label(b.pace, PACES) + ' pace' : ''], ['chapters', b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : ''],
+      ['way', b.way && b.way !== 'through' ? label(b.way, WAYS) : '']].filter(function (p) { return p[1]; });
+  }
+  // In a line of text: "Nonfiction · History · Informative, reflective · Slow pace · Short chapters".
+  function detailLine(b) { return detailParts(b).map(function (p) { return p[1]; }).join(' · '); }
+  // In a sheet, each facet is a span, and the dot after it holds on to it, so a wrapped line never starts with a dot. A
+  // pace, a chapter length, a way of reading and a page count stay on one line, and so do a genre's words, so "Slow
+  // pace" never splits. more: facets after these, [[field, words]].
+  function detailHtml(b, more) {
+    var ps = detailParts(b).concat(more || []);
+    return ps.map(function (p, i) {
+      var tx = p[0] === 'genres' ? p[1].split(', ').map(function (g) { return esc(g).replace(/ /g, '&nbsp;'); }).join(', ') : esc(p[1]);
+      return '<span class="df' + (/^(pace|chapters|way|pages)$/.test(p[0]) ? ' nw' : '') + '">' + tx + '</span>' + (i < ps.length - 1 ? '&nbsp;· ' : '');
+    }).join('');
   }
   function detailsSheet(det) {
     var replace = false, rows, found, lost, had;
@@ -2410,7 +2427,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return found.map(function (r) {
         var b = r.bs[0], e = r.e, by = [byLine(b), r.bs.length > 1 ? r.bs.length + ' copies' : twice[fold(b.title)] ? where(b) : ''].filter(Boolean).join(' · ');
         return '<li><div class="rv-main"><span class="rt">' + esc(b.title) + '</span>' + (by ? '<span class="rv-by">' + esc(by) + '</span>' : '') +
-          (detailLine(e) ? '<span class="rv-det">' + esc(detailLine(e)) + (e.pages && !b.pages ? ' · ' + plural(e.pages, 'page') : '') + '</span>' : '') +
+          (detailLine(e) ? '<span class="rv-det">' + detailHtml(e, e.pages && !b.pages ? [['pages', plural(e.pages, 'page')]] : []) + '</span>' : '') +
           (e.blurb ? '<span class="rv-blurb">' + esc(e.blurb) + '</span>' : '') + '</div></li>';
       }).join('') +
       rows.filter(function (r) { return !r.bs.length; }).map(function (r) {
@@ -2560,12 +2577,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         return;
       }
-      var t = p[top], b = t.b, dl = detailLine(b);
+      var t = p[top], b = t.b, dl = detailHtml(b);
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
         '<h3 class="nx-t" tabindex="-1">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</h3>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
         (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
-        (dl ? '<span class="nx-dl">' + esc(dl) + '</span>' : '') +
+        (dl ? '<span class="nx-dl">' + dl + '</span>' : '') +
         (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
         '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span>' +
         (b.status === 'read' ? '' : '<button class="btn sm quiet nx-done" type="button" id="nxRead">Already read it</button>') + '</div></div>' +

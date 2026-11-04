@@ -3109,7 +3109,7 @@ step('a details link fills in reading details, and a book\'s card shows and chan
     await page.waitForSelector('#dtgo');
     assert.equal(await page.textContent('.lede'), '5 books · 1 not in your library');
     assert.equal(await page.textContent('#dtgo'), 'Add details to 4 books');
-    assert.match(await page.textContent('.rv.dt'), /Fiction · Fantasy · Mysterious, reflective · Medium pace · Short chapters · 272 pages/);
+    assert.match((await page.textContent('.rv.dt')).replace(/\u00a0/g, ' '), /Fiction · Fantasy · Mysterious, reflective · Medium pace · Short chapters · 272 pages/);
     assert.deepEqual(await page.$$eval('.rv.dt .rv-by', els => els.map(e => e.textContent)), ['Susanna Clarke', 'George Eliot · Den', 'Kurt Vonnegut, Jr.', 'George Eliot · Study › Desk'], 'two Middlemarch rows don\'t say which copy each is');
     await page.check('#dtRe');
     assert.equal(await page.textContent('#dtgo'), 'Add details to 4 books', 'replacing changes Cat’s Cradle’s mood too, still four books');
@@ -3138,6 +3138,40 @@ step('a details link fills in reading details, and a book\'s card shows and chan
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways on a phone');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
+});
+
+step('reading details wrap between facets on a narrow phone: a dot never starts a line, and Slow pace stays whole', async () => {
+  for (const width of [320, 360, 390]) {
+    const ctx = await context({ ...PHONE, viewport: { width, height: 740 } });
+    try {
+      const page = await open(ctx);
+      const many = { kind: 'nonfiction', genres: ['biography', 'history', 'society', 'nature'], moods: ['reflective', 'informative', 'challenging', 'hopeful'], pace: 'slow', chapters: 'medium', way: 'dip' };
+      await seed(page, [{ ...MIDDLEMARCH, ...many, pages: 300 }, { ...PIRANESI, id: 'b07' }]);
+      // Each facet's lines, and the line each dot is on: the dot sits on the last line of the facet before it.
+      const lines = sel => page.$$eval(sel + ' .df', els => els.map(el => {
+        const rs = [...el.getClientRects()], dot = el.nextSibling, r = document.createRange();
+        let dotTop = null; if (dot && dot.nodeType === 3) { r.setStart(dot, 1); r.setEnd(dot, 2); dotTop = Math.round(r.getBoundingClientRect().top); }
+        return { tx: el.textContent, nw: el.classList.contains('nw'), lines: new Set(rs.map(x => Math.round(x.top))).size, last: Math.round(rs[rs.length - 1].top), dotTop };
+      }));
+      await page.click('#nextBtn');
+      await page.click('#nxCrit [data-k="kind"][data-v="nonfiction"]');
+      await page.waitForSelector('.nx-pick .nx-dl');
+      const pick = await lines('.nx-pick');
+      await page.click('#nxx');
+      await page.goto(detailsLink([{ id: 'b07', title: 'Piranesi', authors: ['Susanna Clarke'], ...many, pages: 272 }]));
+      await page.waitForSelector('#dtgo');
+      const det = await lines('.rv.dt');
+      for (const [where, fs] of [['the pick', pick], ['the details sheet', det]]) {
+        assert.ok(fs.length >= 6, where + ' has ' + fs.length + ' facets');
+        for (const f of fs) {
+          if (f.nw) assert.equal(f.lines, 1, width + ', ' + where + ': “' + f.tx + '” splits over lines');
+          if (f.dotTop != null) assert.equal(f.dotTop, f.last, width + ', ' + where + ': the dot after “' + f.tx + '” starts a line');
+        }
+        assert.ok(fs.some(f => f.dotTop != null && f.lines === 1) && new Set(fs.map(f => f.last)).size > 1, width + ', ' + where + ': the details didn\'t wrap, so this checks nothing');
+      }
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
 });
 
 step('on a narrow phone the card\'s Reading details keep their words on one line, and say a book you browse isn\'t suggested', async () => {
