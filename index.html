@@ -90,6 +90,9 @@ button:disabled{cursor:default;opacity:.5}
 input,select,textarea{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;min-width:0;font-size:16px;width:100%}
 textarea{resize:vertical;min-height:84px;line-height:1.45}
 select{appearance:none;-webkit-appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+/* a date field as tall as a text field beside it (Chromium pads its inside 1px more; an empty one on an iPhone is shorter) */
+input[type=date]{min-height:calc(1.45em + 18px)}
+input[type=date]::-webkit-datetime-edit-fields-wrapper{padding:0}
 input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:0;flex:none}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0}
@@ -280,7 +283,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 details.more{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 details.more>summary{cursor:pointer;padding:10px 12px;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px}
 details.more>summary::-webkit-details-marker{display:none}
-details.more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+details.more>summary::before{content:"";flex:none;width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
 details.more[open]>summary::before{transform:rotate(45deg)}
 details.more .fs{padding:2px 12px 12px}
 .sum-l{flex:none;white-space:nowrap}
@@ -350,7 +353,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-more:first-child{border-top:0;padding-top:0}
 .nx-more>summary{cursor:pointer;font:600 14px var(--sans);color:var(--ink2);list-style:none;display:flex;align-items:center;gap:8px;padding:12px 0;margin:-12px 0}
 .nx-more>summary::-webkit-details-marker{display:none}
-.nx-more>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+.nx-more>summary::before{content:"";flex:none;width:7px;height:7px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
 .nx-more[open]>summary::before{transform:rotate(45deg)}
 .nx-morein{display:grid;gap:14px;padding-top:12px}
 .nx-blurb{font:italic 15px/1.4 var(--serif);color:var(--ink2);margin-top:4px}
@@ -440,13 +443,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   #sortSel{flex:1 1 100%}
 }
 /* Safari on an iPhone zooms the page in on a field with text under 16px, and leaves it zoomed, so there the list's menus
-   keep 16px, and on a phone the sort menu takes a row of its own when the tag menu is showing too */
-@supports (-webkit-touch-callout:none){
-  .selects select{font-size:16px}
-  @media (max-width:400px){
-    .selects:has(#tagSel:not([hidden])){flex-wrap:wrap}
-    .selects:has(#tagSel:not([hidden])) #sortSel{flex:1 1 100%}
-  }
+   keep 16px */
+@supports (-webkit-touch-callout:none){.selects select{font-size:16px}}
+/* on a phone the sort menu takes a row of its own when the tag menu is showing too, so a room and a tag chosen fit */
+@media (max-width:400px){
+  .selects:has(#tagSel:not([hidden])){flex-wrap:wrap}
+  .selects:has(#tagSel:not([hidden])) #sortSel{flex:1 1 100%}
+  /* a sheet's title stays on one line at 360 ("Reading details from Claude"), and wraps evenly narrower still */
+  .hd h2{font-size:19px;text-wrap:balance}
 }
 /* "Cover to cover · Dip in and out · Browse" fits a phone on one line each with a little less padding; narrower
    still, a button's words wrap */
@@ -1741,7 +1745,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
       '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
-      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate several with commas" autocomplete="off"></label></div></div>' +
+      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" autocomplete="off"></label></div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +

@@ -1316,7 +1316,7 @@ step('on a phone, a narrow one too, the menus and the search box show their word
     const ctx = await context(size);
     try {
       const page = await open(ctx);
-      await seed(page, [{ ...PIRANESI, tags: ['sf'] }, { ...MIDDLEMARCH, room: 'Living room', tags: ['classics'] }]);
+      await seed(page, [{ ...PIRANESI, tags: ['sf'] }, { ...MIDDLEMARCH, room: 'Living room', tags: ['classics', 'signed first'] }]);
       await page.selectOption('#sortSel', 'added');
       await page.evaluate(() => document.fonts.ready);
       // How much of each box's words fits inside it, as text drawn in its own font.
@@ -1330,7 +1330,40 @@ step('on a phone, a narrow one too, the menus and the search box show their word
       assert.deepEqual(await fits('#tagSel'), ['All tags', true], 'the tag menu is cut short at ' + size.viewport.width);
       assert.deepEqual(await fits('#sortSel'), ['Newest first', true], 'the sort menu is cut short at ' + size.viewport.width);
       assert.deepEqual(await fits('#q'), [placeholder, true], 'the search box\'s placeholder is cut short at ' + size.viewport.width);
+      // A room and a tag chosen, on any phone (not only an iPhone): the sort menu makes room for them.
+      await page.selectOption('#roomSel', 'Living room');
+      await page.selectOption('#tagSel', 'signed first');
+      assert.deepEqual(await fits('#roomSel'), ['Living room', true], 'the room chosen is cut short at ' + size.viewport.width);
+      assert.deepEqual(await fits('#tagSel'), ['signed first', true], 'the tag chosen is cut short at ' + size.viewport.width);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
+step('on a small phone a sheet\'s title stays on one line, a card keeps its arrows and its loan fields in line', async () => {
+  for (const width of [360, 320]) {
+    const ctx = await context({ ...PHONE, viewport: { width, height: 700 } });
+    try {
+      const page = await open(ctx);
+      await seed(page, [{ ...PIRANESI, kind: 'fiction', way: 'dip', genres: ['fantasy'], moods: ['mysterious'] }, MIDDLEMARCH]);
+      const oneLine = () => page.$eval('#sheetTitle', h => h.getBoundingClientRect().height <= parseFloat(getComputedStyle(h).lineHeight) * 1.5);
+      await page.goto(detailsLink([{ id: 'b04', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', moods: ['reflective'] }]));
+      await page.waitForSelector('#dtgo');
+      // (At 320 it wraps, evenly: "Reading details / from Claude".)
+      if (width > 320) assert.equal(await oneLine(), true, '“Reading details from Claude” wraps at ' + width);
+      await page.click('#dtx');
+      await page.goto(linkTo({ name: 'Hall', books: [{ title: 'Emma', authors: ['Jane Austen'] }] }));
+      await page.waitForSelector('#rv-add');
+      assert.equal(await oneLine(), true, '“Add books from Claude” wraps at ' + width);
+      await page.click('#rvx');
+      await page.click('#list .bk[data-id="b03"]');
+      assert.equal(await page.getAttribute('#f-authors', 'placeholder'), 'Separate with commas');
+      await page.click('details.more > summary >> nth=0');
+      const arrow = await page.$eval('details.more > summary', s => getComputedStyle(s, '::before').width);
+      assert.equal(arrow, '7px', 'the open Reading details arrow is squeezed to ' + arrow + ' at ' + width);
+      const [lent, since] = await page.evaluate(() => ['#f-lent', '#f-since'].map(q => document.querySelector(q).previousElementSibling.getBoundingClientRect().top));
+      if (width > 340) assert.ok(Math.abs(lent - since) <= 0.5, 'Since sits ' + (lent - since) + 'px above Lent to'); // narrower, one is under the other
       assert.deepEqual(page.problems, []);
     } finally { await ctx.close(); }
   }
