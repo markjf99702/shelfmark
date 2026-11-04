@@ -1091,21 +1091,49 @@ step('on a phone Import says Import beside the sync button\'s dot, and nothing s
       : mode === 'err' && r.request().method() !== 'OPTIONS' ? r.fulfill({ status: 500, headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"error":{"message":"Backend Error"}}' }) : r.fallback());
     try {
       const page = await open(ctx);
-      await seed(page, [PIRANESI, MIDDLEMARCH]);
+      // Enough books that the search box goes up under the top bar, and the search button shows there too.
+      await seed(page, [PIRANESI, MIDDLEMARCH, ...Array.from({ length: 20 }, (_, i) => ({ id: 'z' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'] }))]);
       for (const [state, drive] of Object.entries(STATES)) {
         mode = state;
         await page.evaluate(d => { if (d) localStorage.setItem('shelfmark.drive', JSON.stringify({ on: true, token: 'tok-mark', exp: Date.now() + 3e6, ...d })); else localStorage.removeItem('shelfmark.drive'); }, drive);
         await page.reload();
         if (drive) await until(() => page.evaluate(s => document.getElementById('syncBtn').dataset.s === s, state), 'the sync button to show ' + state, 10000);
-        const word = await page.locator('#importBtn .t').isVisible();
-        assert.equal(word, state === 'off' || width >= 360 && state === 'ok', 'Import\'s word at ' + width + ' with sync ' + state);
-        // The brand and the buttons stay in the bar, none over another, and nothing scrolls sideways.
-        const boxes = await page.$$eval('.top-in > :not([hidden])', els => els.filter(e => getComputedStyle(e).position !== 'fixed').map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
-        for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i][0] >= boxes[i - 1][1], 'the top bar\'s buttons overlap at ' + width + ' with sync ' + state + ': ' + JSON.stringify(boxes));
-        assert.ok(boxes[boxes.length - 1][1] <= width, 'the top bar runs off the screen at ' + width + ' with sync ' + state);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways at ' + width + ' with sync ' + state);
+        for (const down of [false, true]) {
+          // (scrolled again until it holds: a reload puts the page back where it was a moment later)
+          await until(() => page.evaluate(d => { scrollTo(0, d ? 900 : 0); return document.getElementById('findBtn').hidden === !d; }, down), 'the search button to ' + (down ? 'show' : 'go') + ' at ' + width + ' with sync ' + state, 5000);
+          const at = width + ' with sync ' + state + (down ? ' and the search button' : '');
+          const word = await page.locator('#importBtn .t').isVisible();
+          assert.equal(word, (state === 'off' || width >= 360 && state === 'ok') && (!down || width >= 375), 'Import\'s word at ' + at);
+          // The brand and the buttons stay in the bar, none over another, and nothing scrolls sideways.
+          const boxes = await page.$$eval('.top-in > :not([hidden])', els => els.filter(e => getComputedStyle(e).position !== 'fixed').map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
+          for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i][0] >= boxes[i - 1][1], 'the top bar\'s buttons overlap at ' + at + ': ' + JSON.stringify(boxes));
+          assert.ok(boxes[boxes.length - 1][1] <= width, 'the top bar runs off the screen at ' + at);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways at ' + at);
+        }
       }
       assert.deepEqual(page.problems.filter(p => !/500|Failed to load resource/.test(p)), []);
+    } finally { await ctx.close(); }
+  }
+});
+
+step('once the search box has gone up under the top bar, a search button there brings it back with the keyboard in it', async () => {
+  for (const opts of [PHONE, DESK]) {
+    const ctx = await context(opts);
+    try {
+      const page = await open(ctx);
+      await seed(page, Array.from({ length: 40 }, (_, i) => ({ id: 'q' + i, t: 1000, title: 'Book ' + String(i + 1).padStart(2, '0'), authors: ['Ann Lee'] })));
+      assert.equal(await page.isVisible('#findBtn'), false, 'the search button shows with the search box in sight');
+      await page.evaluate(() => scrollTo(0, 2000));
+      await until(() => page.isVisible('#findBtn'), 'the search button to show');
+      assert.equal(await page.getByRole('button', { name: 'Search', exact: true }).getAttribute('id'), 'findBtn', 'the search button has no name');
+      await page.click('#findBtn');
+      assert.equal(await page.evaluate(() => scrollY), 0, 'the page didn\'t go back to the top');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'q', 'the keyboard isn\'t in the search box');
+      await until(async () => !(await page.isVisible('#findBtn')), 'the search button to go at the top');
+      // A search typed then is a search like any other.
+      await page.keyboard.type('book 07');
+      await until(async () => (await titles(page)).join() === 'Book 07', 'the search to find the book');
+      assert.deepEqual(page.problems, []);
     } finally { await ctx.close(); }
   }
 });

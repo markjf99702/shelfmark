@@ -500,6 +500,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
    (sync off, or Synced) and there's room: its arrow alone looks like Download, and it's the way to Claude's links and files. */
 @media (min-width:360px) and (max-width:720px){body:not(.syncword) #importBtn .t{display:inline}}
 @media (max-width:359px){.top-in:has(#syncBtn[hidden]) #importBtn .t{display:inline}} /* narrower, only with sync off */
+/* The search button shows once the search box has gone up under the bar. With it, the bar keeps everything on one line:
+   below 375px Import is its arrow again; the logo stands in for the name where the sync button's word wouldn't fit beside
+   it (Sync failed below 400px, Offline below 375px, Sync below 360px); narrower still the buttons are a little slimmer;
+   and on a small laptop the search button is its magnifier. */
+@media (max-width:374px){.top-in:has(#findBtn:not([hidden])) #importBtn .t{display:none}}
+@media (max-width:399px){.top-in:has(#findBtn:not([hidden])):has(.sync[data-s="err"]:not([hidden])) .brand b{display:none}}
+@media (max-width:374px){.top-in:has(#findBtn:not([hidden])):has(.sync[data-s="offline"]:not([hidden])) .brand b{display:none}}
+@media (max-width:359px){.top-in:has(#findBtn:not([hidden])):has(.sync[data-s="tap"]:not([hidden])) .brand b{display:none}}
+@media (max-width:339px){.top-in:has(#findBtn:not([hidden])) .tbtn{padding-left:9px;padding-right:9px}}
+@media (min-width:721px) and (max-width:799px){#findBtn .t{display:none}}
 @media (max-width:359px){
   /* "Sync failed" doesn't fit beside the name: the logo stands for it until syncing works again */
   .top-in:has(.sync[data-s="err"]:not([hidden])) .brand b{display:none}
@@ -567,6 +577,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="21" rx="3" fill="#8C2F24"/><rect x="3" y="6" width="26" height="21" rx="3" fill="none" stroke="#5E1C14" stroke-width="1.5"/><rect x="10" y="12" width="12" height="7" rx="1.5" fill="#E7C57C" stroke="#8F6420" stroke-width="1"/><rect x="12" y="14.5" width="8" height="2" rx="1" fill="#FFF8EE"/><circle cx="16" cy="22.5" r="1.6" fill="#E7C57C"/></svg>
       <b>Shelfmark</b>
     </a>
+    <button class="tbtn" id="findBtn" type="button" aria-label="Search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><span class="t">Search</span></button>
     <button class="tbtn sync" id="syncBtn" type="button" hidden><i></i><span class="t" id="syncTx">Sync</span></button>
     <button class="tbtn" id="importBtn" type="button" aria-label="Import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="t">Import</span></button>
     <button class="tbtn" id="setBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="t">Settings</span></button>
@@ -1739,6 +1750,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (Math.abs(d) > 0.5) window.scrollBy(0, d);
     }
     drawnView = viewKey();
+    drawFind();
     if (was && (!document.activeElement || document.activeElement === document.body))
       refocus(was.id ? rowOf(was.id, was.now) : was.fin ? nowBtn(was.fin, 'fin') : was.aside ? nowBtn(was.aside, 'aside') : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
   }
@@ -3389,6 +3401,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   setInterval(function () { if (document.visibilityState === 'visible' && D.on && hasToken() && !syncing) sync(); else renderSync(); }, 60000);
   // Back online: what waited here goes to Drive now, not at the next minute's sync.
   window.addEventListener('online', function () { if (D.on && hasToken()) sync(); });
+
+  // Once the search box has gone up under the top bar, a search button in the bar brings it back: the page jumps to the
+  // top, with the keyboard in the box (a phone's comes up, as the tap is what puts it there).
+  function drawFind() {
+    var box = document.querySelector('.search'), off = !$('tools').hidden && box.getBoundingClientRect().bottom <= document.querySelector('.top').getBoundingClientRect().bottom;
+    if ($('findBtn').hidden === off) $('findBtn').hidden = !off;
+  }
+  var findT = 0;
+  window.addEventListener('scroll', function () { if (!findT) findT = requestAnimationFrame(function () { findT = 0; drawFind(); }); }, { passive: true });
+  window.addEventListener('resize', drawFind);
+  $('findBtn').addEventListener('click', function () { window.scrollTo(0, 0); try { $('q').focus({ preventScroll: true }); } catch (e) { $('q').focus(); } drawFind(); });
 
   // The top bar's height, under which the shelf headings stay (see .grp): it grows with an iPhone's notch, and with zoom.
   (function () {
