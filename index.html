@@ -1007,11 +1007,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return [n.fiction + ' fiction', n.nonfiction + ' nonfiction', n.poetry + ' poetry', n.browse + ' you browse', plural(n.pages, 'page count')].filter(function (x) { return !/^0 /.test(x); });
   }
   // The books in the house that a details file leaves without reading details: none of its entries finds them and they
-  // have none yet, in title order. So the review can say how many, and list them to ask Claude for the rest.
+  // have none yet, in title order as By title sorts the list ("The", "A" and "An" left off). So the review can say how
+  // many, and list them to ask Claude for the rest.
   function detailsLeft(books, rows) {
     var hit = Object.create(null);
     rows.forEach(function (r) { r.bs.forEach(function (b) { hit[b.id] = 1; }); });
-    return books.filter(function (b) { return !hit[b.id] && !hasDetails(b); }).sort(function (a, b) { return COLL.compare(a.title, b.title) || COLL.compare(byLine(a), byLine(b)); });
+    function t(b) { return fold(b.title).replace(/^(the|a|an)\s+/, ''); }
+    return books.filter(function (b) { return !hit[b.id] && !hasDetails(b); }).sort(function (a, b) { return COLL.compare(t(a), t(b)) || COLL.compare(byLine(a), byLine(b)); });
   }
   // Those books as a request to paste into Claude: a line saying what's wanted, then "Title: Subtitle by Author", a book a line.
   function leftText(books) {

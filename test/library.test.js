@@ -908,7 +908,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const left = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3);
       eq(left.map(b => b.id), ['e'], 'left without details: a book no entry finds and that has none, not one with details, a wishlist book, a removed one, or one an entry finds (even for a page count only)');
       const more = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3.slice(0, 1));
-      eq(more.map(b => b.title), ['Aesop’s Fables', 'emma', 'The Weekday Pantry', 'Walden', 'Walden'], 'in title order, whatever the capitals, every copy');
+      eq(more.map(b => b.title), ['Aesop’s Fables', 'emma', 'Walden', 'Walden', 'The Weekday Pantry'], 'in title order as By title sorts the list, whatever the capitals and without “The”, every copy');
       eq(S.leftText(more.slice(0, 2)), 'Please add reading details for Shelfmark to these 2 books in my library:\n\nAesop’s Fables\nemma: A Novel by Jane Austen\n', 'the list to copy for Claude: a line a book, with its subtitle and author');
       eq(S.leftText(left).split('\n')[0], 'Please add reading details for Shelfmark to this book in my library:', 'one book is this book');
     }
