@@ -1327,6 +1327,53 @@ step('typing in a card is kept when the page closes straight after', async () =>
   } finally { await ctx.close(); }
 });
 
+step('a phone keyboard\'s Search puts it away over the results, and Next goes through a card\'s fields to Done', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN, KARAMAZOV]);
+    const at = () => page.evaluate(() => document.activeElement.id || document.activeElement.tagName);
+    assert.equal(await page.getAttribute('#q', 'enterkeyhint'), 'search');
+    await page.fill('#q', 'walden');
+    await page.keyboard.press('Enter');
+    assert.notEqual(await at(), 'q', 'Enter left the keyboard up over the results');
+    assert.deepEqual(await titles(page), ['Walden']);
+    await page.fill('#q', '');
+    // A card's fields: Next goes on past dates, buttons and closed sections, and the last one puts the keyboard away.
+    await page.click('#list .bk[data-id="w1"]');
+    await page.focus('#f-authors');
+    const order = [];
+    for (let i = 0; i < 6 && /^f-/.test(await at()); i++) { await page.keyboard.press('Enter'); order.push(await at()); }
+    assert.deepEqual(order.join(), ['f-room', 'f-shelf', 'f-lent', 'f-tags', 'BODY'].join());
+    // While a word is being put together (a Chinese or Japanese keyboard, say), Enter finishes the word, not the field.
+    await page.focus('#f-authors');
+    await page.$eval('#f-authors', e => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })));
+    assert.equal(await at(), 'f-authors');
+    await page.click('#bkx');
+    await wait(450);
+    // Adding a book, Edition and details is open: Next goes through it to Edition, which is Done.
+    await page.click('#addBtn');
+    await page.focus('#f-tags');
+    order.length = 0;
+    for (let i = 0; i < 9 && /^f-/.test(await at()); i++) { await page.keyboard.press('Enter'); order.push(await at()); }
+    assert.deepEqual(order, ['f-sub', 'f-isbn', 'f-publisher', 'f-year', 'f-pages', 'f-edition', 'BODY']);
+    // Notes stay a box of lines.
+    await page.focus('#f-notes');
+    await page.keyboard.type('one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('two');
+    assert.equal(await page.inputValue('#f-notes'), 'one\ntwo');
+    const keys = await page.evaluate(() => Object.fromEntries(['f-authors', 'f-room', 'f-shelf', 'f-lent', 'f-tags', 'f-sub', 'f-publisher', 'f-year', 'f-pages', 'f-edition']
+      .map(id => { const e = document.getElementById(id); return [id, [e.getAttribute('enterkeyhint'), e.getAttribute('autocapitalize'), e.getAttribute('autocorrect')].join(' ').trim()]; })));
+    assert.deepEqual(keys, { 'f-authors': 'next words off', 'f-room': 'next', 'f-shelf': 'next', 'f-lent': 'next words off', 'f-tags': 'next none', 'f-sub': 'next', 'f-publisher': 'next  off', 'f-year': 'next', 'f-pages': 'next', 'f-edition': 'done' });
+    // A name on the review screen isn't "corrected" either.
+    await page.goto(linkTo({ name: 'Hall', books: [{ title: 'Cranford', authors: ['Elizabeth Gaskell'] }] }));
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await page.$eval('.rv [data-f="authors"]', e => [e.getAttribute('autocapitalize'), e.getAttribute('autocorrect')]), ['words', 'off']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card keeps notes to the 4,000 characters Shelfmark saves, says how many near that, and every field to its limit', async () => {
   const ctx = await context();
   try {

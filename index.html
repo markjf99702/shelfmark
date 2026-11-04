@@ -497,7 +497,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   <noscript><div class="empty"><h2>Shelfmark needs JavaScript to keep your catalog.</h2></div></noscript>
   <p class="flag store" id="storeNote" hidden><span></span></p>
   <div class="tools" id="tools" hidden>
-    <label class="search"><span class="sr">Search your library</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="q" type="search" placeholder="Search titles, authors, shelves, tags, borrowers…" autocomplete="off" spellcheck="false"></label>
+    <label class="search"><span class="sr">Search your library</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="q" type="search" enterkeyhint="search" placeholder="Search titles, authors, shelves, tags, borrowers…" autocomplete="off" spellcheck="false"></label>
     <div class="frow">
       <div class="chips" id="chips" role="group" aria-label="Show"></div>
       <div class="selects">
@@ -1801,18 +1801,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
       '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" maxlength="300" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
-      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" autocomplete="off"></label>' +
+      '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
       (isNew ? '<p class="note" id="f-dup" role="status"></p>' : '') + '</div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
       '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">★</button>'; }).join('') + '</div></div>' +
-      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" autocomplete="off"></label>' +
-      '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" autocomplete="off"></label></div>' +
-      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" autocomplete="off"></label>' +
+      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
+      '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="next" autocomplete="off"></label></div>' +
+      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
       '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
       '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back</button>' +
-      '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
+      '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="none" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
       '<div class="fl"><label class="fl"><span>Notes</span><textarea id="f-notes" rows="3" maxlength="4000" aria-describedby="f-notes-n">' + esc(b.notes) + '</textarea></label><span class="note" id="f-notes-n" hidden></span></div>' +
       '<details class="more"><summary><span class="sum-l">Reading details</span><span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
@@ -1823,13 +1823,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
       '</div></details>' +
       '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
-      '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" maxlength="300" autocomplete="off"></label>' +
-      '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="text" autocapitalize="characters" spellcheck="false" value="' + esc(b.isbn) + '" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
-      '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" maxlength="120" autocomplete="off"></label>' +
-      '<div class="two"><label class="fl"><span>Year</span><input id="f-year" inputmode="numeric" value="' + (b.year || '') + '" autocomplete="off"></label><label class="fl"><span>Pages</span><input id="f-pages" inputmode="numeric" value="' + (b.pages || '') + '" autocomplete="off"></label></div></div>' +
+      '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" maxlength="300" enterkeyhint="next" autocomplete="off"></label>' +
+      '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="text" autocapitalize="characters" spellcheck="false" value="' + esc(b.isbn) + '" enterkeyhint="next" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
+      '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" maxlength="120" enterkeyhint="next" autocorrect="off" autocomplete="off"></label>' +
+      '<div class="two"><label class="fl"><span>Year</span><input id="f-year" inputmode="numeric" value="' + (b.year || '') + '" enterkeyhint="next" autocomplete="off"></label><label class="fl"><span>Pages</span><input id="f-pages" inputmode="numeric" value="' + (b.pages || '') + '" enterkeyhint="next" autocomplete="off"></label></div></div>' +
       '<div class="two"><label class="fl"><span>Format</span><select id="f-format">' + opts(FORMATS, b.format || '', '—') + '</select></label>' +
       '<label class="fl"><span>Condition</span><select id="f-condition">' + opts(CONDITIONS, b.condition || '', '—') + '</select></label></div>' +
-      '<label class="fl"><span>Edition</span><input id="f-edition" value="' + esc(b.edition) + '" maxlength="120" placeholder="e.g. 2nd printing, book club edition" autocomplete="off"></label>' +
+      '<label class="fl"><span>Edition</span><input id="f-edition" value="' + esc(b.edition) + '" maxlength="120" placeholder="e.g. 2nd printing, book club edition" enterkeyhint="done" autocomplete="off"></label>' +
       '<div class="checks"><label><input type="checkbox" id="f-signed"' + (b.signed ? ' checked' : '') + '> Signed</label><label><input type="checkbox" id="f-first"' + (b.first ? ' checked' : '') + '> First edition</label></div>' +
       '<label class="fl"><span>Added to the library</span><input id="f-added" type="date" value="' + esc(b.added || '') + '"></label>' +
       '</div></details></div></div></div>' +
@@ -1901,6 +1901,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // The title box grows to show the whole title (growTitle). A title is one line: Enter finishes it (but not while a
     // keyboard for Chinese or Japanese, say, is still putting a word together), and a line break pasted in becomes a space.
     $('f-title').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this.blur(); } });
+    // In the other one-line fields, Enter (a phone keyboard's Next) goes on to the next field to type in, past buttons,
+    // menus, dates and closed sections; in the last one, Edition (Done), or with none after, it puts the keyboard away.
+    // Notes and About it take Enter as a new line.
+    panel.addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (e.key !== 'Enter' || e.isComposing || t.tagName !== 'INPUT' || !/^(text|search)$/.test(t.type)) return;
+      var all = [].filter.call(panel.querySelectorAll('input'), function (x) { return /^(text|search)$/.test(x.type) && !x.disabled && !x.closest('details:not([open])') && isShown(x); }), next = all[all.indexOf(t) + 1];
+      if (next && t.id !== 'f-edition') next.focus(); else t.blur();
+    });
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
       $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
@@ -2176,7 +2185,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var b = r.b, meta = [b.isbn, b.year, b.publisher, where(b)].filter(Boolean).join(' · ');
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
-          '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocomplete="off">' +
+          '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocapitalize="words" autocorrect="off" autocomplete="off">' +
           (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
           (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
           '<span class="rv-dup rv-have"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
@@ -2837,6 +2846,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   window.addEventListener('resize', function () { fades($('chips')); fades(document.querySelector('#nxCrit .nx-moods')); growTitle(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fades($('chips')); });
   var qT; $('q').addEventListener('input', function () { clearTimeout(qT); var v = this.value; qT = setTimeout(function () { UI.q = v; render(); }, 90); });
+  // Enter (a phone keyboard's Search) searches at once and puts the keyboard away, so the books found show.
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { clearTimeout(qT); if (UI.q !== this.value) { UI.q = this.value; render(); } this.blur(); } });
   // On a phone the search box is too narrow for the whole placeholder, which stopped at "tags, b".
   var narrow = window.matchMedia ? matchMedia('(max-width:720px)') : null;
   function placeholder() { $('q').placeholder = narrow && narrow.matches ? 'Search your books' : 'Search titles, authors, shelves, tags, borrowers…'; }
