@@ -208,6 +208,22 @@ step('the pictures the README shows are all here', async () => {
   for (const f of pictures) assert.equal((await fetch(base + f)).status, 200, f + ' is missing');
 });
 
+// Without the skill, photos sent to Claude don't come back as a Shelfmark link: the first step says where to get it.
+step('the empty shelves and Import say how to add the skill, from the README\'s section on it', async () => {
+  const readme = await readFile(join(root, 'README.md'), 'utf8');
+  assert.match(readme, /^## Adding books with Claude$/m, 'the README section the link goes to has another name now');
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const how = 'https://github.com/markjf99702/shelfmark#adding-books-with-claude';
+    assert.equal(await page.$eval('.empty .steps li:first-child a', a => [a.textContent, a.href].join(' ')), 'How to add the skill ' + how);
+    await page.click('#importBtn');
+    assert.equal(await page.$eval('#sheet .steps li:first-child a', a => [a.textContent, a.href].join(' ')), 'How to add the skill ' + how);
+    assert.deepEqual(await tapBoxes(page, '#sheet .steps a'), [], 'the link is too small to tap');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('GitHub Pages is told to serve the files as they are, SKILL.md included', async () => {
   assert.equal((await fetch(base + '.nojekyll')).status, 200, 'no .nojekyll, so Jekyll turns SKILL.md into SKILL.html');
 });

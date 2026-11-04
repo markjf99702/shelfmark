@@ -230,6 +230,8 @@ html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,c
 .empty p{color:var(--ink2);margin:0 0 14px}
 .steps{list-style:none;padding:0;margin:0 auto 20px;text-align:left;display:grid;gap:8px;max-width:440px;counter-reset:s}
 .steps li{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;counter-increment:s}
+.steps .how{display:block;width:max-content;margin-top:4px;font-size:14px;position:relative}
+.steps .how::after{content:"";position:absolute;inset:-12px -4px} /* a tap 44px tall on a phone */
 .steps li::before{content:counter(s);flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font:600 12px/22px var(--mono);text-align:center}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .empty .row{justify-content:center}
@@ -1840,6 +1842,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.classList.toggle('fade-l', el.scrollLeft > 1);
     el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
+  // The skill isn't on the page: a friend who comes from the drawer finds how to add it to Claude in the README.
+  var SKILL_HOW = '<a class="how" href="https://github.com/markjf99702/shelfmark#adding-books-with-claude">How to add the skill</a>';
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   // The list and the chips are drawn afresh, so the keyboard would lose its place when a chip is pressed, another tab
   // changes the library or a sync brings a change: it's put back on the same book or chip, if it's still there.
@@ -1952,7 +1956,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         return;
       }
       L.innerHTML = '<div class="empty">' + EMPTY_ART + '<h2>Your shelves are empty</h2><p>A catalog for the books in your house: where each one is, what you’ve read, and who borrowed what. It stays in this browser' + (D.on ? ' and your Google Drive' : '') + ', nowhere else.</p>' +
-        '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude with the Shelfmark skill.</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch).</span></li><li><span>Tap it, and check the list before anything is added.</span></li></ol>' +
+        '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude with the Shelfmark skill.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch).</span></li><li><span>Tap it, and check the list before anything is added.</span></li></ol>' +
         '<div class="row"><button class="btn primary" type="button" data-act="add">Add a book by hand</button><button class="btn" type="button" data-act="import">Open a link or file</button></div>' +
         // Google's sign-in script isn't loaded from here: it loads when Settings opens, as the privacy page says.
         (!D.on && clientId() ? '<p class="away">Use Shelfmark on another device? Connect Google Drive to bring your library here.</p><div class="row"><button class="btn sm" type="button" data-act="drive">Open Settings</button></div>' : '') + '</div>';
@@ -2903,7 +2907,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // paste: the paste box takes the keyboard as it opens, for a link that didn't come through whole.
   function importSheet(paste) {
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
-      '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
+      '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
       '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A file from Claude, or a Shelfmark backup (.json)</span></div>' +
       '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, or the JSON text" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
       '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>' +
