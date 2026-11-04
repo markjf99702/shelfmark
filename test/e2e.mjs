@@ -1063,8 +1063,39 @@ step('a backup opens on another device, and the library sheet says what merging 
     await other.click('#lbgo');
     assert.deepEqual((await titles(other)).sort(), ['Cat’s Cradle']);
     assert.equal(await other.textContent('#toastTx'), 'Merged: 1 book added, 1 removed');
+    assert.equal(await other.textContent('#toastTx'), 'Merged: 1 book added, 1 removed');
     assert.deepEqual([...page.problems, ...other.problems], []);
   } finally { await a.close(); await b.close(); }
+});
+
+step('It’s back says who the book is back from, and Undo puts the loan back, with the card open or closed', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const loan = { to: 'Priya', since: '2026-10-02' };
+    await seed(page, [{ ...PIRANESI, loan }, MIDDLEMARCH]);
+    const fields = () => Promise.all([page.inputValue('#f-lent'), page.inputValue('#f-since')]);
+    await page.click('#list .bk[data-id="b03"]');
+    assert.equal(await page.textContent('#f-back'), 'It’s back');
+    await page.click('#f-back');
+    assert.deepEqual(await fields(), ['', '']);
+    assert.equal(await page.textContent('#toastTx'), 'Back from Priya');
+    await page.click('#toastBtn');
+    assert.deepEqual(await fields(), ['Priya', '2026-10-02'], 'Undo in the card left the loan out');
+    assert.equal(await page.isVisible('#f-back'), true);
+    await page.click('#bkx2');
+    assert.deepEqual((await storedBook(page, 'b03')).loan, loan);
+    // Closed straight after, Undo puts the loan back on the saved book.
+    await wait(450);
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-back');
+    await page.click('#bkx2');
+    assert.equal((await storedBook(page, 'b03')).loan, undefined);
+    await page.click('#toastBtn');
+    assert.deepEqual((await storedBook(page, 'b03')).loan, loan, 'Undo after the card closed left the loan out');
+    assert.match(await page.textContent('#list .bk[data-id="b03"] .bdg.lent'), /Lent to Priya/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
 });
 
 step('a tag typed with an & in it stays one tag', async () => {

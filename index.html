@@ -1703,7 +1703,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" placeholder="Tall bookcase, top" autocomplete="off"></label></div>' +
       '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" placeholder="On the shelf" autocomplete="off"></label>' +
       '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
-      '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back — returned</button>' +
+      '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back</button>' +
       '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
       '<label class="fl"><span>Notes</span><textarea id="f-notes" rows="3">' + esc(b.notes) + '</textarea></label>' +
@@ -1840,7 +1840,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('f-genres').addEventListener('click', function (e) { var x = e.target.closest('button'); if (!x) return; st.genres = st.genres.filter(function (g) { return g !== x.dataset.g; }); drawState(); later(); });
     $('f-genre').addEventListener('change', function () { if (this.value && st.genres.length < 4) st.genres.push(this.value); drawState(); later(); });
-    $('f-back').addEventListener('click', function () { $('f-lent').value = ''; $('f-since').value = ''; drawState(); later(); if (!isNew) toast('Back on the shelf'); });
+    // It's back empties the loan, and Undo puts it back: into the card while it's open, or onto the book once it's closed.
+    $('f-back').addEventListener('click', function () {
+      var was = { to: v('f-lent').trim(), since: v('f-since') };
+      $('f-lent').value = ''; $('f-since').value = ''; drawState(); later();
+      if (isNew || !was.to) return;
+      toast('Back from ' + was.to, 'Undo', function () {
+        if (panel.isConnected) { $('f-lent').value = was.to; $('f-since').value = was.since; drawState(); later(); return $('f-lent'); }
+        var cur = DOC.books[b.id];
+        if (cur && !cur.del && !cur.loan) putBook(Object.assign({}, cur, { loan: was }));
+        return rowOf(b.id);
+      });
+    });
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
       var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
