@@ -3863,7 +3863,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 
   // ---------- wiring ----------
   $('addBtn').addEventListener('click', function () { openNew(''); });
-  $('importBtn').addEventListener('click', importSheet);
+  $('importBtn').addEventListener('click', function () { importSheet(); });
   $('nextBtn').addEventListener('click', nextSheet);
   $('sumBtn').addEventListener('click', summarySheet);
   function openSettings() { loadGis(); settingsSheet(); }

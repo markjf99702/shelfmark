@@ -219,6 +219,8 @@ step('the empty shelves and Import say how to add the skill, from the README\'s 
     assert.equal(await page.$eval('.empty .steps li:first-child a', a => [a.textContent, a.href].join(' ')), 'How to add the skill ' + how);
     await page.click('#importBtn');
     assert.equal(await page.$eval('#sheet .steps li:first-child a', a => [a.textContent, a.href].join(' ')), 'How to add the skill ' + how);
+    // It opens with its heading focused, so a phone's keyboard doesn't come up over it (only a link that didn't come through does that).
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'sheetTitle', 'Import opened with the keyboard in the paste box');
     assert.deepEqual(await tapBoxes(page, '#sheet .steps a'), [], 'the link is too small to tap');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
