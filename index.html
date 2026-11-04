@@ -295,6 +295,8 @@ html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,c
 .flag span{flex:1;min-width:12em}
 .flag.store{margin:16px 0 0}
 /* a book on the wishlist, in brass: it isn't a doubt to settle, as Check is */
+.flag.ask{border:1px solid var(--line2);background:var(--surface2);color:var(--ink);margin:8px 0 2px}
+.flag.ask span{flex-basis:100%}
 .flag.want{border-color:var(--brass);background:var(--brass-soft);color:var(--brass)}
 .ft .flag{flex-basis:100%;margin:0}
 /* on a phone, a footer note of more than a few words takes a row of its own, above the button */
@@ -2238,7 +2240,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '</div></details>' +
       '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
       '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" maxlength="300" enterkeyhint="next" autocomplete="off"></label>' +
-      '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="text" autocapitalize="characters" spellcheck="false" value="' + esc(b.isbn) + '" enterkeyhint="next" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
+      '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="text" autocapitalize="characters" spellcheck="false" value="' + esc(b.isbn) + '" enterkeyhint="next" autocomplete="off"><button class="btn sm" type="button" id="f-look">Look it up</button></span></label>' +
+      // With lookups off, Look it up asks first, here, rather than sending the person to Settings.
+      '<div class="flag ask" id="f-ask" role="group" aria-labelledby="f-asktx" hidden><span id="f-asktx">This sends the ISBN to openlibrary.org. Turn on lookups? Covers come from there too, found by each book’s ISBN, or its title and author. Settings turns them off.</span>' +
+      '<button class="btn sm" type="button" id="f-askyes">Turn on lookups</button><button class="btn sm quiet" type="button" id="f-askno">Not now</button></div>' +
       '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" maxlength="120" enterkeyhint="next" autocorrect="off" autocomplete="off"></label>' +
       '<div class="two"><label class="fl"><span>Year</span><input id="f-year" inputmode="numeric" value="' + (b.year || '') + '" enterkeyhint="next" autocomplete="off"></label><label class="fl"><span>Pages</span><input id="f-pages" inputmode="numeric" value="' + (b.pages || '') + '" enterkeyhint="next" autocomplete="off"></label></div></div>' +
       '<div class="two"><label class="fl"><span>Format</span><select id="f-format">' + opts(FORMATS, b.format || '', '—') + '</select></label>' +
@@ -2457,10 +2462,22 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       box.hidden = !any;
     }
     // Look it up fills in the fields that are blank, and says which. An answer that comes once its card has closed goes
-    // nowhere: by then the fields could be another book's, in the next card opened.
-    if ($('f-look')) $('f-look').addEventListener('click', function () {
-      var btn = this, i = isbn13(v('f-isbn'));
+    // nowhere: by then the fields could be another book's, in the next card opened. With lookups off it asks first, and
+    // turned on here they're on as Settings turns them on, covers and all.
+    $('f-look').addEventListener('click', function (e) {
+      var i = isbn13(v('f-isbn'));
       if (!i) { toast('That ISBN doesn’t check out. It’s 10 or 13 digits, usually above the barcode.'); return; }
+      if (!PREF.lookups) { $('f-ask').hidden = false; if (!e.detail) $('f-askyes').focus(); return; }
+      look(i);
+    });
+    $('f-askyes').addEventListener('click', function (e) {
+      PREF.lookups = true; savePrefs(); $('f-ask').hidden = true; render();
+      if (!e.detail) refocus($('f-look'));
+      var i = isbn13(v('f-isbn')); if (i) look(i);
+    });
+    $('f-askno').addEventListener('click', function (e) { $('f-ask').hidden = true; if (!e.detail) refocus($('f-look')); });
+    function look(i) {
+      var btn = $('f-look');
       btn.disabled = true; btn.textContent = 'Looking…';
       lookup(i).then(function (r) {
         if (!panel.isConnected) return;
@@ -2471,7 +2488,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         $('f-isbn').value = i; head(); growTitle(); later(); drawDup();
         toast(did.length ? 'Filled in the ' + did.slice(0, -1).join(', ') + (did.length > 1 ? ' and ' : '') + did[did.length - 1] : 'Open Library had nothing to add');
       }).catch(function () { if (panel.isConnected) toast('Couldn’t reach Open Library. Try again in a moment.'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
-    });
+    }
     function cancel() { if (isNew) { done = true; draft = null; } closeSheet(); }
     $('bkx').addEventListener('click', cancel); $('bkx2').addEventListener('click', cancel);
     if (clear) $('f-clear').addEventListener('click', function () { done = true; clear(); });
@@ -2508,7 +2525,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     else { opened = JSON.stringify(typed()); if (clear) drawDup(); }
   }
 
-  // Open Library, only when the person has turned lookups on in Settings. It's sent the ISBN and nothing else (not the
+  // Open Library, only when the person has turned lookups on (in Settings, or when Look it up asks). It's sent the ISBN and nothing else (not the
   // page's address), and a request that hasn't answered in 20 seconds is given up, as a cover's is.
   function lookup(i) {
     var ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000), opt = { referrerPolicy: 'no-referrer' };

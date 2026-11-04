@@ -1383,7 +1383,7 @@ step('the privacy page links lead somewhere else', async () => {
   } finally { await ctx.close(); }
 });
 
-// Look it up, by a book's ISBN, with Open Library faked (lookups are on only when turned on in Settings).
+// Look it up, by a book's ISBN, with Open Library faked (lookups are on only when turned on in Settings or by Look it up).
 const KARAMAZOV = { id: 'k1', t: 1000, title: 'The Brothers Karamazov', authors: ['Fyodor Dostoevsky'], isbn: '9780140449242', added: '2026-10-01', room: 'Study' };
 const WALDEN = { id: 'w1', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], added: '2026-10-01', room: 'Study' };
 const KARAMAZOV_OL = { title: 'The Brothers Karamazov: A Novel in Four Parts and an Epilogue, Translated with an Introduction and Notes', publishers: [{ name: 'Penguin Classics' }], publish_date: '2003', number_of_pages: 796, authors: [{ name: 'Fyodor Dostoevsky' }] };
@@ -1433,6 +1433,44 @@ step('Look it up stays with its own card, fills in only what\'s blank and says w
     // What goes to Open Library doesn't say where it came from.
     assert.ok(ol.referers.length >= 3, 'Open Library was asked ' + ol.referers.length + ' times');
     assert.deepEqual(ol.referers.filter(Boolean), [], 'a request to Open Library carried the page\'s address');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+// A new person hasn't turned lookups on in Settings: Look it up is there anyway, and asks before anything is sent.
+step('Look it up with lookups off asks first: Not now sends nothing, and Turn on lookups turns them on and looks the book up', async () => {
+  const ctx = await context();
+  const ol = await fakeOpenLibrary(ctx);
+  ol.isbns['9780140449242'] = KARAMAZOV_OL;
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    await page.click('#addBtn');
+    await page.fill('#f-isbn', '12345');
+    await page.click('#f-look');
+    assert.equal(await page.textContent('#toastTx'), 'That ISBN doesn’t check out. It’s 10 or 13 digits, usually above the barcode.');
+    assert.equal(await page.isVisible('#f-ask'), false, 'it asked to send an ISBN that doesn\'t check out');
+    await page.fill('#f-isbn', '0140449248');
+    await page.click('#f-look');
+    assert.equal(await page.textContent('#f-asktx'), 'This sends the ISBN to openlibrary.org. Turn on lookups? Covers come from there too, found by each book’s ISBN, or its title and author. Settings turns them off.');
+    await page.click('#f-askno');
+    assert.equal(await page.isVisible('#f-ask'), false);
+    await wait(300);
+    assert.equal(ol.lookups + ol.searches, 0, 'Open Library was asked before lookups were on');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.prefs') || '{}').lookups || false), false);
+    // From the keyboard, the question takes the keyboard; Turn on lookups looks the book up and keeps it on.
+    await page.focus('#f-look');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'f-askyes');
+    await page.keyboard.press('Enter');
+    await until(() => page.$eval('#f-title', e => e.value !== ''), 'the title to be filled in', 5000);
+    assert.equal(await page.inputValue('#f-title'), KARAMAZOV_OL.title);
+    assert.equal(ol.lookups, 1);
+    assert.equal(await page.isVisible('#f-ask'), false);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.prefs')).lookups), true, 'lookups were not kept on');
+    await page.click('#bkx2');
+    await page.click('#setBtn');
+    assert.equal(await page.isChecked('#stLook'), true, 'Settings says lookups are off');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
