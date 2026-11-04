@@ -163,11 +163,17 @@ a{color:var(--accent)}
 .shelf-bks{display:grid;grid-template-columns:var(--cols);gap:10px}
 .grp{position:sticky;top:var(--toph,calc(env(safe-area-inset-top,0px) + 55px));z-index:1;background:var(--ground);margin:0;padding:8px 2px 10px;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);overflow:hidden;overflow-wrap:anywhere}
 /* the keyboard's book is scrolled clear of the heading too, one of two lines included */
-html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-inset-top,0px) + 55px)) + 60px)}
+html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,calc(env(safe-area-inset-top,0px) + 55px)) + 60px)}
 /* The rule runs on from the count to the edge, on the heading's last line when a long one wraps (the count goes with the
    shelf's last word). It takes no room on the line, so it never wraps onto a line of its own; the heading clips the rest. */
 .grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
 .grp .n{font:500 11.5px var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink3);margin-left:.2em}
+/* Reading now, first in the list with no search or filter on: its books, each with Finished and Set aside under it, then
+   All books. Their headings scroll away with the list (a shelf's heading stays: there are many). */
+.shelf.now .grp,.shelf.rest .grp{position:static}
+.nowbk{display:flex;flex-direction:column;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.nowbk>.bk{border:0;box-shadow:none;background:none}
+.now-acts{display:flex;flex-wrap:wrap;gap:8px;padding:0 12px 12px 68px;margin-top:-4px}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
 @media (hover:hover){.bk:hover{border-color:var(--line2)}}
 /* a book just added by hand, tinted a moment where the list was scrolled to show it */
@@ -455,7 +461,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 #toastTx{flex:1 1 auto;min-width:0}
 .toast.stack{flex-wrap:wrap}
 .toast.stack #toastTx{flex-basis:100%}
-.toast.stack button{margin-left:auto}
+.toast.stack #toastBtn{margin-left:auto}
+/* a second button (Rate it) beside Undo: their tap boxes meet without overlapping, their words 20px apart */
+#toastBtn2{margin-left:-4px}
 
 @media (max-width:720px){
   html{scroll-padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
@@ -530,6 +538,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .tbtn::after{content:"";position:absolute;inset:-6px 0}
   .nextbtn{position:relative}
   .nextbtn::after{content:"";position:absolute;inset:-8px 0}
+  .now-acts .btn{position:relative}
+  .now-acts .btn::after{content:"";position:absolute;inset:-8px 0}
 }
 @media (pointer:coarse){.nx-moods{row-gap:16px}#f-genres:not([hidden]){margin-bottom:2px}}
 @media (pointer:coarse) and (max-width:640px){.nx-moods{padding-top:10px;padding-bottom:10px;margin:-8px -16px}}
@@ -570,7 +580,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   <footer class="foot"><a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://shelfmark.junkdrawer.works/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a></footer>
 </main>
 <div id="sheet" hidden></div>
-<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastBtn" hidden></button><button type="button" id="toastBtn2" hidden></button></div>
 <input type="file" id="fileIn" accept=".json,application/json,.csv,text/csv" hidden>
 
 <script>(function () {
@@ -1470,13 +1480,39 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // one's place in the list (the next, or else the one before), or the search box.
   function removeBook(id, kb) {
     var old = DOC.books[id]; if (!old || old.del) return;
-    var ids = [].map.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id; }), i = ids.indexOf(id), near = i < 0 ? null : ids[i + 1] || ids[i - 1];
+    var ids = [].map.call(document.querySelectorAll('#list .bk:not([data-now])'), function (r) { return r.dataset.id; }), i = ids.indexOf(id), near = i < 0 ? null : ids[i + 1] || ids[i - 1];
     DOC.books[id] = stamp({ id: id, del: 1 }, old); persist(); render();
     function next() { return rowOf(near) || ($('tools').hidden ? $('list').querySelector('button') : $('q')); }
     if (!kb) refocus(rowOf(near));
     toast('Removed “' + short(old.title) + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); return rowOf(id); }, kb, next);
   }
-  function rowOf(id) { return id ? [].filter.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id === id; })[0] : null; }
+  // A book's row; a book being read has one in Reading now as well (now), and the one asked for comes first.
+  function rowOf(id, now) {
+    var rs = id ? [].filter.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id === id; }) : [];
+    return rs.filter(function (r) { return !r.dataset.now === !now; })[0] || rs[0] || null;
+  }
+  // Reading now's Finished (k 'fin') or Set aside ('aside') for a book.
+  function nowBtn(id, k) { return id ? [].filter.call(document.querySelectorAll('#list [data-' + k + ']'), function (x) { return x.dataset[k] === id; })[0] || null : null; }
+  // Reading now's Finished: the book is Read, finished today, and the toast offers Undo (back to Reading) and Rate it (its
+  // card, at the stars). Set aside gives it up, with Undo. From the keyboard, the keyboard goes to Undo, and when the toast
+  // goes, to the next book in Reading now (the one before, after the last), or else to the book's row in the list.
+  function nowDone(id, kb, aside) {
+    var old = DOC.books[id]; if (!old || old.del) return;
+    var ids = [].map.call(document.querySelectorAll('#list [data-fin]'), function (x) { return x.dataset.fin; }), i = ids.indexOf(id), near = i < 0 ? null : ids[i + 1] || ids[i - 1];
+    putBook(Object.assign({}, old, aside ? { aside: true } : { status: 'read', finished: today() }));
+    function back() { return nowBtn(near, aside ? 'aside' : 'fin') || rowOf(id) || $('q'); }
+    function undo() { var cur = DOC.books[id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: old.status, finished: old.finished, aside: old.aside })); return nowBtn(id, aside ? 'aside' : 'fin'); }
+    if (aside) toast('Set aside “' + short(old.title) + '”', 'Undo', undo, kb, back);
+    else toast('Marked “' + short(old.title) + '” as read', 'Undo', undo, kb, back, 'Rate it', function () { return rateIt(id); });
+  }
+  // Rate it: the book's card, with the keyboard on its stars (on the stars given, or the first).
+  function rateIt(id) {
+    var b = DOC.books[id]; if (!b || b.del) return null;
+    bookSheet(Object.assign({}, b), false);
+    var s = $('f-rating').querySelector('[aria-pressed="true"]') || $('f-rating').querySelector('button');
+    try { s.focus(); } catch (e) { }
+    return s;
+  }
   // Undo for books just added: each is taken out the way Remove takes one out ({id, t, del: 1}), so a sync takes it out
   // of Drive and the other devices too, if it got there meanwhile. seen: the batch whose adding is undone, which is
   // forgotten too, so opening its link again doesn't say it was added.
@@ -1578,12 +1614,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t' + (size !== 'lg' && tx.length > 2 ? ' wide' : '') + '">' + esc(tx) + '</span>' + img + '</span>';
   }
   function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
-  // noPlace: the row is under its shelf's heading (sorted by shelf), so it leaves out the room and shelf.
-  function row(b, noPlace) {
+  // noPlace: the row is under its shelf's heading (sorted by shelf), so it leaves out the room and shelf. now: it's in
+  // Reading now, which says it's being read, so it has no Reading badge (and data-now, to tell it from its row below).
+  function row(b, noPlace, now) {
     var m = [];
     if (where(b) && !noPlace) m.push('<span class="loc">' + esc(where(b)) + '</span>');
     if (b.aside) m.push('<span class="bdg aside">Set aside</span>');
-    else if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
+    else if (b.status === 'reading' && !now) m.push('<span class="bdg reading">Reading</span>');
     else if (b.status === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
     if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
     // In the To check view, what to check takes the badge's place, so most can be settled at the shelf.
@@ -1591,11 +1628,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (b.check && !why) m.push('<span class="bdg check">To check</span>');
     if (b.rating) m.push(stars(b.rating));
     var by = byLine(b) + (b.year ? (byLine(b) ? ' · ' : '') + b.year : '');
-    return '<button class="bk" type="button" data-id="' + esc(b.id) + '">' + cover(b) + '<span class="bk-tx">' +
+    return '<button class="bk" type="button" data-id="' + esc(b.id) + '"' + (now ? ' data-now="1"' : '') + '>' + cover(b) + '<span class="bk-tx">' +
       '<span class="bk-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
       (by ? '<span class="bk-a">' + esc(by) + '</span>' : '') +
       (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + (why ? '<span class="bk-ck">Check: ' + esc(b.check) + '</span>' : '') + '</span></button>';
   }
+  // A book in Reading now: its row, with Finished and Set aside under it (each named with the book, for a screen reader).
+  function nowRow(b) {
+    var t = esc(b.title);
+    return '<div class="nowbk">' + row(b, false, true) + '<div class="now-acts"><button class="btn sm" type="button" data-fin="' + esc(b.id) + '" aria-label="Finished “' + t + '”">Finished</button>' +
+      '<button class="btn sm quiet" type="button" data-aside="' + esc(b.id) + '" aria-label="Set aside “' + t + '”">Set aside</button></div></div>';
+  }
+  // "Porch › 1  14 books": a heading's count, in words and in plain type, can't be read as part of its name.
+  function headCount(n) { return '<span class="n"><span class="sr">,</span>&nbsp;' + plural(n, 'book').replace(' ', '&nbsp;') + '</span>'; }
   // What keeps a book out of the list: 'status' (the chip chosen), 'room', 'tag' or 'q' (the search), or '' for nothing.
   // q is the search's words, rk the room chosen's key.
   function hiddenBy(b, q, rk) {
@@ -1626,29 +1671,33 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // filter or sort is a new list, and stays where it's scrolled, as it always has.
   var drawnView = null, chipDrawn = '';
   function viewKey() { return [UI.q, UI.status, UI.room, UI.tag, UI.sort || PREF.sort].join('\u0001'); }
+  // A book being read has two rows, in Reading now and in its place below: each is told apart by this.
+  function rowKey(r) { return (r.dataset.now ? '+' : '') + r.dataset.id; }
   function spot() {
     var bar = document.querySelector('.top').getBoundingClientRect().bottom, rows = document.querySelectorAll('#list .bk'), seen = [], tall = Object.create(null), edge = 0;
     if (rows.length) { var cs = getComputedStyle(rows[0]); edge = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth); }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i].getBoundingClientRect();
-      tall[rows[i].dataset.id] = r.height - edge;
-      if (r.bottom > bar && r.top < innerHeight) seen.push({ id: rows[i].dataset.id, top: r.top });
+      tall[rowKey(rows[i])] = r.height - edge;
+      if (r.bottom > bar && r.top < innerHeight) seen.push({ id: rowKey(rows[i]), top: r.top });
     }
     return { seen: seen, tall: tall };
   }
   function render() {
-    var a = document.activeElement, was = a && a.dataset && ($('list').contains(a) && a.classList.contains('bk') ? { id: a.dataset.id } : $('chips').contains(a) ? { s: a.dataset.s } : null);
+    var a = document.activeElement, was = a && a.dataset && ($('list').contains(a) ? (a.classList.contains('bk') ? { id: a.dataset.id, now: !!a.dataset.now } : a.dataset.fin ? { fin: a.dataset.fin } : a.dataset.aside ? { aside: a.dataset.aside } : null) :
+      $('chips').contains(a) ? { s: a.dataset.s } : null);
     var view = viewKey(), at = window.scrollY > 0 && drawnView === view ? spot() : null;
     drawList();
     if (at && viewKey() === view) {
       var now = Object.create(null);
-      document.querySelectorAll('#list .bk').forEach(function (r) { var h = at.tall[r.dataset.id]; now[r.dataset.id] = r; if (h > 0) r.style.containIntrinsicSize = 'auto ' + h + 'px'; });
+      document.querySelectorAll('#list .bk').forEach(function (r) { var h = at.tall[rowKey(r)]; now[rowKey(r)] = r; if (h > 0) r.style.containIntrinsicSize = 'auto ' + h + 'px'; });
       var still = at.seen.filter(function (s) { return now[s.id]; })[0];
       var d = still ? now[still.id].getBoundingClientRect().top - still.top : 0;
       if (Math.abs(d) > 0.5) window.scrollBy(0, d);
     }
     drawnView = viewKey();
-    if (was && (!document.activeElement || document.activeElement === document.body)) refocus(was.id ? rowOf(was.id) : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
+    if (was && (!document.activeElement || document.activeElement === document.body))
+      refocus(was.id ? rowOf(was.id, was.now) : was.fin ? nowBtn(was.fin, 'fin') : was.aside ? nowBtn(was.aside, 'aside') : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
   }
   function drawList() {
     showStore();
@@ -1730,7 +1779,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           (words.length ? '<button class="btn primary" type="button" data-act="addq">Add “' + esc(clip(UI.q.trim())) + '”</button>' : '') + '<button class="btn" type="button" data-act="clear">Show everything</button></div>') + '</div>';
       return;
     }
-    var html = '';
+    // Reading now: with no search or filter on, the books being read come first, each with Finished and Set aside. They're
+    // in the list below as well, in their place, which then has a heading of its own (or its shelves' headings).
+    var html = '', reading = !UI.q.trim() && !UI.status && !UI.room && !UI.tag ? vis.filter(function (b) { return statusOf(b) === 'reading'; }) : [];
+    if (reading.length) html = '<section class="shelf now"><h3 class="grp">Reading now' + headCount(reading.length) + '</h3><div class="shelf-bks">' + reading.map(nowRow).join('') + '</div></section>';
     if (sort === 'shelf') {
       var groups = [], g = null;
       // A shelf is one heading however its books spell it (they sort together), spelled as most of the library's books do.
@@ -1739,12 +1791,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b);
       });
-      // "Porch › 1  14 books": the count, in words and in plain type, can't be read as part of a shelf's name.
       groups.forEach(function (g) {
-        html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + plural(g.bs.length, 'book').replace(' ', '&nbsp;') + '</span></h3>' +
+        html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3>' +
           '<div class="shelf-bks">' + g.bs.map(function (b) { return row(b, true); }).join('') + '</div></section>';
       });
-    } else html = vis.map(function (b) { return row(b); }).join('');
+    } else {
+      var rows = vis.map(function (b) { return row(b); }).join('');
+      html += reading.length ? '<section class="shelf rest"><h3 class="grp">All books</h3><div class="shelf-bks">' + rows + '</div></section>' : rows;
+    }
     L.innerHTML = html;
   }
 
@@ -1810,7 +1864,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (listStale) { listStale = false; render(); }
     // Back to where the sheet was opened from. A book's row may have been drawn again meanwhile: find it by its id.
     var to = sheetFrom, id = to && to.dataset && to.dataset.id;
-    if (id && !document.contains(to)) to = [].filter.call(document.querySelectorAll('#list .bk'), function (x) { return x.dataset.id === id; })[0];
+    if (id && !document.contains(to)) to = rowOf(id, to.dataset.now);
     if (to && document.contains(to)) try { to.focus({ preventScroll: true }); } catch (e) { }
   }
   // Part of an open sheet drawn again, unless it would come out the same. Focus stays on the button it was on, or on
@@ -1825,16 +1879,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // keyboard is on it. Its button (Undo) goes with it: hidden, out of the keyboard's reach and doing nothing, and its
   // words go a moment after it has faded. kb: what it's about was done from the keyboard, so the keyboard goes to the
   // button; back() says where the keyboard goes when the toast goes with it there, and the button's fn() where it goes
-  // after the button is used.
+  // after the button is used. act2 and fn2 are a second button, after the first (Reading now's Rate it, after Undo).
   var toastT = 0, toastClr = 0, toastMs = 0, toastBack = null, toastHold = { focus: false, hover: false };
-  function toast(m, act, fn, kb, back) {
-    var t = $('toast'), b = $('toastBtn'), ft = !$('sheet').hidden && $('sheet').querySelector('.ft');
+  function toast(m, act, fn, kb, back, act2, fn2) {
+    var t = $('toast'), b = $('toastBtn'), b2 = $('toastBtn2'), ft = !$('sheet').hidden && $('sheet').querySelector('.ft');
     t.style.setProperty('--above', ft ? Math.max(0, Math.round($('sheet').getBoundingClientRect().bottom - ft.getBoundingClientRect().top)) + 'px' : '');
     clearTimeout(toastClr);
-    $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
-    t.classList.remove('stack'); if (act && b.offsetWidth > $('toastTx').offsetWidth) t.classList.add('stack');
+    $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || ''; act2 = act && act2; b2.hidden = !act2; b2.textContent = act2 || '';
+    t.classList.remove('stack'); if (act && b.offsetWidth + (act2 ? b2.offsetWidth : 0) > $('toastTx').offsetWidth) t.classList.add('stack');
     toastBack = back || null;
-    b.onclick = act ? function () { var had = t.contains(document.activeElement); toastBack = null; hideToast(); var to = fn(); if (had) refocus(to); } : null;
+    function use(f) { return function () { var had = t.contains(document.activeElement); toastBack = null; hideToast(); var to = f(); if (had) refocus(to); }; }
+    b.onclick = act ? use(fn) : null; b2.onclick = act2 ? use(fn2) : null;
     t.classList.add('show'); toastMs = act || m.length > 60 ? 6000 : 3000;
     if (act && kb) try { b.focus(); } catch (e) { }
     toastHold.focus = t.contains(document.activeElement);
@@ -1842,9 +1897,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function holdToast() { clearTimeout(toastT); if (!toastHold.focus && !toastHold.hover && $('toast').classList.contains('show')) toastT = setTimeout(hideToast, toastMs); }
   function hideToast() {
-    var t = $('toast'), b = $('toastBtn'), had = t.contains(document.activeElement), back = toastBack;
+    var t = $('toast'), b = $('toastBtn'), b2 = $('toastBtn2'), had = t.contains(document.activeElement), back = toastBack;
     clearTimeout(toastT); toastBack = null; toastHold.focus = toastHold.hover = false;
-    t.classList.remove('show'); b.hidden = true; b.onclick = null;
+    t.classList.remove('show'); b.hidden = b2.hidden = true; b.onclick = b2.onclick = null;
     clearTimeout(toastClr); toastClr = setTimeout(function () { $('toastTx').textContent = ''; }, 400);
     if (had) refocus(back && back());
   }
@@ -3076,6 +3131,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   $('setBtn').addEventListener('click', openSettings);
   $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err || offline) { D.err = ''; sync(); } else { settingsSheet(); } });
   $('list').addEventListener('click', function (e) {
+    var n = e.target.closest('[data-fin],[data-aside]'); if (n) { nowDone(n.dataset.fin || n.dataset.aside, !e.detail, !n.dataset.fin); return; }
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') $('addBtn').click();

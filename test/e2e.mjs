@@ -74,7 +74,8 @@ async function open(ctx, url = base) {
 }
 const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.library') || 'null'));
 const storedBook = async (page, id) => ((await stored(page)) || { library: { books: {} } }).library.books[id];
-const titles = page => page.$$eval('#list .bk .bk-t', els => els.map(e => e.firstChild.textContent));
+// The list's titles, in order (a book being read is in Reading now too, at the top: not counted here).
+const titles = page => page.$$eval('#list .bk:not([data-now]) .bk-t', els => els.map(e => e.firstChild.textContent));
 const sheetOpen = page => page.evaluate(() => !document.getElementById('sheet').hidden);
 async function seed(page, books) {
   await page.evaluate(lib => localStorage.setItem('shelfmark.library', lib), JSON.stringify({ shelfmark: 1, library: { books: Object.fromEntries(books.map(b => [b.id, b])), seen: {} } }));
@@ -2020,7 +2021,7 @@ step('on a phone the small controls answer a tap 44px tall, and none takes anoth
       const w = viewport.width + 'px: ';
       const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
       // The list: its chips, menus, What to read next and the top bar's buttons.
-      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])', '.now-acts .btn']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
       await page.click('#list .bk[data-id="b03"]');
       // The card: status, stars, tag picks; with its sections open, the reading details, genres, Signed and First edition.
       await page.evaluate(() => document.querySelectorAll('.panel details').forEach(d => d.open = true));
@@ -2487,6 +2488,53 @@ step('the count says how many were read this year, and the Read list is in the o
     await page.click('#chips [data-s=""]');
     assert.equal(await page.inputValue('#sortSel'), 'author', 'leaving Read didn\'t put the sort back');
     assert.equal((await titles(page))[0], 'Emma', 'the list isn\'t by author again');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Reading now comes first: Finished marks a book read today, with Undo and Rate it, and Set aside gives one up', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx), today = await todayIn(page);
+    await seed(page, [MIDDLEMARCH, { ...PIRANESI, status: 'reading' }, { ...CRADLE, status: 'reading', room: 'Den' }]);
+    const nowTitles = () => page.$$eval('#list .now .bk .bk-t', els => els.map(e => e.firstChild.textContent));
+    assert.match(await page.textContent('#list .now .grp'), /^Reading now,\s2\sbooks$/);
+    assert.deepEqual(await nowTitles(), ['Piranesi', 'Cat\u2019s Cradle']);
+    assert.deepEqual(await page.$$eval('#list .rest .bk .bk-t', els => els.map(e => e.firstChild.textContent)), ['Piranesi', 'Middlemarch', 'Cat\u2019s Cradle'], 'All books below has every book, the two being read too');
+    // A search or a filter shows only what it finds.
+    await page.fill('#q', 'eliot');
+    await until(async () => (await titles(page)).length === 1, 'the search');
+    assert.equal(await page.$('#list .now'), null, 'Reading now shows with a search on');
+    await page.fill('#q', '');
+    await until(async () => (await nowTitles()).length === 2, 'Reading now again');
+    // Finished: read today. The toast's Rate it opens the card at its stars.
+    await page.click('[data-fin="b03"]');
+    assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).finished], ['read', today]);
+    assert.equal(await page.textContent('#toastTx'), 'Marked \u201cPiranesi\u201d as read');
+    assert.deepEqual([await page.textContent('#toastBtn'), await page.textContent('#toastBtn2')], ['Undo', 'Rate it']);
+    assert.deepEqual(await nowTitles(), ['Cat\u2019s Cradle']);
+    await page.click('#toastBtn2');
+    assert.equal(await page.evaluate(() => !!document.activeElement.closest('#f-rating')), true, 'Rate it didn\'t put the keyboard on the stars');
+    await page.click('#f-rating button[data-v="4"]');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).rating, (await storedBook(page, 'b03')).finished], ['read', 4, today]);
+    // From the keyboard: Finished, then Undo, which puts it back and the keyboard on its Finished again.
+    await page.waitForTimeout(450);
+    await page.focus('[data-fin="b05"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'toastBtn', 'the keyboard isn\'t on Undo');
+    assert.equal(await page.$('#list .now'), null, 'Reading now stays with nothing being read');
+    await page.keyboard.press('Enter');
+    assert.deepEqual([(await storedBook(page, 'b05')).status, (await storedBook(page, 'b05')).finished], ['reading', undefined], 'Undo didn\'t put it back');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.fin), 'b05', 'Undo didn\'t put the keyboard back on Finished');
+    // Set aside gives it up, with Undo.
+    await page.click('[data-aside="b05"]');
+    assert.deepEqual([(await storedBook(page, 'b05')).status, (await storedBook(page, 'b05')).aside], ['reading', true]);
+    assert.equal(await page.textContent('#toastTx'), 'Set aside \u201cCat\u2019s Cradle\u201d');
+    assert.equal(await page.$('#list .now'), null);
+    await page.click('#toastBtn');
+    assert.deepEqual(await nowTitles(), ['Cat\u2019s Cradle'], 'Undo didn\'t bring it back to Reading now');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
