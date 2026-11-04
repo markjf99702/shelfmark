@@ -676,6 +676,31 @@ step('a room typed with other capitals is one room: one By shelf heading, one Ro
   } finally { await ctx.close(); }
 });
 
+step('by shelf, a row doesn\'t repeat the room and shelf over it, and the heading counts its books in words', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, room: 'Sunroom', shelf: '1', status: 'read', rating: 4 }, { ...MIDDLEMARCH, room: 'Sunroom', shelf: '1', check: 'glare' },
+      { ...CRADLE, room: 'Bedroom', loan: { to: 'Sam' } }]);
+    await page.selectOption('#sortSel', 'shelf');
+    assert.equal(await page.locator('#list .loc').count(), 0, 'rows under a shelf heading say its place again');
+    assert.equal(await page.locator('#list .bk[data-id="b03"] .bdg.read').count(), 1, 'the Read badge went with the place');
+    assert.equal(await page.locator('#list .bk[data-id="b04"] .bdg.check').count(), 1);
+    assert.match(await page.textContent('#list .bk[data-id="b05"] .bdg.lent'), /Lent to Sam/);
+    const counts = await page.$$eval('#list .grp .n', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    for (const c of counts) assert.match(c, /\d+ books?$/);
+    assert.deepEqual(counts.map(c => c.replace(/^, /, '')), ['1 book', '2 books']);
+    // The count reads as a count, not as part of the shelf's name ("Sunroom › 1 2"): not in capitals, and not in the name's type.
+    const [name, n] = await page.$eval('#list .grp >> nth=1', h => [getComputedStyle(h), getComputedStyle(h.querySelector('.n'))].map(c => [c.textTransform, c.fontFamily]));
+    assert.notDeepEqual(n, name, 'the count looks like the shelf\'s name');
+    assert.equal(n[0], 'none');
+    // Any other sort still says where each book is.
+    await page.selectOption('#sortSel', 'author');
+    assert.equal(await page.locator('#list .loc').count(), 3);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book to check says To check, and the To check view says what to check', async () => {
   for (const width of [390, 320]) {
     const ctx = await context({ ...PHONE, viewport: { width, height: 760 } });

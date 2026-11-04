@@ -144,7 +144,7 @@ a{color:var(--accent)}
 /* The rule runs on from the count to the edge, on the heading's last line when a long one wraps (the count goes with the
    shelf's last word). It takes no room on the line, so it never wraps onto a line of its own; the heading clips the rest. */
 .grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
-.grp .n{color:var(--ink3)}
+.grp .n{font:500 11.5px var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink3);margin-left:.2em}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
 .bk:hover{border-color:var(--line2)}
 /* rows out of sight aren't laid out until they come near, so a long list redraws quickly on a slow phone, and
@@ -1403,9 +1403,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t">' + tx + '</span>' + img + '</span>';
   }
   function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
-  function row(b) {
+  // noPlace: the row is under its shelf's heading (sorted by shelf), so it leaves out the room and shelf.
+  function row(b, noPlace) {
     var m = [];
-    if (where(b)) m.push('<span class="loc">' + esc(where(b)) + '</span>');
+    if (where(b) && !noPlace) m.push('<span class="loc">' + esc(where(b)) + '</span>');
     if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
     else if (b.status === 'read') m.push('<span class="bdg read">Read</span>');
     if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
@@ -1551,11 +1552,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b);
       });
-      // Read out as "Sunroom › 1, 14 books", not "Sunroom › 1 14".
+      // "Sunroom › 1  14 books": the count, in words and in plain type, can't be read as part of a shelf's name.
       groups.forEach(function (g) {
-        html += '<h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + g.bs.length + '<span class="sr">' + (g.bs.length === 1 ? ' book' : ' books') + '</span></span></h3>' + g.bs.map(row).join('');
+        html += '<h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + plural(g.bs.length, 'book').replace(' ', '&nbsp;') + '</span></h3>' + g.bs.map(function (b) { return row(b, true); }).join('');
       });
-    } else html = vis.map(row).join('');
+    } else html = vis.map(function (b) { return row(b); }).join('');
     L.innerHTML = html;
   }
 
