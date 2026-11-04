@@ -325,6 +325,7 @@ details.more .fs{padding:2px 12px 12px}
 .lede b{color:var(--ink);font-weight:600}
 .bulk{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 .bulk .two{margin-top:6px}
+.bulk .opt{margin:6px 0 -4px;padding:8px 0;font-size:14.5px}
 .rv{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
 .rv li{content-visibility:auto;contain-intrinsic-size:auto 100px}
@@ -2272,7 +2273,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
       '<div id="rv-head">' + head() + '</div>' +
       '<div class="bulk"><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
-      '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p></div>' +
+      '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p>' +
+      '<label class="opt"><input type="checkbox" id="rv-read"><span>I’ve read all of these</span></label></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var b = r.b, meta = [b.isbn, b.year, b.publisher, where(b)].filter(Boolean).join(' · ');
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
@@ -2318,12 +2320,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function (e) {
-      var now = Date.now(), on = today(), n = 0, ids = [], checks = 0, home = placeIndex(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id;
+      var now = Date.now(), on = today(), n = 0, ids = [], checks = 0, home = placeIndex(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
-        // goes where the library already spells its room and shelf, or where a book before it in the batch went.
-        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }), bulk, batch), home)); if (!b) return;
+        // goes where the library already spells its room and shelf, or where a book before it in the batch went. "I've
+        // read all of these" marks Read each book the batch doesn't say is being read or read.
+        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }, read && !r.b.status ? { status: 'read' } : null), bulk, batch), home)); if (!b) return;
         DOC.books[b.id] = b; n++; ids.push(b.id); if (b.check) checks++; countPlace(home, b);
       });
       if (!n) return;

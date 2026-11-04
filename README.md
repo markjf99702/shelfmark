@@ -25,7 +25,7 @@
 - **Find things.** Search matches every field you’d type for: borrowers, a book's Check note, its edition ("signed", "first edition", "hardcover") and its reading details ("slow pace", "short chapters") included. Each word you type finds the words it starts, so "tolk" finds Tolkien but "fiction" doesn't find nonfiction, and an apostrophe can be typed straight, curly or not at all; a number is found anywhere (part of an ISBN, a year), and so is a piece of a Chinese, Japanese or Korean title. Filters cover status, lent out, to check, room and tag. Sort by author, title, shelf (grouped under each room and shelf), or newest first.
 - **Add from photos.** Claude reads spines, covers, barcodes and copyright pages and makes a Shelfmark link. Opening it shows the list first. There you can:
   - fix titles and authors;
-  - put the whole batch on one shelf;
+  - put the whole batch on one shelf, and mark it all read (**I’ve read all of these**: a book the batch says you're reading stays Reading);
   - see books you already own, which are unticked (another edition, when the ISBNs differ), and another volume of a set you have, which stays ticked with a note;
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right. **Undo** on the toast after adding takes the whole batch back out, and closing the list without adding says to tap the link in Claude again when you're ready.

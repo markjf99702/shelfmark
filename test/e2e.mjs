@@ -417,6 +417,27 @@ step('changing only the room on the review screen keeps each book\'s own shelf',
   } finally { await ctx.close(); }
 });
 
+step('I’ve read all of these marks Read the books added that the batch doesn\'t say are being read', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await page.goto(linkTo({ name: 'Den', room: 'Den', books: [
+      { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'], status: 'reading' },
+      { title: 'Piranesi', authors: ['Susanna Clarke'] }, { title: 'Emma', authors: ['Jane Austen'], status: 'unread' }, { title: 'Walden', authors: ['Henry David Thoreau'] },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.isChecked('#rv-read'), false, 'it starts ticked');
+    await page.locator('#rv li').nth(4).locator('.rv-tick input').uncheck();
+    await page.check('#rv-read');
+    await page.click('#rv-add');
+    const got = Object.values((await stored(page)).library.books).filter(b => b.id !== PIRANESI.id).map(b => b.title + ': ' + (b.status || 'unread')).sort();
+    assert.deepEqual(got, ['Emma: read', 'Gilead: reading', 'Middlemarch: read'], 'the one already here, and the one unticked, aren\'t added');
+    assert.equal((await storedBook(page, PIRANESI.id)).status, undefined, 'the copy already here was marked Read');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the review screen ticks the next volume of a set, and says when a book here is another edition', async () => {
   const ctx = await context();
   try {
