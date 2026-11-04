@@ -19,15 +19,16 @@ Use this when you can't run `scripts/make_shelfmark.py` and need to write a batc
 | `name` | What the batch is, shown when it's opened. Up to 120 characters |
 | `room`, `shelf` | Where the books are. A book with no room of its own gets the batch's room. It gets the batch's shelf only when it has no shelf and no room of its own, or its room is the batch's |
 | `id` | Optional. Shelfmark remembers batch ids it has added, so it can say when a link is opened twice. The script makes one from the content |
+| `made` | Optional. The day the batch was made, as `YYYY-MM-DD`. The script fills it in |
 | `books[]` | The books, in shelf order. Up to 3,000: Shelfmark takes the first 3,000 and says how many more there were, so put the rest in another batch |
 
 Each book:
 
 | Field | Meaning |
 |---|---|
-| `title` | Required. Up to 300 characters |
-| `sub` | Subtitle, up to 300 characters |
-| `authors` | List of names as printed, up to 12, each up to 120 characters |
+| `title` | Required. Up to 300 characters. A volume's number or name goes here as printed, "Les Misérables, Volume 2: Cosette" or "The Pickwick Papers: Volume 2", so the volumes of a set are told apart |
+| `sub` | Subtitle, up to 300 characters. Shelfmark takes two books for one when their ISBNs agree, or when their first authors' surnames and their titles do: the part before any colon, every number in the title, and the part after the colon (or else the subtitle), unless one of them has none. So a book is the same with or without its subtitle, and "Series: Its Name" isn't "Series: Another Name" |
+| `authors` | List of names as printed, up to 12, each up to 120 characters. The writer first, then a translator or editor (with "Translated by …" in `notes`) |
 | `isbn` | ISBN-10 or ISBN-13, any punctuation. Shelfmark stores valid ones as ISBN-13; given several ("0618260307, 9780618260300"), it keeps the first valid one |
 | `publisher`, `year`, `pages` | As printed: the publisher up to 120 characters, the year 0–2200, pages 0–50,000. A year is read as its first four-digit number ("1937–40" is 1937, "2nd ed. 1999" is 1999) and a page count as its largest number ("2 vols, 880" is 880, "1,024" is 1024) |
 | `format` | `hardcover`, `paperback`, `mass-market`, `board`, `leather`, `other` |
@@ -62,7 +63,7 @@ Shelfmark ignores fields it doesn't know, cuts text to the limits above, brings 
   ]}}
 ```
 
-Each entry names its book by `id` (from the library file) and by `title`, `authors` and `isbn`: Shelfmark finds the book with that id, or else every copy with the same ISBN or the same title and author's surname, leaving out any copy another entry names by id. When those copies have different authors (two translations, each with its translator), it takes the ones whose authors match the entry's in full, so copy `authors` from the library file as they are. It carries any of the reading-detail fields above, and `pages`. Opening it fills in only the details a book doesn't have yet (or replaces them, if the person ticks **Replace**), and a page count only where there is none; nothing else on the book changes. Up to 3,000 entries. `scripts/make_shelfmark.py --details` makes these, and travels in the same links (`#s1z…`).
+Each entry names its book by `id` (from the library file) and by `title`, `sub`, `authors` and `isbn`: Shelfmark finds the book with that id, or else every copy of the same book (the same ISBN, or the same title, subtitle and author's surname, as for a batch), leaving out any copy another entry names by id. An entry for one volume of a set finds only that volume, so give each volume its own entry, with its title as the library file has it. When those copies have different authors (two translations, each with its translator), it takes the ones whose authors match the entry's in full, so copy `authors` from the library file as they are. It carries any of the reading-detail fields above, and `pages`. Opening it fills in only the details a book doesn't have yet (or replaces them, if the person ticks **Replace**), and a page count only where there is none; nothing else on the book changes. Up to 3,000 entries. `scripts/make_shelfmark.py --details` makes these, and travels in the same links (`#s1z…`).
 
 ## Links
 

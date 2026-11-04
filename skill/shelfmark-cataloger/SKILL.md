@@ -16,7 +16,7 @@ Two things make this worth doing, so protect them:
 Work through each photo left to right, top to bottom, shelf by shelf. Count the spines you can see and make sure every one ends up either in the list or in your "couldn't read" note. Nothing should be skipped silently.
 
 What each kind of photo gives you:
-- **Spines:** title and author, often the publisher's logo. Tilt your reading: spines run top-to-bottom (most English-language books) or bottom-to-top (many European ones). Series numbers and volume numbers matter ("Vol. 2").
+- **Spines:** title and author, often the publisher's logo. Tilt your reading: spines run top-to-bottom (most English-language books) or bottom-to-top (many European ones). Series numbers and volume numbers matter: put a volume's number or name in the `title` as printed ("Les Misérables, Volume 2: Cosette", "The Pickwick Papers: Volume 2"), not only in `sub`, so Shelfmark tells the volumes of a set apart and suggests the first one first.
 - **Covers:** title, subtitle, author, sometimes the edition ("40th anniversary edition").
 - **Barcodes on the back:** the ISBN is printed above or below the bars and starts with 978 or 979. The small second barcode to its right is a price code, not part of the ISBN. An ISBN pins down the exact edition, so it's the best thing to capture when the person cares about editions.
 - **Copyright pages:** ISBN, publisher, year, edition statements. A "First Edition" line with a number line running down to 1 means a first printing. If the lowest number is 3, it's a third printing; put that in `edition`.
@@ -34,7 +34,7 @@ Shelfmark tracks a **room** and a **shelf** for each book, free text they choose
 
 - Put a room and shelf that apply to everything at the top level of the batch.
 - For a photo of a whole bookcase, give each book its own `shelf` ("Tall bookcase, shelf 2 from top"). Count shelves the way they'd say it, and tell them the convention you used.
-- Keep shelf names consistent across batches from the same bookcase, so they group together in Shelfmark.
+- Keep shelf names consistent across batches from the same bookcase, so they group together in Shelfmark. When you have their library file (see **Questions about their library**), reuse its room and shelf names exactly as they're written there.
 
 Pick up anything else they mention: "these are all read" → `status: "read"`; "the signed one on the left" → `signed: true`; "Sam has the Le Guin" → `loan: {"to": "Sam"}`.
 
@@ -58,8 +58,8 @@ python3 scripts/make_shelfmark.py books.json --out /mnt/user-data/outputs
 ```
 
 Every field but `title` is optional. The full list is in `references/shelfmark-format.md`:
-- `authors`: a list, names as printed ("Ursula K. Le Guin").
-- `sub`: the subtitle.
+- `authors`: a list, names as printed ("Ursula K. Le Guin"). The writer comes first, then a translator or editor, with "Translated by …" (or "Edited by …") in `notes`: `"authors": ["Homer", "Samuel Butler"], "notes": "Translated by Samuel Butler"`.
+- `sub`: the subtitle. A volume's number or name goes in the `title` (see Spines above).
 - `isbn`, `publisher`, `year`, `pages`.
 - `format`: hardcover, paperback, mass-market, board, leather or other.
 - `edition`: text such as "2nd printing".
@@ -78,10 +78,10 @@ The script:
 - cleans every field;
 - checks ISBN check digits, and drops and flags any that fail;
 - maps words like "hardback", "VG" and "finished" onto Shelfmark's values;
-- warns about likely doubles;
+- warns about likely doubles: the same title (with or without its subtitle) and author twice, or the same ISBN. The volumes of a set aren't doubles;
 - prints a summary, a **link** and a `.shelfmark.json` file path.
 
-If it prints warnings, read them: a dropped ISBN or a double usually means one more look at the photo.
+If it prints warnings, read them: a dropped ISBN or a double usually means one more look at the photo. Another volume of the same set doesn't warn, so keep every volume you see.
 
 Links are compressed, so a few shelves' worth makes a link of a few thousand characters. For a few hundred books or more, lead with the file; the script says so when a link gets too long to pass around safely.
 
@@ -105,7 +105,7 @@ Opening the same link twice is safe: Shelfmark says it was used before and untic
 ## Questions about their library
 
 If a Google Drive connector is available and they ask about their collection ("do I own *Gilead*?", "what's on the hall shelf?", "who has my books?"), read the library file:
-1. Search Drive for the title `Shelfmark library.json`.
+1. Search Drive for the title `Shelfmark library.json`. If the search finds more than one, use the one in the Shelfmark folder that isn’t in the trash.
 2. Download it, and parse the JSON: `{"shelfmark": 1, "library": {"books": {id: book}, "seen": {…}}}`.
 3. Ignore books with `"del": 1`; they were removed.
 
@@ -116,7 +116,7 @@ Book fields are as above, plus `check` (an unresolved flag). **Only read this fi
 Shelfmark's **What to read next** can choose by what a book is like: fiction, nonfiction or poetry; mood; genre; pace; short chapters; and whether it's read cover to cover, dipped into, or browsed (a cookbook, a picture book or a reference book, which it doesn't suggest unless asked). These come from you. When someone asks for them ("add details to my library", "help Shelfmark pick what I read next"), or asks you to suggest something from their shelves and the books don't have details yet:
 
 1. Read their library: the Drive file as above, or a backup file they send (**Settings › Download a backup**). Skip removed books.
-2. Write an entry for each book you know, keyed by its `id` from the file, with its `title` and `authors` too (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
+2. Write an entry for each book you know, keyed by its `id` from the file, with its `title`, `sub` and `authors` too, as the file has them (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
 3. Run the script with `--details`, and hand over the link (or the file, when the script says the link is too long).
 
 ```
@@ -143,6 +143,8 @@ The words each field takes are in `references/shelfmark-format.md`. How to fill 
 - **`blurb`:** one line, under 150 characters, plain, no spoilers, saying what it is rather than praising it.
 
 Opening the link shows the list to review. It fills in only what each book doesn't have yet, unless they tick **Replace**, and never changes anything else. Opening it twice is safe. New books from photos can carry the same fields in their batch, when you know the books well.
+
+Without code tools, write the entries by hand in the same shape, wrapped as `{"shelfmark": 1, "details": {"name": "Reading details", "books": […]}}`, and give it as text to paste into Shelfmark (**Import**, then the box **Or paste what Claude gave you**). Keep each message to about 50 books, each one a whole JSON block of its own, and say to paste them one after another.
 
 ## Imports from other services
 
