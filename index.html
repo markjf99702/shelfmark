@@ -984,6 +984,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   // When something happened, to follow a verb: "5 min ago", or "on Nov 3".
   function since(ms) { return (Date.now() - ms < 86400e3 ? '' : 'on ') + ago(ms); }
+  // How long a loan has been out, in whole months from the day it was lent to now: 0 under a month, or with no day.
+  function loanMonths(since, now) {
+    if (!day(since)) return 0;
+    var p = since.split('-').map(Number), d = now || new Date();
+    return Math.max(0, (d.getFullYear() - p[0]) * 12 + d.getMonth() + 1 - p[1] - (d.getDate() < p[2] ? 1 : 0));
+  }
+  // A loan as its badge says it: "Lent to Sam · Oct 2" for its first month, then how long it's been out, "Lent to Sam ·
+  // 20 months" (from two years, in years), so a book out for ages stands out. The card keeps the day.
+  function loanLine(loan, now) {
+    var m = loanMonths(loan.since, now);
+    return 'Lent to ' + loan.to + (!loan.since ? '' : ' · ' + (!m ? fmtDay(loan.since) : m < 24 ? plural(m, 'month') : plural(Math.floor(m / 12), 'year')));
+  }
   function where(b) { return [b.room, b.shelf].filter(Boolean).join(' › '); }
   function byLine(b) { return (b.authors || []).join(', '); }
   // A title short enough to quote in a toast on a phone: the part before a colon (when that's three letters or more),
@@ -1084,6 +1096,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // Recently finished: read books by the day they were finished, the latest first, then the rest by author.
   function finished(b) { return !b.aside && b.finished || ''; }
   function finishedOrder(x, y) { return finished(y).localeCompare(finished(x)) || authorOrder(x, y); }
+  // Longest out first: books lent out by the day they were lent, the earliest first (a loan with no day after those),
+  // then the rest by author.
+  function lentOrder(x, y) { var a = x.loan ? x.loan.since || '~' : '~~', b = y.loan ? y.loan.since || '~' : '~~'; return a < b ? -1 : a > b ? 1 : authorOrder(x, y); }
 
   // ---------- what to read next ----------
   // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
@@ -1457,7 +1472,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   try { var raw = localStorage.getItem(LS); if (raw) DOC = cleanDoc(JSON.parse(raw)); } catch (e) { }
   var PREF = { sort: 'author', lookups: false };
   try { Object.assign(PREF, JSON.parse(localStorage.getItem(LSP) || '{}')); } catch (e) { }
-  if (['author', 'title', 'shelf', 'added', 'finished'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
+  if (['author', 'title', 'shelf', 'added', 'finished', 'lent'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
   PREF.lookups = PREF.lookups === true;
   // sort, when set, is how the list is sorted for this visit only, over the saved PREF.sort: after books are added
   // from a link they show newest first, without undoing a sort the person chose.
@@ -1649,7 +1664,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (b.aside) m.push('<span class="bdg aside">Set aside</span>');
     else if (b.status === 'reading' && !now) m.push('<span class="bdg reading">Reading</span>');
     else if (b.status === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
-    if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
+    if (b.loan) m.push('<span class="bdg lent">' + esc(loanLine(b.loan)) + '</span>');
     // In the To check view, what to check takes the badge's place, so most can be settled at the shelf.
     var why = UI.status === 'check' && b.check;
     if (b.check && !why) m.push('<span class="bdg check">To check</span>');
@@ -1742,6 +1757,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Each room once, however its books spell it, under the spelling most of them use (see place()).
     var at = placeIndex(all), rooms = placeNames(at.rooms);
     if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check || UI.status === 'wanted' && !counts.wanted) UI.status = '';
+    // The Lent out view is longest out first (see the chips), until it's left.
+    if (UI.status !== 'lent' && UI.sort === 'lent') UI.sort = '';
     if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
     if (UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
@@ -1764,6 +1781,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Recently finished is offered once a book has the day it was finished (or while it's chosen).
     var fin = $('sortSel').querySelector('option[value="finished"]'), fins = sort === 'finished' || all.some(finished);
     if (fins && !fin) $('sortSel').insertAdjacentHTML('beforeend', '<option value="finished">Recently finished</option>'); else if (!fins && fin) fin.remove();
+    // Longest out first, once a book is lent out (or while it's chosen).
+    var lnt = $('sortSel').querySelector('option[value="lent"]'), lents = sort === 'lent' || counts.lent > 0;
+    if (lents && !lnt) $('sortSel').insertAdjacentHTML('beforeend', '<option value="lent">Longest out first</option>'); else if (!lents && lnt) lnt.remove();
     $('sortSel').value = sort;
     $('tools').hidden = !every.length;
     // A chip newly chosen is brought into view where the row scrolls sideways (on a touch screen): when To check or Lent
@@ -1797,7 +1817,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var vis = visible(every), wish = UI.status === 'wanted';
     // The wishlist has no shelves: sorted by shelf, it's by author.
     if (wish && sort === 'shelf') sort = 'author';
-    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder, finished: finishedOrder }[sort] || authorOrder;
+    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder, finished: finishedOrder, lent: lentOrder }[sort] || authorOrder;
     vis.sort(order);
     // "256 books · 3 lent out · 40 read, 12 this year": this year's are the books finished on a day this calendar year. A
     // search that finds books on the wishlist says how many: "2 of 256 books · 1 on your wishlist".
@@ -2451,7 +2471,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var b = r.b, st = b.aside ? 'aside' : b.status || (readAll && !b.wanted ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
       if (st === 'aside') m.push('<span class="bdg aside">Set aside</span>'); else if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
       if (b.rating) m.push(stars(b.rating));
-      if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
+      if (b.loan) m.push('<span class="bdg lent">' + esc(loanLine(b.loan)) + '</span>');
       if (ed) m.push('<span class="rv-ed">' + esc(ed) + '</span>');
       if (b.wanted && mixed) m.unshift('<span class="bdg wanted">Wanted</span>');
       return m.join('');
@@ -3303,11 +3323,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
     else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
   });
-  // The Read list is in the order the books were finished, once one has its day; leaving it, the sort is as it was.
+  // The Read list is in the order the books were finished, once one has its day, and the Lent out list longest out first;
+  // leaving them, the sort is as it was.
   $('chips').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s;
     if (UI.status === 'read' && (UI.sort || PREF.sort) !== 'finished' && live(DOC).some(finished)) UI.sort = 'finished';
     else if (UI.status !== 'read' && UI.sort === 'finished') UI.sort = '';
+    if (UI.status === 'lent' && (UI.sort || PREF.sort) !== 'lent') UI.sort = 'lent';
     render();
   });
   $('chips').addEventListener('scroll', function () { fades(this); }, { passive: true });

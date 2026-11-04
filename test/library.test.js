@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -129,6 +129,21 @@ eq(S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Emma', authors: ['Jane A
   { id: 'c', t: 1, title: 'Ulysses', authors: ['James Joyce'], status: 'read', finished: '2026-02-03', aside: true }, { id: 'd', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], status: 'read', finished: '2026-02-03' },
   { id: 'e', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], status: 'read', finished: '2026-03-14' }] })).sort(S.finishedOrder).map(b => b.id), ['e', 'd', 'a', 'c', 'b'],
   'Recently finished puts read books latest first, then the rest (one set aside too) by author');
+// Longest out first: the earliest loan first, one with no day after those, then the books on the shelf by author.
+eq(S.live(S.cleanDoc({ books: [{ id: 'la', t: 1, title: 'Emma', authors: ['Jane Austen'] }, { id: 'lb', t: 1, title: 'Beloved', authors: ['Toni Morrison'], loan: { to: 'Sam', since: '2026-10-02' } },
+  { id: 'lc', t: 1, title: 'Ulysses', authors: ['James Joyce'], loan: { to: 'Ana' } }, { id: 'ld', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], loan: { to: 'Lou', since: '2025-03-04' } },
+  { id: 'le', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }] })).sort(S.lentOrder).map(b => b.id), ['ld', 'lb', 'lc', 'la', 'le'], 'Longest out first puts the earliest loan first, then the rest by author');
+{
+  // How long a loan has been out: whole months to the day, so a book lent on the 31st is a month out on the 1st after next.
+  const now = new Date(2026, 10, 4);
+  eq(['2026-11-04', '2026-10-05', '2026-10-04', '2026-09-30', '2025-03-04', '2025-03-05', '2024-11-04', '2021-01-31', '', 'soon'].map(d => S.loanMonths(d, now)), [0, 0, 1, 1, 20, 19, 24, 69, 0, 0], 'a loan\'s age is in whole months to the day');
+  eq(S.loanMonths('2026-01-31', new Date(2026, 1, 28)), 0, 'a book lent on 31 January isn\'t a month out on 28 February');
+  eq(S.loanMonths('2026-01-31', new Date(2026, 2, 1)), 1, 'and is on 1 March');
+  eq(S.loanMonths('2027-01-01', now), 0, 'a loan dated after today counts as new');
+  eq([{ to: 'Sam', since: '2025-03-04' }, { to: 'Sam', since: '2026-09-30' }, { to: 'Sam', since: '2024-11-04' }, { to: 'Sam', since: '2021-01-31' }, { to: 'Sam' }].map(l => S.loanLine(l, now)),
+    ['Lent to Sam · 20 months', 'Lent to Sam · 1 month', 'Lent to Sam · 2 years', 'Lent to Sam · 5 years', 'Lent to Sam'], 'a loan of a month or more says how long it\'s been out, from two years in years');
+  check(/^Lent to Sam · \D+ \d+$/.test(S.loanLine({ to: 'Sam', since: '2026-10-20' }, now)), 'a loan under a month old says the day it was lent');
+}
 
 // ---------- searching ----------
 eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');

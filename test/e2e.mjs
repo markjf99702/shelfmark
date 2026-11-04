@@ -1535,6 +1535,33 @@ step('It’s back says who the book is back from, and Undo puts the loan back, w
   } finally { await ctx.close(); }
 });
 
+step('Lent out lists the longest out first, and a loan out a month or more says how long', async () => {
+  const ctx = await context();
+  await ctx.clock.setFixedTime(new Date('2026-11-04T10:00:00'));
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, loan: { to: 'Priya', since: '2026-10-20' } }, { ...MIDDLEMARCH, loan: { to: 'Sam', since: '2025-03-04' } }, { ...CRADLE, loan: { to: 'Ana' } },
+      { id: 'b06', t: 1000, title: 'Emma', authors: ['Jane Austen'], loan: { to: 'Lou', since: '2026-09-30' } }, { id: 'b07', t: 1000, title: 'Dracula', authors: ['Bram Stoker'] }]);
+    const badges = () => page.$$eval('#list .bk .bdg.lent', els => els.map(e => e.textContent));
+    await page.click('#chips .chip[data-s="lent"]');
+    assert.deepEqual(await titles(page), ['Middlemarch', 'Emma', 'Piranesi', 'Cat’s Cradle'], 'the longest out isn\'t first');
+    assert.deepEqual(await badges(), ['Lent to Sam · 20 months', 'Lent to Lou · 1 month', 'Lent to Priya · Oct 20', 'Lent to Ana']);
+    assert.equal(await page.inputValue('#sortSel'), 'lent', 'the sort menu doesn\'t say how the list is sorted');
+    // The card keeps the day it was lent.
+    await page.click('#list .bk[data-id="b04"]');
+    assert.equal(await page.inputValue('#f-since'), '2025-03-04');
+    await page.click('#bkx2');
+    // Leaving the view, the sort is as it was; chosen from the menu, Longest out first stays.
+    await page.click('#chips .chip[data-s=""]');
+    assert.equal(await page.inputValue('#sortSel'), 'author');
+    assert.deepEqual(await titles(page), ['Emma', 'Piranesi', 'Middlemarch', 'Dracula', 'Cat’s Cradle']);
+    await page.selectOption('#sortSel', 'lent');
+    await page.reload();
+    assert.deepEqual(await titles(page), ['Middlemarch', 'Emma', 'Piranesi', 'Cat’s Cradle', 'Dracula'], 'the books on the shelf come after the loans');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {
