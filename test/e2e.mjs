@@ -1425,6 +1425,11 @@ step('the privacy page links lead somewhere else', async () => {
     const links = await page.$$eval('main a[href]', as => as.map(a => [a.textContent, a.href]));
     assert.ok(links.length > 4);
     assert.deepEqual(links.filter(([, href]) => href.split('#')[0] === self), [], 'a link on the privacy page goes to the privacy page');
+    // It's in Shelfmark's own fonts, from its own folder, not the phone's.
+    await page.evaluate(() => document.fonts.ready);
+    const fonts = await page.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/"/g, '') + ' ' + f.style).sort());
+    assert.ok(fonts.includes('Newsreader italic') && fonts.includes('Newsreader normal') && fonts.includes('IBM Plex Mono normal'), 'the privacy page draws in Newsreader and IBM Plex Mono: ' + fonts);
+    assert.deepEqual(page.outside, []);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
