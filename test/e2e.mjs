@@ -1418,6 +1418,20 @@ step('on an iPhone, nothing sits under the home indicator or the notch', async (
     const [brand, add, card] = await page.evaluate(() => ['.top .brand', '#addBtn', '#list .bk'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left, r.right]; }));
     assert.ok(brand[0] >= 59 && card[0] >= 59, 'the logo or the first book sits under the notch on the left: ' + JSON.stringify([brand, card]));
     assert.ok(add[1] <= 844 - 59 && card[1] <= 844 - 59, 'Add or a book sits under the notch on the right: ' + JSON.stringify([add, card]));
+    // Sideways, a sheet comes up from the bottom as it does upright, its full height, clear of the notch either side.
+    await page.click('#nextBtn');
+    const sheet = await page.evaluate(() => { const r = document.querySelector('#sheet .panel').getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; });
+    assert.ok(sheet[3] >= 390 - 0.5 && sheet[2] <= 40, 'sideways, What to read next is a box in the middle, not a sheet from the bottom: ' + JSON.stringify(sheet));
+    assert.ok(sheet[0] >= 59 && sheet[1] <= 844 - 59, 'sideways, the sheet runs under the notch: ' + JSON.stringify(sheet));
+    await page.click('#nxGo');
+    const t = await page.evaluate(() => { const r = document.getElementById('toast').getBoundingClientRect(); return [r.left, r.right]; });
+    assert.ok(t[0] >= 59 && t[1] <= 844 - 59, 'sideways, the toast runs under the notch: ' + JSON.stringify(t));
+    // An iPad's sheet is a box in the middle, so its footer doesn't keep room for the home indicator under its buttons.
+    await page.click('#toastBtn');
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await inset(page, { top: 24, bottom: 20, left: 0, right: 0 });
+    await page.click('#list .bk[data-id="b03"]');
+    assert.equal(await page.$eval('#sheet .ft', e => getComputedStyle(e).paddingBottom), '12px', 'a sheet in the middle of an iPad keeps room for the home indicator');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
