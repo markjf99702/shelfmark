@@ -626,7 +626,7 @@ eq(['Den › Tall bookcase', 'Living room › Right bookcase, cow figurine shelf
       const kinds = [''].concat(Object.keys(S.nextOffers(all, S.cleanNext(ticks)).fit.kinds));
       for (const kind of kinds) {
         const f = S.nextOffers(all, S.cleanNext({ ...ticks, kind })).fit;
-        const each = [...Object.keys(f.moods).map(m => ({ moods: [m] })), ...Object.keys(f.genres).map(genre => ({ genre })), ...Object.keys(f.paces).map(pace => ({ pace })),
+        const each = [...(kind ? [{}] : []), ...Object.keys(f.moods).map(m => ({ moods: [m] })), ...Object.keys(f.genres).map(genre => ({ genre })), ...Object.keys(f.paces).map(pace => ({ pace })),
           ...Object.keys(f.lens).map(len => ({ len })), ...Object.keys(f.rooms).map(room => ({ room })), ...Object.keys(f.tags).map(tag => ({ tag })), ...(f.short ? [{ short: true }] : [])];
         for (const x of each) {
           const c = S.cleanNext({ ...ticks, kind, ...x }), deal = S.dealNext(all, c, rng(k), {}, now);
