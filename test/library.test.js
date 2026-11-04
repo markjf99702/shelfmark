@@ -223,7 +223,7 @@ function randomDoc(r, n) {
     { id: 's4', t: 1, title: 'Gilded Hours', sub: 'A Novel of the Fens', authors: ['Dee Fairweather'] },
     { id: 's5', t: 1, title: 'Война и мир', authors: ['Лев Толстой'] },
     { id: 's6', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] },
-    { id: 's7', t: 1, title: 'Sapiens: A Brief History', authors: ['Ann Lee'], isbn: '9780140449136' }
+    { id: 's7', t: 1, title: 'Commonplace: A Brief History', authors: ['Ann Lee'], isbn: '9780140449136' }
   ] });
   const six = S.dupIndex(set), dup = b => (S.findDup(six, b) || {}).id || null, near = b => (S.nearDup(six, b) || {}).id || null;
   eq([dup({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }), near({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] })], [null, 's1'],
@@ -234,8 +234,8 @@ function randomDoc(r, n) {
   eq(dup({ title: 'Second Dark', sub: 'The Lantern Cycle', authors: ['Ada Quill'] }), null, 'nor one whose volume is the title and set the subtitle');
   eq([dup({ title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }), dup({ title: 'Lantern Cycle', sub: 'First Light', authors: ['Ada Quill'] }), dup({ title: 'Tidewater: Volume One', authors: ['Ben Marsh'] })],
     ['s1', 's1', 's2'], 'but the same volume again is, its name after a colon or as the subtitle');
-  eq([dup({ title: 'Gilded Hours', authors: ['Dee Fairweather'] }), dup({ title: 'Gilded Hours: A Novel of the Fens', authors: ['Dee Fairweather'] }), dup({ title: 'Sapiens', authors: ['Ann Lee'] }),
-    dup({ title: 'Sapiens', sub: 'A Brief History', authors: ['Ann Lee'] })], ['s4', 's4', 's7', 's7'], 'and a book is the same with or without its subtitle');
+  eq([dup({ title: 'Gilded Hours', authors: ['Dee Fairweather'] }), dup({ title: 'Gilded Hours: A Novel of the Fens', authors: ['Dee Fairweather'] }), dup({ title: 'Commonplace', authors: ['Ann Lee'] }),
+    dup({ title: 'Commonplace', sub: 'A Brief History', authors: ['Ann Lee'] })], ['s4', 's4', 's7', 's7'], 'and a book is the same with or without its subtitle');
   eq([dup({ title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'] }), dup({ title: 'Lantern Cycle', authors: ['Ada Quill'] })], ['s6', 's1'], 'as a title without a colon matches one with');
   eq(dup({ title: 'Something Else', authors: ['Nobody'], isbn: '0-14-044913-2' }), 's7', 'the same ISBN is the same book whatever the title');
   eq([dup({ title: 'Анна Каренина', authors: ['Лев Толстой'] }), dup({ title: 'Война и мир', authors: ['Л. Толстой'] })], [null, 's5'], 'titles in other scripts are told apart, and matched');
@@ -777,11 +777,11 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
         { title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle', sub: 'Second Dark', authors: ['Ada Quill'] },
         { title: 'Tidewater: Volume Four', authors: ['Ben Marsh'] }, { title: 'Annals of Ostrava', sub: 'Volume II: The Wars', authors: ['Cy Dorn'] },
         { title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'], isbn: '0-261-10221-4' }, { title: 'A Hobbit', authors: 'J.R.R. Tolkien' },
-        { title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'] }, { title: 'The Left Hand of Darkness', authors: ['Ursula K. Le Guin'] },
+        { title: 'A Made-Up Novel', authors: ['Otto Pell, Jr.'] }, { title: 'An Invented Shore', authors: ['Nina van der Berg'] },
         { title: 'Les Misérables: Fantine', authors: ['Victor Hugo'] }, { title: 'Les Miserables', sub: 'Cosette', authors: ['Victor Hugo'] },
-        { title: 'Война и мир', authors: ['Лев Толстой'] }, { title: 'Анна Каренина: Часть 1', authors: ['Лев Толстой'] }, { title: '三体', authors: ['刘慈欣'] },
+        { title: 'Война и мир', authors: ['Лев Толстой'] }, { title: 'Анна Каренина: Часть 1', authors: ['Лев Толстой'] }, { title: '红楼梦', authors: ['曹雪芹'] },
         { title: '  An   Odd: Title, 2nd ed. ', sub: 'Ignored', authors: ['Ann Lee, PhD'] }, { title: 'Ivanhoe', authors: ['Sir Walter Scott, III'] },
-        { title: 'Smørrebrød & Co.: 1001 Recipes', authors: ['Jo Nesbø'], isbn: '9780140449137' }, { title: 'De Profundis', authors: ['Charles de Gaulle'] }, { title: 'Untitled' }
+        { title: 'Smørrebrød & Co.: 1001 Recipes', authors: ['Kari Ødegård'], isbn: '9780140449137' }, { title: 'De Profundis', authors: ['Hal de Vries'] }, { title: 'Untitled' }
       ];
       const pairsIn = path.join(tmp, 'pairs.json');
       fs.writeFileSync(pairsIn, JSON.stringify(pairs));
