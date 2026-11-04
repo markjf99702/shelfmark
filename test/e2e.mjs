@@ -551,6 +551,55 @@ step('a search under a filter says the book is in the library, and Search all bo
   } finally { await ctx.close(); }
 });
 
+step('a room typed with other capitals is one room: one By shelf heading, one Room option', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const left = { room: 'Living room', shelf: 'Left bookcase' };
+    await seed(page, [{ ...PIRANESI, ...left }, { ...MIDDLEMARCH, ...left }, { id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], ...left },
+      // Saved before with other capitals: shown with the rest, and left as it was saved.
+      { ...CRADLE, room: 'living Room', shelf: 'left bookcase' }]);
+    await page.selectOption('#sortSel', 'shelf');
+    const heads = () => page.$$eval('#list .grp', els => els.map(e => e.textContent.replace(/\s+/g, ' ')));
+    const rooms = () => page.$$eval('#roomSel option', els => els.map(e => e.textContent));
+    assert.equal((await heads()).length, 1, 'By shelf splits one shelf: ' + await heads());
+    assert.match((await heads())[0], /^Living room › Left bookcase\W+4\b/);
+    assert.deepEqual(await rooms(), ['All rooms', 'Living room']);
+    await page.selectOption('#roomSel', 'Living room');
+    assert.equal((await titles(page)).length, 4, 'the room menu leaves out a book saved with other capitals');
+    await page.selectOption('#roomSel', '');
+    // Typed on a card, the room and shelf are saved as the library spells them.
+    await page.click('#list .bk[data-id="b06"]');
+    await page.fill('#f-room', 'LIVING  ROOM ');
+    await page.fill('#f-shelf', 'Left Bookcase');
+    await page.click('#bkx2');
+    assert.deepEqual([(await storedBook(page, 'b06')).room, (await storedBook(page, 'b06')).shelf], ['Living room', 'Left bookcase']);
+    assert.deepEqual([(await storedBook(page, 'b05')).room, (await storedBook(page, 'b05')).shelf], ['living Room', 'left bookcase'], 'a book saved before was rewritten');
+    assert.equal((await heads()).length, 1);
+    // So is a book added by hand, and a batch from a new chat with Claude, its Shelve them in fields included.
+    await wait(450); // a tap where Done was is ignored for a moment after (see tapGuard), and + is near it
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Walden');
+    await page.fill('#f-room', 'living room');
+    await page.click('#f-add');
+    await page.goto(linkTo({ name: 'Living room', room: 'LIVING ROOM', shelf: 'left BOOKCASE', books: [{ title: 'Emma', authors: ['Jane Austen'] }, { title: 'Dracula', authors: ['Bram Stoker'], room: 'Living Room', shelf: 'Left Bookcase' }] }));
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual([await page.inputValue('#rv-room'), await page.inputValue('#rv-shelf')], ['Living room', 'Left bookcase']);
+    await page.click('#rv-add');
+    const lib = Object.values((await stored(page)).library.books).filter(b => !b.del);
+    assert.deepEqual(lib.filter(b => ['Walden', 'Emma', 'Dracula'].includes(b.title)).map(b => [b.title, b.room, b.shelf || '']).sort(),
+      [['Dracula', 'Living room', 'Left bookcase'], ['Emma', 'Living room', 'Left bookcase'], ['Walden', 'Living room', '']]);
+    await page.selectOption('#sortSel', 'shelf');
+    assert.equal((await heads()).length, 2, 'Walden has no shelf, so it has its own heading: ' + await heads());
+    assert.deepEqual(await rooms(), ['All rooms', 'Living room']);
+    // What to read next's room menu has it once too.
+    await page.click('#nextBtn');
+    await page.click('#nxMore summary');
+    assert.deepEqual(await page.$$eval('#nxRoom option', els => els.map(e => e.textContent)), ['Any room', 'Living room']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

@@ -17,7 +17,7 @@
 - **Catalog.** For each book it keeps:
   - title, subtitle, authors
   - ISBN, publisher, year, pages, format
-  - where it is: a room and a shelf, in your own words
+  - where it is: a room and a shelf, in your own words; one typed with other capitals ("Living Room") goes into the one you have ("Living room")
   - unread, reading or read, and a rating
   - who you lent it to, and since when
   - tags and notes

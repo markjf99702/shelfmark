@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -604,6 +604,32 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
   eq(where(tall, { room: 'Living room', shelf: 'Bottom' }, living), ['Living room > Bottom', 'Living room > Bottom', 'Hall > Bottom'], 'changing only the shelf moves every book onto it and keeps each one\'s own room');
   eq(where(tall, { room: '', shelf: 'Tall bookcase' }, living), [' > Tall bookcase, top', ' > Tall bookcase', 'Hall > '], 'emptying the room gives no book the batch\'s room');
   eq(where(tall, { room: 'Living room', shelf: '' }, living), ['Living room > Tall bookcase, top', 'Living room > ', 'Hall > '], 'emptying the shelf gives no book the batch\'s shelf');
+
+  // A room or shelf is saved as the library already spells it, whatever the capitals or apostrophes it was typed with
+  // (each new chat with Claude starts afresh, and a room typed by hand can differ from Claude's), the most used
+  // spelling if there are several; a new place is kept as typed, with its spaces tidied.
+  eq(S.place(' Living  Room ', { 'Living room': 3 }), 'Living room', 'a room typed with other capitals is saved as the library spells it');
+  eq(S.place('living room', { 'Living room': 1, 'Living Room': 4, Den: 9 }), 'Living Room', 'the spelling most books use wins');
+  eq([S.place('LIVING ROOM', { 'Living room': 2, 'Living Room': 2 }), S.place('LIVING ROOM', { 'Living Room': 2, 'Living room': 2 })], ['Living Room', 'Living Room'], 'a tie goes the same way whatever the order');
+  eq([S.place('cafe', { 'Café': 2 }), S.place('Kid’s room', { "Kid's room": 2 }), S.place('Den', { 'Living room': 3 }), S.place('  Sun   room ', {}), S.place('', { Den: 1 })],
+    ['Café', "Kid's room", 'Den', 'Sun room', ''], 'accents and apostrophes don\'t make a new place either, and a new one is kept as typed');
+  {
+    const ix = S.placeIndex([{ room: 'Bedroom', shelf: 'Top shelf' }, { room: 'Hall', shelf: 'Top Shelf' }, { room: 'Hall', shelf: 'Top Shelf' }, { room: 'hall', shelf: 'top shelf' }, { shelf: 'Loose' }]);
+    const at = b => { const x = S.placed(Object.assign({}, b), ix); return [x.room || '', x.shelf || ''].join(' > '); };
+    eq([at({ room: 'HALL', shelf: 'top shelf' }), at({ room: 'Bedroom', shelf: 'TOP SHELF' }), at({ room: 'Attic', shelf: 'top shelf' }), at({ shelf: 'loose' }), at({ room: 'hall' })],
+      ['Hall > Top Shelf', 'Bedroom > Top shelf', 'Attic > top shelf', ' > Loose', 'Hall > '], 'a shelf takes the spelling of a shelf in the same room only');
+  }
+  // Books saved before with another spelling sort together, so the list shows them as one shelf.
+  {
+    const b = (id, room, shelf, a) => S.cleanBook({ id, t: 1, title: 'T' + id, authors: [a], room, shelf });
+    const lib = [b('o1', 'Living room', 'Left bookcase', 'Zola'), b('o2', 'Living Room', 'Left Bookcase', 'Austen'), b('o3', 'Living room', 'Left bookcase', 'Eliot'),
+      b('o4', 'living room', 'Desk', 'Woolf'), b('o5', 'Kid’s room', 'Low', 'Dahl'), b('o6', "Kid's room", 'low', 'Alcott'), b('o7', 'Den', '', 'Hardy')];
+    eq(lib.slice().sort(S.shelfOrder).map(x => x.id), ['o7', 'o6', 'o5', 'o4', 'o2', 'o3', 'o1'], 'shelf order puts a place\'s spellings together, by author within it');
+    const shelf = lib.map(x => Object.assign({}, x, { id: x.id }));
+    eq(S.nextPool(shelf, S.cleanNext({ room: 'LIVING ROOM' })).map(x => x.id).sort(), ['o1', 'o2', 'o3', 'o4'], 'What to read next\'s room takes in every spelling of it');
+    eq(Object.keys(S.nextOffers(shelf).rooms).sort(), ['Den', "Kid's room", 'Living room'], 'and offers each room once, as most books spell it');
+    eq(S.fitNext(S.cleanNext({ room: 'living ROOM' }), S.nextOffers(shelf)).room, 'Living room', 'a room chosen before in other capitals stays chosen');
+  }
 
   const json = JSON.stringify({ shelfmark: 1, batch: { id: 'c1', books: [{ title: 'Cien años de soledad', authors: ['Gabriel García Márquez'] }] } });
   const z = zlib.deflateRawSync(Buffer.from(json)).toString('base64url');

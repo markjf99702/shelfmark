@@ -763,6 +763,36 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return b;
   }
 
+  // Rooms and shelves are places, the same however they're capitalised or their apostrophes typed: "Living room",
+  // "Living Room" and "living room" are one room. placeKey says which place a name is.
+  function placeKey(s) { return fold(str(s, 60)).replace(/[’‘ʼ]/g, "'"); }
+  // The spelling most books use, of {spelling: books}; on a tie the first in code order, so it's the same every time.
+  function most(by) { var best = '', n = 0; for (var k in by) if (by[k] > n || by[k] === n && k < best) { best = k; n = by[k]; } return best; }
+  // A room or shelf as it's saved: trimmed, its spaces run together, and spelled the way the library already spells that
+  // place (the spelling most books use, if there are several), so a book typed into "Living Room" joins "Living room".
+  // Each chat with Claude starts afresh, and a room typed by hand can differ from Claude's. existing: {spelling: books}.
+  function place(name, existing) {
+    var s = str(name, 60), k = placeKey(s), by = Object.create(null), any = false;
+    if (s) for (var x in existing) if (placeKey(x) === k) { by[x] = existing[x]; any = true; }
+    return any ? most(by) : s;
+  }
+  // The rooms books are in and, room by room, their shelves, with how many books have each spelling, for place().
+  function placeIndex(books) { var ix = { rooms: Object.create(null), shelves: Object.create(null) }; books.forEach(function (b) { countPlace(ix, b); }); return ix; }
+  function countPlace(ix, b) {
+    var k = placeKey(b.room), sh = ix.shelves[k] || (ix.shelves[k] = Object.create(null));
+    if (b.room) ix.rooms[b.room] = (ix.rooms[b.room] || 0) + 1;
+    if (b.shelf) sh[b.shelf] = (sh[b.shelf] || 0) + 1;
+  }
+  // A book with its room as the library spells it, and its shelf as that room's shelves are spelled.
+  function placed(b, ix) { b.room = place(b.room, ix.rooms); b.shelf = place(b.shelf, ix.shelves[placeKey(b.room)]); return b; }
+  // Each place once, by its key, spelled as most books spell it, of {spelling: books}.
+  function placeNames(counts) {
+    var by = Object.create(null), out = Object.create(null), k;
+    for (var x in counts) { k = placeKey(x); (by[k] = by[k] || Object.create(null))[x] = counts[x]; }
+    for (k in by) out[k] = most(by[k]);
+    return out;
+  }
+
   function fmtDay(s) {
     if (!day(s)) return '';
     var p = s.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]), now = new Date();
@@ -821,6 +851,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       t: b.t,
       title: fold(b.title).replace(/^(the|a|an)\s+/, ''),
       author: a ? fold(surname(a) + ' ' + a) : '￿',
+      rk: placeKey(b.room), sk: placeKey(b.shelf),
       hay: searchText([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to,
         label(b.format, FORMATS), label(b.condition, CONDITIONS), b.signed ? 'signed' : '', b.first ? 'first edition' : '', b.check,
         label(b.kind, KINDS), labels(b.genres, GENRES).join(' '), labels(b.moods, MOODS).join(' '), b.pace ? label(b.pace, PACES) + ' pace' : '',
@@ -853,7 +884,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function authorOrder(x, y) { return COLL.compare(keys(x).author, keys(y).author) || COLL.compare(keys(x).title, keys(y).title); }
   function titleOrder(x, y) { return COLL.compare(keys(x).title, keys(y).title) || authorOrder(x, y); }
-  function shelfOrder(x, y) { return COLL.compare(x.room || '￿', y.room || '￿') || COLL.compare(x.shelf || '￿', y.shelf || '￿') || authorOrder(x, y); }
+  // By room, then shelf, each place's spellings together (a book with no room or shelf last), then by author.
+  function placeOrder(a, b) { a = a || '￿'; b = b || '￿'; return COLL.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0); }
+  function shelfOrder(x, y) { var a = keys(x), b = keys(y); return placeOrder(a.rk, b.rk) || placeOrder(a.sk, b.sk) || authorOrder(x, y); }
   function addedOrder(x, y) { return (y.added || '').localeCompare(x.added || '') || y.t - x.t; }
 
   // ---------- what to read next ----------
@@ -878,7 +911,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function moodsMet(b, c) { return (b.moods || []).filter(function (m) { return c.moods.indexOf(m) >= 0; }).length; }
   function nextPool(all, c) {
     return onHand(all, c.reread, c.browse).filter(function (b) {
-      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room) &&
+      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
         (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
         (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
     });
@@ -886,7 +919,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // A book that could match the choices once it has the reading details and page count it hasn't got yet: a choice it
   // has the detail for has to match, one it hasn't is let by. Which chosen details it hasn't got (lacks).
   function couldMatch(b, c) {
-    return (!c.len || !b.pages || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || b.room === c.room) &&
+    return (!c.len || !b.pages || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
       (!c.kind || !b.kind || b.kind === c.kind) && (!c.moods.length || !b.moods || moodsMet(b, c)) && (!c.genre || !b.genres || b.genres.indexOf(c.genre) >= 0) &&
       (!c.pace || !b.pace || b.pace === c.pace) && (!c.short || !b.chapters || b.chapters === 'short' || b.way === 'dip');
   }
@@ -1025,9 +1058,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function nextOffers(all, c) {
     var fans = authorFans(all), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null) }, days = Object.create(null);
     var fit = o.fit = { moods: Object.create(null), genres: Object.create(null) }, base = onHand(all, true, true), kind;
+    // Each room once, as most of the library's books spell it.
+    var rooms = placeNames(placeIndex(all).rooms);
     c = c || cleanNext({});
     base.forEach(function (b) {
-      (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[b.room] = 1;
+      (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[rooms[placeKey(b.room)]] = 1;
       if (b.kind) o.kind = 1; if (b.pace) o.pace = 1; if (b.pages) o.len = 1; if (b.added) days[b.added] = 1;
       (b.moods || []).forEach(function (m) { o.moods[m] = 1; }); (b.genres || []).forEach(function (g) { o.genres[g] = 1; });
       if (b.chapters === 'short' || b.way === 'dip') o.short = 1;
@@ -1049,7 +1084,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // A choice saved before that's no longer offered goes back to Any, so it can't narrow the pick out of sight.
   function fitNext(c, o) {
     if (c.tag && !o.tags[c.tag]) c.tag = '';
-    if (c.room && !o.rooms[c.room]) c.room = '';
+    if (c.room) c.room = Object.keys(o.rooms).filter(function (r) { return placeKey(r) === placeKey(c.room); })[0] || '';
     if (c.genre && !o.genres[c.genre]) c.genre = '';
     if (!o.kind) c.kind = ''; if (!o.pace) c.pace = ''; if (!o.short) c.short = false; if (!o.len) c.len = '';
     if (!o.leans.some(function (l) { return l[0] === c.lean; })) c.lean = '';
@@ -1174,12 +1209,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + '</span></button>';
   }
   function visible(all) {
-    var q = searchWords(UI.q);
+    var q = searchWords(UI.q), rk = UI.room && UI.room !== NOROOM ? placeKey(UI.room) : '';
     return all.filter(function (b) {
       if (UI.status === 'lent') { if (!b.loan) return false; }
       else if (UI.status === 'check') { if (!b.check) return false; }
       else if (UI.status && (b.status || 'unread') !== UI.status) return false;
-      if (UI.room && (UI.room === NOROOM ? !!b.room : b.room !== UI.room)) return false;
+      if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return false;
       if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return false;
       return !q.length || searchHit(b, q);
     });
@@ -1193,14 +1228,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   function render() {
     showStore();
-    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, rooms = Object.create(null), tags = Object.create(null), noRoom = 0;
+    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, tags = Object.create(null), noRoom = 0;
     all.forEach(function (b) {
       counts[b.status || 'unread']++; if (b.loan) counts.lent++; if (b.check) counts.check++;
-      if (b.room) rooms[b.room] = (rooms[b.room] || 0) + 1; else noRoom++;
+      if (!b.room) noRoom++;
       (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; });
     });
+    // Each room once, however its books spell it, under the spelling most of them use (see place()).
+    var at = placeIndex(all), rooms = placeNames(at.rooms);
     if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check) UI.status = '';
-    if (UI.room && UI.room !== NOROOM && !rooms[UI.room] || UI.room === NOROOM && !noRoom) UI.room = '';
+    if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
+    if (UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
     // Reading and Read show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
     // phone the row doesn't spend itself on zeros before the chips that count.
@@ -1210,7 +1248,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
     $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
-    var rk = Object.keys(rooms).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
+    var rk = Object.keys(rooms).map(function (k) { return rooms[k]; }).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
     $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
     $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
     $('tagSel').innerHTML = '<option value="">All tags</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
@@ -1246,8 +1284,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var html = '';
     if (sort === 'shelf') {
       var groups = [], g = null;
-      vis.forEach(function (b) { var k = where(b) || 'Not shelved yet'; if (!g || g.k !== k) groups.push(g = { k: k, bs: [] }); g.bs.push(b); });
-      groups.forEach(function (g) { html += '<h3 class="grp">' + esc(g.k) + ' <span class="n">' + g.bs.length + '</span></h3>' + g.bs.map(row).join(''); });
+      // A shelf is one heading however its books spell it (they sort together), spelled as most of the library's books do.
+      vis.forEach(function (b) {
+        var k = keys(b).rk + '\u0001' + keys(b).sk;
+        if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
+        g.bs.push(b);
+      });
+      groups.forEach(function (g) { html += '<h3 class="grp">' + esc(g.name) + ' <span class="n">' + g.bs.length + '</span></h3>' + g.bs.map(row).join(''); });
     } else html = vis.map(row).join('');
     L.innerHTML = html;
   }
@@ -1344,6 +1387,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function opts(list, v, blank) { return (blank != null ? '<option value="">' + blank + '</option>' : '') + list.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
   function datalist(id, vals) { return '<datalist id="' + id + '">' + vals.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>'; }
   function distinct(f) { var s = Object.create(null); live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
+  // The rooms (or shelves) to suggest in a field: each place once, as most books spell it.
+  function places(k) {
+    var c = Object.create(null), n; live(DOC).forEach(function (b) { if (b[k]) c[b[k]] = (c[b[k]] || 0) + 1; });
+    n = placeNames(c); return Object.keys(n).map(function (x) { return n[x]; }).sort(COLL.compare);
+  }
 
   // ---------- the catalog card: one book, to add or edit ----------
   // The card's title box grows to show the whole title: as the card opens, as it's typed in, and when the screen
@@ -1395,7 +1443,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '</div></details></div></div></div>' +
       '<div class="ft">' + (isNew ? storeFlag() + '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
         : '<button class="btn danger" type="button" id="f-del">Remove from library</button><span class="grow"></span><button class="btn primary" type="button" id="bkx2">Done</button>') + '</div>' +
-      datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
+      datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
       function () { if (!isNew) flush(); });
 
     function v(id) { return $(id).value; }
@@ -1426,6 +1474,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (k in n) next[k] = n[k]; else delete next[k]; // a field emptied in the form is dropped, as cleanBook would
         changed = true;
       });
+      // A room or shelf typed in is saved as the other books spell that place (the field keeps what was typed).
+      if (n.room !== shown.room || n.shelf !== shown.shelf) placed(next, placeIndex(live(DOC).filter(function (x) { return x.id !== b.id; })));
       if (changed) { b = putBook(next) || b; shown = n; }
     }
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
@@ -1525,6 +1575,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var n = read();
       if (!n) { $('f-title').focus(); toast('A book needs a title'); return; }
       if (!n.added) n.added = today();
+      placed(n, placeIndex(live(DOC)));
       var dup = findDup(dupIndex(DOC), n);
       n = putBook(n); closeSheet();
       toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy' + (dup.room ? ' in ' + dup.room : '') : 'Added “' + short(n.title) + '”');
@@ -1641,6 +1692,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       dupKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
       return { b: b, dup: null, twin: twin, on: true, mine: false };
     });
+    // Shelve them in starts out as the library spells the batch's room and shelf.
+    var home = placeIndex(live(DOC)), room = place(batch.room, home.rooms);
+    batch = Object.assign({}, batch, { room: room, shelf: place(batch.shelf, home.shelves[placeKey(room)]) });
     var bulk = { room: batch.room, shelf: batch.shelf }, nc = rows.filter(function (r) { return r.b.check; }).length;
     // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
     function num(n) { return n.toLocaleString('en-US'); }
@@ -1670,7 +1724,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft">' + storeFlag() + '<span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
-      datalist('dl-room', distinct(function (x) { return x.room; })) + datalist('dl-shelf', distinct(function (x) { return x.shelf; })));
+      datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')));
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
       $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
@@ -1700,12 +1754,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function () {
-      var now = Date.now(), added = today(), n = 0, first = null, checks = 0;
+      var now = Date.now(), added = today(), n = 0, first = null, checks = 0, home = placeIndex(live(DOC));
       rows.forEach(function (r, i) {
         if (!r.on) return;
-        // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order.
-        var b = cleanBook(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || added }), bulk, batch)); if (!b) return;
-        DOC.books[b.id] = b; n++; first = first || b; if (b.check) checks++;
+        // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
+        // goes where the library already spells its room and shelf, or where a book before it in the batch went.
+        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || added }), bulk, batch), home)); if (!b) return;
+        DOC.books[b.id] = b; n++; first = first || b; if (b.check) checks++; countPlace(home, b);
       });
       if (!n) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
