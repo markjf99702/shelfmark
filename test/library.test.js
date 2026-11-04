@@ -1136,6 +1136,10 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       ['I can see these on the shelf, sorted by colour.\nLet me know if you want them listed by author.', 'refused', 'sentences with "by" in them'],
       ['Top shelf:\n1. Middlemarch — George Eliot\n2. Emma — Jane Austen\nBottom shelf: lots by Dickens\n', 'Middlemarch / George Eliot; Emma / Jane Austen', 'a heading with "by" in it, beside a numbered list'],
       ['1. Middlemarch by George Eliot\n2. Emma by Jane Austen\n```json\n{"books": [{"title": "Walden"}]}\n```', 'Walden / ', 'Claude\'s JSON in the same reply wins over its list'],
+      ['1. Emma by Jane Austen, 1815\n2. Walden by Henry David Thoreau, 1st edition', 'Emma / Jane Austen; Walden / Henry David Thoreau', 'a year or an edition after a comma isn\'t an author'],
+      // JSON from Claude with a slip in it doesn't read, and is refused as before, not opened as books named "title".
+      ['Here they are:\n{\n  "shelfmark": 1,\n  "batch": {\n    "books": [\n      {"title": "Death by Black Hole", "authors": ["Neil deGrasse Tyson"]},\n      {"title": "Emma", "authors": ["Jane Austen"]},\n    ]\n  }\n}', 'refused', 'JSON with a comma too many'],
+      ['```json\n{\n  "books": [\n    {\n      "title": "Middlemarch",\n      "authors": ["George Eliot"],\n      "publisher": "Penguin",\n      "year": 1871,\n    },\n  ]\n}\n```', 'refused', 'JSON a key a line, with a comma too many'],
     ]) eq(await titlesOf(text), want, 'a pasted list: ' + what);
   }
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');

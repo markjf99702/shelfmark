@@ -996,15 +996,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 
   // A plain list of books, the way any Claude answers a photo of a shelf without the skill: a book a line, as "Title by
   // Author" or "Title — Author" (an en dash, or a hyphen with spaces round it, too), numbered, bulleted or neither.
-  // Markdown's ** and _ and quotes round a title come off, and so do words after the author (" — a novel of…").
+  // Markdown's ** and _ and quotes round a title come off, and so do words after the author (" — a novel of…", ", 1871").
   // In brackets at the end of a line, "check: …" is what to check and "translated by …" a translator; a year is left
   // out (it's most likely when the book was written, not the year printed in this copy) and anything else goes in the
   // notes. When two or more lines are numbered or bulleted, only those are books, so the words before and after the list
-  // aren't taken for one; either way an author starts with a capital and doesn't end like a sentence. Fewer than two
-  // books isn't a list: [] then. Each comes as {title, authors, check, notes}, to clean like any book from Claude.
+  // aren't taken for one; either way an author starts with a capital, has a letter in it and doesn't end like a sentence.
+  // A line of JSON ("title": "Middlemarch",) isn't a book: JSON from Claude with a slip in it, so it didn't read, is
+  // refused as before, not opened as books named "title" and "authors". Fewer than two books isn't a list: [] then.
+  // Each comes as {title, authors, check, notes}, to clean like any book from Claude.
   var LIST_MARK = /^[ \t]*(?:\d{1,4}[.)]|[-*+•‣◦–—]|\(\d{1,4}\))[ \t]+/;
   function listBook(line) {
     var marked = LIST_MARK.test(line), s = line.replace(LIST_MARK, '').replace(/\s+/g, ' ').trim(), check = '', notes = [], also = [], title, who, m;
+    if (/^[{\[]|"[^"]*"\s*:\s*(?:["\[{\d-]|true\b|false\b|null\b)/.test(s)) return null;
     while ((m = /[ \t]*[(\[]([^()\[\]]*)[)\]][ \t]*[.,;]?[ \t]*$/.exec(s)) && m.index > 0) {
       var g = m[1].replace(/[*_]/g, '').trim(), c = /^(?:check|unsure|not sure|uncertain)\b[:\s—–-]*/i.exec(g), tr = /^(translated|trans\.|tr\.|edited|ed\.)(?:\s+by)?\s+(.+)$/i.exec(g);
       s = s.slice(0, m.index).trim();
@@ -1024,11 +1027,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (k > 0) { title = head.slice(0, k); who = head.slice(k + 4); } else if (d) { title = s.slice(0, d.index); who = s.slice(d.index + d[0].length); } else return null;
     }
     title = title.replace(/^[\s*_]+|[\s*_,:;]+$/g, '');
-    who = who.replace(/[—–].*$| - .*$/, '').replace(/,\s+\p{Ll}.*$/u, '').replace(/^[\s*_]+|[\s*_,;]+$/g, '');
+    who = who.replace(/[—–].*$| - .*$/, '').replace(/,\s+(?:\p{Ll}|\d).*$/u, '').replace(/^[\s*_]+|[\s*_,;]+$/g, '');
     if (marked) who = who.replace(/\.$/, '');
     if (!title || !who || /[:?!]$/.test(who) || /\.$/.test(who) && !/(?:^|[\s.])(?:\p{Lu}|Jr|Sr)\.$/u.test(who)) return null;
     if (/^(?:\?+|(?:author )?(?:unknown|unclear|illegible))/i.test(who)) who = '';
-    else if (/^\p{Ll}/u.test(who) || who.split(' ').length > 12 || !marked && title.split(' ').length > 15) return null;
+    else if (/^\p{Ll}/u.test(who) || !/\p{L}/u.test(who) || who.split(' ').length > 12 || !marked && title.split(' ').length > 15) return null;
     // "Terry Pratchett and Neil Gaiman" is two authors; "Will and Ariel Durant" stays one.
     var two = who.split(' and ');
     if (two.length > 1 && two.every(function (x) { return x.indexOf(' ') > 0; })) who = two.join(', ');
