@@ -2594,6 +2594,10 @@ step('the wishlist: its own chip, out of the counts and What to read next, found
     assert.deepEqual(await titles(page), ['Piranesi', 'Middlemarch'], 'a book on the wishlist is in the list');
     assert.equal(await page.textContent('#count'), '2 books');
     assert.deepEqual(await page.$$eval('#chips .chip', els => els.map(e => e.getAttribute('aria-label'))), ['All, 2', 'Unread, 2', 'Wishlist, 1']);
+    await page.click('#setBtn');
+    assert.match(await page.locator('#sheet p', { hasText: 'in this browser' }).textContent(), /^2 books and 1 on your wishlist in this browser\./);
+    await page.click('#stx');
+    await page.waitForTimeout(450);
     // A search, as in a shop: does Shelfmark have it, or was it meant to be bought?
     await page.fill('#q', 'circe');
     await until(async () => (await titles(page)).length === 1, 'the search');
