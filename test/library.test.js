@@ -569,6 +569,31 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     eq(bad, { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 }, 'over 600 random libraries: no two copies of a book, none of one read or being read but as a reread, and a volume waits only for its own set');
   }
   {
+    // Each choice offered, made on its own with each kind offered, brings a pick, or says what would: a detail books
+    // haven't got yet, or a box to tick.
+    const P = ['slow', 'medium', 'fast'], M = ['funny', 'dark', 'tense', 'reflective'], G = ['history', 'fantasy', 'poetry'];
+    let dead = 0, tried = 0, eg = '';
+    for (let k = 0; k < 300; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: 1 + Math.floor(r() * 9) }, (_, i) => ({ id: 'o' + i, t: 1, title: 'Book ' + i, authors: [any(['Ann Lee', 'Bo Chen'])],
+        status: any(['', '', '', 'read']), rating: any([0, 5]), loan: r() < 0.1 ? { to: 'Sam' } : null, way: any(['', '', 'dip', 'browse']), kind: any(['', 'fiction', 'nonfiction', 'poetry']),
+        pace: any(['', ...P]), pages: any([0, 120, 300, 600]), chapters: any(['', 'short', 'long']), room: any(['', 'Den', 'Hall']), tags: any([[], ['sf'], ['gift']]),
+        moods: any([undefined, [any(M)]]), genres: any([undefined, [any(G)]]) })) }));
+      const ticks = { reread: r() < 0.3, browse: r() < 0.3 };
+      const kinds = [''].concat(Object.keys(S.nextOffers(all, S.cleanNext(ticks)).fit.kinds));
+      for (const kind of kinds) {
+        const f = S.nextOffers(all, S.cleanNext({ ...ticks, kind })).fit;
+        const each = [...Object.keys(f.moods).map(m => ({ moods: [m] })), ...Object.keys(f.genres).map(genre => ({ genre })), ...Object.keys(f.paces).map(pace => ({ pace })),
+          ...Object.keys(f.lens).map(len => ({ len })), ...Object.keys(f.rooms).map(room => ({ room })), ...Object.keys(f.tags).map(tag => ({ tag })), ...(f.short ? [{ short: true }] : [])];
+        for (const x of each) {
+          const c = S.cleanNext({ ...ticks, kind, ...x }), deal = S.dealNext(all, c, rng(k), {}, now);
+          tried++;
+          if (!deal.pool && !/left out|tick Include/.test(S.nextNotes(deal, c, false).join(' '))) { dead++; eg = eg || JSON.stringify({ kind, x, ticks }); }
+        }
+      }
+    }
+    check(tried > 1000 && !dead, 'every choice offered, on its own with each kind, brings a pick or says what would (' + dead + ' of ' + tried + ' don’t' + (eg ? ', e.g. ' + eg : '') + ')');
+  }
+  {
     // Offers and a deal, as the sheet works them out after each choice tapped, are quick in a big library.
     const all = S.live(S.cleanDoc({ books: Array.from({ length: 3000 }, (_, i) => ({ id: 'q' + i, t: 1, title: any(['The Book of ', 'Notes on ', '']) + 'Thing ' + Math.floor(i / 2) + any(['', ', Book 2', ': A Tale', ', Volume III']),
       authors: [any(['Ann Lee', 'Bo Chen', 'Cy Dee'])], status: any(['', '', 'read', 'reading']), rating: any([0, 5]), kind: any(['', 'fiction', 'nonfiction']), moods: any([undefined, ['funny'], ['dark', 'tense']]),
@@ -676,6 +701,36 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     eq(offered({ kind: 'nonfiction' }), [['informative', 'reflective'], ['history']], 'a cookbook’s genre waits until books you browse are in');
     eq(offered({ kind: 'nonfiction', browse: true }), [['informative', 'reflective'], ['food', 'history']], 'and then it’s offered');
     eq(offered({ kind: 'poetry', moods: ['funny'], genre: 'humor' }), [['funny', 'reflective'], ['humor']], 'a mood or genre already chosen stays, to be taken off');
+    {
+      // Every other choice follows the kind too: a pace, length, room or tag only books of another kind have would give nothing.
+      const two = S.live(S.cleanDoc({ books: [{ id: 'l', t: 1, title: 'Leaves of Grass', authors: ['Walt Whitman'], kind: 'poetry', room: 'Den', way: 'dip' },
+        { id: 'd', t: 1, title: 'Dracula', authors: ['Bram Stoker'], kind: 'fiction', pace: 'fast', pages: 400, room: 'Hall', tags: ['gothic'], chapters: 'long' }] }));
+      const fit = c => { const f = S.nextOffers(two, S.cleanNext(c)).fit; return [f.kinds, f.paces, f.lens, f.rooms, f.tags, f.short].map(x => typeof x === 'object' ? Object.keys(x).sort() : x); };
+      eq(fit({}), [['fiction', 'poetry'], ['fast'], ['medium'], ['Den', 'Hall'], ['gothic'], true], 'with any kind, everything the books have is offered');
+      eq(fit({ kind: 'poetry' }), [['fiction', 'poetry'], [], [], ['Den'], [], false], 'with poetry chosen, no pace, length, tag or Short chapters the poems haven’t got, and only their room');
+      eq(fit({ kind: 'fiction' }), [['fiction', 'poetry'], ['fast'], ['medium'], ['Hall'], ['gothic'], false], 'and the same for fiction');
+      eq(fit({ kind: 'poetry', pace: 'fast', len: 'medium', room: 'hall', tag: 'gothic', short: true }), [['fiction', 'poetry'], ['fast'], ['medium'], ['Den', 'Hall'], ['gothic'], true], 'a choice already made stays, to be taken off');
+      const onlyFiction = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', kind: 'fiction', pace: 'slow', pages: 100 }, { id: 'b', t: 1, title: 'B', kind: 'nonfiction', pages: 900, loan: { to: 'Sam' } }] }));
+      const saved = S.cleanNext({ kind: 'nonfiction', pace: 'fast', len: 'long' }), o = S.nextOffers(onlyFiction, saved);
+      eq([Object.keys(o.fit.kinds), Object.keys(o.fit.paces), Object.keys(o.fit.lens), S.fitNext(saved, o)].map(x => x.kind == null ? x : [x.kind, x.pace, x.len]), [['fiction'], ['slow'], ['short'], ['', '', '']],
+        'but a kind, pace or length saved before that no book on hand has goes back to Any');
+    }
+    {
+      // A choice only a four- or five-star read has is offered once rereads are in, and the notes say how to bring it.
+      const fav = S.live(S.cleanDoc({ books: [{ id: 'm', t: 1, title: 'Middlemarch', authors: ['George Eliot'] },
+        { id: 'p', t: 1, title: 'Pride and Prejudice', authors: ['Jane Austen'], status: 'read', rating: 5, moods: ['funny'] },
+        { id: 'e', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 4, moods: ['funny', 'lighthearted'] },
+        { id: 'w', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], moods: ['reflective', 'funny'] }] }));
+      const moodsOf = c => Object.keys(S.nextOffers(fav, S.cleanNext(c)).fit.moods).sort();
+      eq([moodsOf({}), moodsOf({ reread: true })], [['funny', 'reflective'], ['funny', 'lighthearted', 'reflective']], 'a mood only rereads have waits until rereads are in');
+      const say = (c, lib = fav) => S.nextNotes(S.dealNext(lib, S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false).join(' ');
+      eq(say({ moods: ['funny'] }), 'From 1 unread book that matches. 1 book without reading details is left out. 2 of your 4- and 5-star reads match too: tick Include rereads under More choices.',
+        'books you’d reread that match are counted, with how to include them');
+      eq(say({ moods: ['funny'], reread: true }), 'From 3 books that match. 1 book without reading details is left out.', 'and aren’t once they’re in');
+      eq(say({ moods: ['lighthearted'] }), '1 book without reading details is left out. 1 of your 4- and 5-star reads matches: tick Include rereads under More choices. Try fewer of them.', 'one, when nothing else matches');
+      const lent = S.live(S.cleanDoc({ books: [{ id: 'm', t: 1, title: 'Middlemarch' }, { id: 'p', t: 1, title: 'Persuasion', status: 'read', rating: 5, loan: { to: 'Sam' } }] }));
+      eq([S.nextOffers(lent).reread, S.nextOffers(fav).reread], [false, true], 'Include rereads isn’t offered when the only favorite is lent out');
+    }
     const reflective = {}; for (let k = 0; k < 400; k++) { const id = S.dealNext(shelf, S.cleanNext({ moods: ['reflective', 'sad'] }), rng(500 + k), {}, now).picks[0].b.id; reflective[id] = (reflective[id] || 0) + 1; }
     check(reflective.f2 > reflective.n1 && reflective.f2 > reflective.p1, 'a book with more of the moods picked comes up more ' + JSON.stringify(reflective));
     const picky = S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now);

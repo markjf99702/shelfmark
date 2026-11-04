@@ -1322,7 +1322,7 @@ step('What to read next offers only choices that can change something', async ()
     await seed(page, [...batch, { ...PIRANESI, status: 'read', authors: ['Ann Lee'] }, { ...CRADLE, pages: 304, added: '2026-10-01' }]);
     await page.click('#nextBtn');
     assert.deepEqual(await page.$$eval('#nxCrit [data-lean]', els => els.map(e => e.textContent)), ['Surprise me', 'Waiting longest', 'Newest arrivals', 'Favorite authors']);
-    assert.equal(await page.locator('#nxCrit [data-len]').count(), 4);
+    assert.deepEqual(await page.$$eval('#nxCrit [data-len]', els => els.map(e => e.textContent)), ['Any', 'Medium'], 'Length offers only the lengths the books have');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -1331,13 +1331,14 @@ step('on a phone What to read next keeps its height, so a choice tapped stays un
   const ctx = await context();
   try {
     const page = await open(ctx);
-    await seed(page, ['Middlemarch', 'Walden', 'Persuasion', 'Ivanhoe', 'Emma'].map((title, i) => ({ id: 'h' + i, t: 1000, title, authors: ['Ann Lee'], pages: 500 + i, room: 'Den' })));
+    await seed(page, ['Middlemarch', 'Walden', 'Persuasion', 'Ivanhoe', 'Emma'].map((title, i) => ({ id: 'h' + i, t: 1000, title, authors: ['Ann Lee'], pages: i ? 500 + i : 120, moods: [i ? 'funny' : 'dark'], room: 'Den' })));
     await page.click('#nextBtn');
-    const at = () => page.$eval('#nxCrit [data-len="short"]', e => Math.round(e.getBoundingClientRect().top));
+    await page.click('#nxCrit [data-mood="dark"]');
+    const at = () => page.$eval('#nxCrit [data-len="long"]', e => Math.round(e.getBoundingClientRect().top));
     const before = await at();
-    await page.click('#nxCrit [data-len="short"]'); // nothing that short: the result shrinks to a line or two
+    await page.click('#nxCrit [data-len="long"]'); // nothing dark is that long: the result shrinks to a line or two
     assert.match(await page.textContent('#nxOut'), /Nothing matches/);
-    assert.equal(await at(), before, 'Short moved from under the finger');
+    assert.equal(await at(), before, 'Long moved from under the finger');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -1369,7 +1370,7 @@ step('Pick again brings the new pick into view, with More choices open on a narr
     await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { more: true } })));
     const kinds = ['fiction', 'nonfiction', 'poetry'], moods = ['reflective', 'funny', 'dark', 'hopeful', 'tense'], genres = ['classics', 'history', 'science', 'fantasy'];
     await seed(page, Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'], kind: kinds[i % 3], moods: [moods[i % 5]], genres: [genres[i % 4]],
-      pace: ['slow', 'fast'][i % 2], chapters: 'short', tags: ['t' + (i % 2)], room: ['Den', 'Hall'][i % 2], pages: 150 + i * 60, added: '2026-0' + (1 + i % 5) + '-01' })));
+      pace: ['slow', 'medium', 'fast'][i % 3], chapters: i % 3 ? 'short' : 'long', tags: ['t' + (i % 2)], room: ['Den', 'Hall'][i % 2], pages: 150 + i * 60, added: '2026-0' + (1 + i % 5) + '-01' })));
     await page.click('#nextBtn');
     assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), true);
     const inView = () => page.evaluate(() => {

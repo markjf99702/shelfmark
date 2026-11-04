@@ -1146,7 +1146,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // What's left out, for the notes under the pick: books that could match but haven't got a chosen detail yet (bare,
     // and which details: lacking), books without a page count that only come up under Any length (noPages), books you
-    // browse that match what was chosen (browseMatch), and how many the choices themselves rule out (ruled). Each of
+    // browse that match what was chosen (browseMatch), the same for rereads (rereadMatch), and how many the choices
+    // themselves rule out (ruled). Each of
     // these counts only books that can be suggested (hand), one copy of each, as the pool does.
     var hand = nextBooks(all, c, function () { return true; }, kin), could = hand.filter(function (b) { return couldMatch(b, c); }), lacking = [];
     var bare = could.filter(function (b) { var l = lacks(b, c); l.forEach(function (k) { if (lacking.indexOf(k) < 0) lacking.push(k); }); return l.length; });
@@ -1157,6 +1158,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       bare: bare.length, lacking: ['kind', 'moods', 'genre', 'pace', 'short'].filter(function (k) { return lacking.indexOf(k) >= 0; }), plain: bare.every(function (b) { return !hasDetails(b); }),
       ruled: hand.length - could.length, hand: hand.length,
       browseMatch: c.browse || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { browse: true }), kin).length - pool.length,
+      rereadMatch: c.reread || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { reread: true }), kin).length - pool.length,
       browsed: c.browse ? 0 : nextBooks(all, Object.assign({}, c, { browse: true }), function (b) { return b.way === 'browse'; }, kin).length,
       picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span, kin) }; })
     };
@@ -1180,6 +1182,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       n.push(plural(k, 'book') + who + ' ' + one(k, 'is', 'are') + ' left out.');
     }
     if (deal.browseMatch) n.push(plural(deal.browseMatch, 'book') + ' you browse ' + one(deal.browseMatch, 'matches', 'match') + (some ? ' too' : '') + ': tick Include books you browse under More choices.');
+    if (deal.rereadMatch) n.push(deal.rereadMatch + ' of your 4- and 5-star reads ' + one(deal.rereadMatch, 'matches', 'match') + (some ? ' too' : '') + ': tick Include rereads under More choices.');
     if (!some && deal.ruled) n.push('Try fewer of them.');
     return n;
   }
@@ -1188,32 +1191,48 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // of each, and no volume that waits for another): only the choices that can change something. Length needs page
   // counts; Waiting longest and Newest arrivals need books added on two or more days; Favorite authors needs an unread
   // book by an author you've read; moods, genres and the rest need reading details.
-  // The moods and genres offered (fit) are those of the books of the kind chosen, with books you browse only when they're
-  // in, and keep any already chosen, so it can be taken off; moods and genres are those of every book on hand.
+  // What's offered (fit) is what the books of the kind chosen have, with books you browse and rereads only when they're
+  // in: the kinds, moods, genres, paces, lengths, rooms and tags, and Short chapters when it would leave some out. So
+  // each choice offered, made on its own, brings a pick. A choice already made stays, so it can be taken off. moods,
+  // genres, tags, rooms and the rest are what every book that can be suggested has, for fitNext.
   function nextOffers(all, c, kin) {
     c = c || cleanNext({});
-    var fans = authorFans(all), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null) }, days = Object.create(null);
-    var fit = o.fit = { moods: Object.create(null), genres: Object.create(null) }, base = nextBooks(all, { reread: true, browse: true }, function () { return true; }, kin), kind;
+    var fans = authorFans(all), days = Object.create(null), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null),
+      kinds: Object.create(null), paces: Object.create(null), lens: Object.create(null) };
+    var fit = o.fit = { kinds: Object.create(null), moods: Object.create(null), genres: Object.create(null), paces: Object.create(null), lens: Object.create(null), rooms: Object.create(null), tags: Object.create(null), short: false };
+    var base = nextBooks(all, { reread: true, browse: true }, function () { return true; }, kin), kind, dip = 0, not = 0;
     // Each room once, as most of the library's books spell it.
     var rooms = placeNames(placeIndex(all).rooms);
     base.forEach(function (b) {
       (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[rooms[placeKey(b.room)]] = 1;
-      if (b.kind) o.kind = 1; if (b.pace) o.pace = 1; if (b.pages) o.len = 1; if (b.added) days[b.added] = 1;
+      if (b.kind) o.kind = o.kinds[b.kind] = 1; if (b.pace) o.pace = o.paces[b.pace] = 1; if (b.pages) o.len = o.lens[lengthOf(b.pages)] = 1; if (b.added) days[b.added] = 1;
       (b.moods || []).forEach(function (m) { o.moods[m] = 1; }); (b.genres || []).forEach(function (g) { o.genres[g] = 1; });
       if (b.chapters === 'short' || b.way === 'dip') o.short = 1;
       if (b.way === 'browse') o.browse = 1;
       if (!b.status && fanOf(b, fans)) o.loved = 1;
     });
-    kind = o.kind ? c.kind : '';
+    kind = o.kinds[c.kind] ? c.kind : '';
     base.forEach(function (b) {
-      if ((!c.browse && b.way === 'browse') || kind && b.kind !== kind) return;
+      if (!c.browse && b.way === 'browse' || !c.reread && b.status === 'read') return;
+      if (b.kind) fit.kinds[b.kind] = 1;
+      if (kind && b.kind !== kind) return;
       (b.moods || []).forEach(function (m) { fit.moods[m] = 1; }); (b.genres || []).forEach(function (g) { fit.genres[g] = 1; });
+      (b.tags || []).forEach(function (t) { fit.tags[t] = 1; }); if (b.room) fit.rooms[rooms[placeKey(b.room)]] = 1;
+      if (b.pace) fit.paces[b.pace] = 1; if (b.pages) fit.lens[lengthOf(b.pages)] = 1;
+      if (b.chapters === 'short' || b.way === 'dip') dip++; else not++;
     });
+    fit.short = !!(dip && not);
     c.moods.forEach(function (m) { if (o.moods[m]) fit.moods[m] = 1; });
     if (c.genre && o.genres[c.genre]) fit.genres[c.genre] = 1;
+    if (o.kinds[kind]) fit.kinds[kind] = 1;
+    if (o.paces[c.pace]) fit.paces[c.pace] = 1;
+    if (o.lens[c.len]) fit.lens[c.len] = 1;
+    if (c.short && o.short) fit.short = true;
+    if (c.tag && o.tags[c.tag]) fit.tags[c.tag] = 1;
+    if (c.room) Object.keys(o.rooms).forEach(function (r) { if (placeKey(r) === placeKey(c.room)) fit.rooms[r] = 1; });
     var many = Object.keys(days).length > 1;
     o.leans = LEANS.filter(function (l) { return !l[0] || (l[0] === 'loved' ? o.loved : many); });
-    o.reread = all.some(function (b) { return b.status === 'read' && b.rating >= 4; });
+    o.reread = base.some(function (b) { return b.status === 'read'; });
     return o;
   }
   // A choice saved before that's no longer offered goes back to Any, so it can't narrow the pick out of sight.
@@ -1221,7 +1240,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (c.tag && !o.tags[c.tag]) c.tag = '';
     if (c.room) c.room = Object.keys(o.rooms).filter(function (r) { return placeKey(r) === placeKey(c.room); })[0] || '';
     if (c.genre && !o.genres[c.genre]) c.genre = '';
-    if (!o.kind) c.kind = ''; if (!o.pace) c.pace = ''; if (!o.short) c.short = false; if (!o.len) c.len = '';
+    if (!o.kinds[c.kind]) c.kind = ''; if (!o.paces[c.pace]) c.pace = ''; if (!o.short) c.short = false; if (!o.lens[c.len]) c.len = '';
     if (!o.leans.some(function (l) { return l[0] === c.lean; })) c.lean = '';
     c.moods = c.moods.filter(function (m) { return o.moods[m]; });
     return c;
@@ -2091,26 +2110,29 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>').classList.add('tall');
     function meta(b) { return [byLine(b), b.year, b.pages ? plural(b.pages, 'page') : ''].filter(Boolean).join(' · '); }
-    function seg(k, name, from) {
-      return '<div class="nx-f"><span class="lbl">' + name + '</span><div class="seg" role="group" aria-label="' + name + '">' + [['', 'Any']].concat(from).map(function (o) { return '<button type="button" data-k="' + k + '" data-v="' + o[0] + '" aria-pressed="' + (c[k] === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    // A row of choices: Any and those of from that are offered (on), or nothing when none is.
+    function seg(k, name, from, on) {
+      from = from.filter(function (o) { return on[o[0]]; });
+      return !from.length ? '' : '<div class="nx-f"><span class="lbl">' + name + '</span><div class="seg" role="group" aria-label="' + name + '">' + [['', 'Any']].concat(from).map(function (o) { return '<button type="button" data-k="' + k + '" data-v="' + o[0] + '" aria-pressed="' + (c[k] === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
     }
     function select(id, name, any, vals, cur) {
       return '<label class="sr" for="' + id + '">' + name + '</label><select id="' + id + '"><option value="">' + any + '</option>' + vals.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
     }
-    // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
+    // Only the choices the library can answer are offered (nextOffers' fit): moods, genres and the rest once books have
+    // reading details, and of those, the ones the books of the kind chosen have.
     // all and kin, when given, are the library and its kinOf, worked out once for the choices and the deal together.
     function drawCrit(all, kin) {
       var has = nextOffers(all || live(DOC), c, kin); fitNext(c, has);
-      var moods = MOODS.filter(function (m) { return has.fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return has.fit.genres[g[0]]; });
-      var tk = Object.keys(has.tags).sort(COLL.compare), rk = Object.keys(has.rooms).sort(COLL.compare), favs = has.reread;
-      var html = (has.kind ? seg('kind', 'Fiction or not', KINDS) : '') +
+      var fit = has.fit, moods = MOODS.filter(function (m) { return fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return fit.genres[g[0]]; });
+      var tk = Object.keys(fit.tags).sort(COLL.compare), rk = Object.keys(fit.rooms).sort(COLL.compare), lens = LENGTHS.filter(function (o) { return !o[0] || fit.lens[o[0]]; }), favs = has.reread;
+      var html = seg('kind', 'Fiction or not', KINDS, fit.kinds) +
         (moods.length ? '<div class="nx-f"><span class="lbl">In the mood for' + (c.moods.length > 1 ? '<span class="nx-range"> · any of these</span>' : '') + '</span>' +
           '<div class="nx-moods" role="group" aria-label="In the mood for">' + moods.map(function (m) { return '<button class="chip" type="button" data-mood="' + m[0] + '" aria-pressed="' + (c.moods.indexOf(m[0]) >= 0) + '">' + m[1] + '</button>'; }).join('') + '</div></div>' : '') +
-        (has.len ? '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + LENGTHS.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '') +
-        (has.short ? '<label class="opt"><input type="checkbox" id="nxShort"' + (c.short ? ' checked' : '') + '><span>Short chapters, or easy to dip into</span></label>' : '') +
+        (lens.length > 1 ? '<div class="nx-f"><span class="lbl">Length' + (c.len ? '<span class="nx-range"> · ' + RANGES[c.len] + '</span>' : '') + '</span><div class="seg" role="group" aria-label="Length">' + lens.map(function (o) { return '<button type="button" data-len="' + o[0] + '" aria-pressed="' + (c.len === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '') +
+        (fit.short ? '<label class="opt"><input type="checkbox" id="nxShort"' + (c.short ? ' checked' : '') + '><span>Short chapters, or easy to dip into</span></label>' : '') +
         (has.leans.length > 1 ? '<div class="nx-f"><span class="lbl">Lean toward</span><div class="nx-chips" role="group" aria-label="Lean toward">' + has.leans.map(function (o) { return '<button class="chip" type="button" data-lean="' + o[0] + '" aria-pressed="' + (c.lean === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '');
       var more = (genres.length ? '<div class="nx-sel">' + select('nxGenre', 'Genre', 'Any genre', genres, c.genre) + '</div>' : '') +
-        (has.pace ? seg('pace', 'Pace', PACES) : '') +
+        seg('pace', 'Pace', PACES, fit.paces) +
         (tk.length || rk.length ? '<div class="nx-sel">' + (tk.length ? select('nxTag', 'Tag', 'Any tag', tk.map(function (t) { return [t, t]; }), c.tag) : '') + (rk.length ? select('nxRoom', 'Room', 'Any room', rk.map(function (r) { return [r, r]; }), c.room) : '') + '</div>' : '') +
         (has.browse ? '<label class="opt"><input type="checkbox" id="nxBrowse"' + (c.browse ? ' checked' : '') + '><span>Include books you browse: cookbooks, picture books, reference</span></label>' : '') +
         (favs ? '<label class="opt"><input type="checkbox" id="nxRe"' + (c.reread ? ' checked' : '') + '><span>Include rereads of 4- and 5-star books</span></label>' : '');
