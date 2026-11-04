@@ -1178,6 +1178,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     };
   }
 
+  // Pick again works through every match before repeating one. state: {seen: {id: 1} this round, round: how many rounds
+  // of repeats, shown: the ids on screen}. A deal with nothing new starts a round of repeats: it's dealt again leaving out
+  // the books on screen, so the pick changes (Pick again is there only while some book isn't on screen), and the new
+  // round starts with that deal. → {deal, state}
+  function nextDeal(all, c, rnd, state, now, kin) {
+    kin = kin || kinOf(all);
+    var seen = Object.assign(Object.create(null), state.seen), round = state.round || 0, deal = dealNext(all, c, rnd, seen, now, kin), shown = state.shown || [], skip = Object.create(null);
+    if (deal.picks.length && !deal.fresh) {
+      round++; seen = Object.create(null);
+      if (deal.pool > shown.length) { shown.forEach(function (id) { skip[id] = 1; }); deal = dealNext(all, c, rnd, skip, now, kin); }
+    }
+    shown = deal.picks.map(function (p) { seen[p.b.id] = 1; return p.b.id; });
+    return { deal: deal, state: { seen: seen, round: round, shown: shown } };
+  }
+
   // The choices that narrow the pick, each one's Any, and the button that puts it back to Any when nothing matches.
   var EASE = [['kind', { kind: '' }, 'Any kind'], ['moods', { moods: [] }, 'Any mood'], ['len', { len: '' }, 'Any length'], ['short', { short: false }, 'Any chapters'],
     ['pace', { pace: '' }, 'Any pace'], ['genre', { genre: '' }, 'Any genre'], ['tag', { tag: '' }, 'Any tag'], ['room', { room: '' }, 'Any room']];
@@ -2139,7 +2154,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
   function nextSheet() {
-    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, round = 0, ask = '', sayT = 0;
+    var c = cleanNext(PREF.next), dealt = {}, deal = null, top = 0, round = 0, ask = '', sayT = 0;
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut"></div><p class="sr" id="nxSay" aria-live="polite"></p></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>').classList.add('tall');
@@ -2187,12 +2202,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       // A details element's toggle doesn't bubble, so it's listened for here, each time the choices are drawn.
       if ($('nxMore')) $('nxMore').addEventListener('toggle', function () { c.more = this.open; PREF.next = c; savePrefs(); });
     }
-    // Pick again works through every match before repeating one. A deal with nothing new starts a round of repeats
-    // (round counts them), and every deal from then on says so, until a choice changes.
+    // Pick again works through every match before repeating one (see nextDeal). Once round says it's going round
+    // again, every deal says so, until a choice changes.
     function dealNow(all, kin) {
-      deal = dealNext(all || live(DOC), c, Math.random, seen, Date.now(), kin); top = 0;
-      if (deal.picks.length && !deal.fresh) { round++; seen = {}; }
-      deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
+      var r = nextDeal(all || live(DOC), c, Math.random, dealt, Date.now(), kin);
+      deal = r.deal; dealt = r.state; round = dealt.round; top = 0;
       drawOut();
       clearTimeout(sayT); $('nxSay').textContent = spoken();
     }
@@ -2237,7 +2251,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' + ask;
     }
     function both() { var all = live(DOC), kin = kinOf(all); drawCrit(all, kin); dealNow(all, kin); }
-    function changed() { PREF.next = c; savePrefs(); seen = {}; round = 0; both(); }
+    function changed() { PREF.next = c; savePrefs(); dealt = {}; round = 0; both(); }
     // After Pick again, a pick drawn where little or none of it shows (More choices open, a small phone, the sheet
     // scrolled past it) is brought up to just under the heading, so the book that changed is in view. A tap on a choice
     // or on one of the others doesn't move the sheet: the person is still choosing there.

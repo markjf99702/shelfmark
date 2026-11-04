@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -593,6 +593,24 @@ eq(['Den › Tall bookcase', 'Living room › Right bookcase, cow figurine shelf
       if (ids.some(a => ids.some(b => copy(a, b)))) bad.deal++;
     }
     eq(bad, { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 }, 'over 600 random libraries: no two copies of a book, none of one read or being read but as a reread, and a volume waits only for its own set');
+  }
+  {
+    // Pick again, tapped over and over as the sheet does it: the pick always changes, and each round shows every match
+    // before the next one starts.
+    let same = 0, missed = 0, taps = 0;
+    for (let n = 4; n <= 12; n++) for (let k = 0; k < 40; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, t: 1, title: 'Book ' + i, authors: ['Ann Lee'] })) }));
+      const rnd = rng(n * 100 + k), c = S.cleanNext({});
+      let state = {}, top = null, inRound = new Set(), round = 0;
+      for (let t = 0; t < 25; t++) {
+        const r = S.nextDeal(all, c, rnd, state, now), ids = r.deal.picks.map(p => p.b.id);
+        if (r.state.round !== round) { if (inRound.size !== n) missed++; inRound = new Set(); round = r.state.round; }
+        ids.forEach(id => inRound.add(id));
+        if (t && ids[0] === top) same++;
+        top = ids[0]; state = r.state; taps++;
+      }
+    }
+    eq([same, missed], [0, 0], 'Pick again never brings back the same pick, and every round shows every match (' + taps + ' taps)');
   }
   {
     // Each choice offered, made on its own with each kind offered, brings a pick, or says what would: a detail books

@@ -1353,9 +1353,11 @@ step('Pick again says it\'s going round again on every repeat, and a tap on anot
     assert.doesNotMatch(await note(), /round again/);
     await page.click('#nxAgain'); // the two not shown yet, and one again
     assert.doesNotMatch(await note(), /round again/);
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < 8; k++) {
+      const was = await page.textContent('.nx-pick .nx-t');
       await page.click('#nxAgain');
       assert.match(await note(), /Going round again: you’ve seen all 5\./, 'deal ' + (k + 3) + ' is a repeat and doesn\'t say so');
+      assert.notEqual(await page.textContent('.nx-pick .nx-t'), was, 'deal ' + (k + 3) + ' kept the same pick');
     }
     await page.click('.nx-alt >> nth=0');
     assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.className), 'nx-t');
