@@ -1086,13 +1086,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var w = leanWeights(pool, c, fans);
     return c.moods.length ? w.map(function (x, i) { return x * moodsMet(pool[i], c); }) : w;
   }
+  // Waiting longest and Newest arrivals pull toward a day, not a book: each day's pull is shared among the books added
+  // that day, so five books added last week stand out from 250 catalogued in one go (a book with no date counts as
+  // added on a day of its own, halfway).
   function leanWeights(pool, c, fans) {
     if (c.lean === 'oldest' || c.lean === 'newest') {
-      var seen = {}; pool.forEach(function (b) { if (b.added) seen[b.added] = 1; });
-      var days = Object.keys(seen).sort();
+      var seen = {}; pool.forEach(function (b) { seen[b.added || ''] = (seen[b.added || ''] || 0) + 1; });
+      var days = Object.keys(seen).filter(Boolean).sort();
       return pool.map(function (b) {
         var p = b.added && days.length > 1 ? days.indexOf(b.added) / (days.length - 1) : 0.5; // 0 the earliest added, 1 the latest
-        return Math.exp(4 * (c.lean === 'oldest' ? 1 - p : p));
+        return Math.exp(4 * (c.lean === 'oldest' ? 1 - p : p)) / seen[b.added || ''];
       });
     }
     if (c.lean === 'loved') return pool.map(function (b) { var l = fondness(fanOf(b, fans)); return l >= 4 ? 12 : l >= 3 ? 4 : l >= 2 ? 2 : 1; });

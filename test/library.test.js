@@ -360,6 +360,16 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
   }
   const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
   check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
+  {
+    // Waiting longest and Newest arrivals pull toward a day, not a book: five books added last week stand out from 256
+    // catalogued in one go, and the other way round.
+    const t0 = Date.now(), days = (a, b) => S.live(S.cleanDoc({ books: [...Array.from({ length: a }, (_, i) => ({ id: 'a' + i, t: 1, title: 'Old ' + i, added: '2026-09-26' })),
+      ...Array.from({ length: b }, (_, i) => ({ id: 'b' + i, t: 1, title: 'New ' + i, added: '2026-11-01' }))] }));
+    const share = (lib, lean, day) => { let n = 0; for (let k = 0; k < 1000; k++) if (S.dealNext(lib, S.cleanNext({ lean }), rng(3000 + k), {}, now).picks[0].b.added === day) n++; return n / 1000; };
+    const most = days(256, 5), few = days(5, 256);
+    const got = [share(most, 'newest', '2026-11-01'), share(most, 'oldest', '2026-09-26'), share(few, 'oldest', '2026-09-26'), share(few, 'newest', '2026-11-01')];
+    check(got.every(x => x >= 0.9), 'the first pick comes from the newest day, or the oldest, nine times in ten, however many books each day has ' + JSON.stringify(got) + ' in ' + (Date.now() - t0) + ' ms');
+  }
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
   check(S.dealNext(two, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).even, 'books all added the same day weigh the same');
   eq(S.dealNext(two, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).fans, 0, 'and none by authors you have read is reported');
