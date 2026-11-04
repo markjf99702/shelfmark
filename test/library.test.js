@@ -386,6 +386,9 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     const oneRead = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read' }, { title: 'Ivanhoe', authors: ['Walter Scott'], isbn: '9780140436587' }, { title: 'Emma', authors: ['Jane Austen'] }]);
     check(deals(oneRead).every(d => d.every(t => !/^Ivanhoe/.test(t))), 'neither copy of a book you’ve read is offered');
     eq(S.dealNext(lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'reading' }, { title: 'Emma', authors: ['Jane Austen'] }]), S.cleanNext({}), rng(1), {}, now).pool, 0, 'nor of one you’re reading');
+    // Already read it marks the pick Read, with no stars: it never comes up again, rereads or not.
+    const marked = lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'read' }, { title: 'Walden', authors: ['Henry David Thoreau'] }, { title: 'Ivanhoe', authors: ['Walter Scott'] }, { title: 'Middlemarch', authors: ['George Eliot'] }]);
+    check([deals(marked, {}, 300), deals(marked, { reread: true }, 300)].every(ds => ds.every(d => !d.includes('Emma'))), 'a book marked read without stars never comes up again, rereads or not');
     const reread = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read', rating: 5, room: 'Den' }, { title: 'Ivanhoe', authors: ['Walter Scott'], room: 'Hall' }]);
     eq(deals(reread, { reread: true }, 50).map(d => d.join()).filter((x, i, a) => a.indexOf(x) === i), ['Ivanhoe @ Den'], 'with rereads, the five-star copy comes back, and only it');
     const lent = lib([{ title: 'Emma', authors: ['Jane Austen'], room: 'Den', loan: { to: 'Sam' } }, { title: 'Emma', authors: ['Jane Austen'], room: 'Hall' }]);

@@ -342,6 +342,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin:2px 0 0;outline:none}
 .nx-t .s{color:var(--ink2);font-weight:400}
+.nx-done{align-self:flex-start;margin:4px 0 0 -11px}
 .nx-why{margin:6px 0 6px;padding:0;list-style:none;display:grid;gap:5px}
 .nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
 .nx-why li::before{content:"";position:absolute;left:2px;top:.5em;width:5px;height:5px;border-radius:50%;background:var(--brass)}
@@ -2220,7 +2221,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
         (dl ? '<span class="nx-dl">' + esc(dl) + '</span>' : '') +
         (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
-        '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span></div></div>' +
+        '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span>' +
+        (b.status === 'read' ? '' : '<button class="btn sm quiet nx-done" type="button" id="nxRead">Already read it</button>') + '</div></div>' +
         (p.length > 1 ? '<div class="nx-alts"><h3 class="lbl">Or one of these</h3>' + p.map(function (x, i) {
           if (i === top) return '';
           var w = x.b.blurb || x.why[0];
@@ -2258,6 +2260,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('nxOut').addEventListener('click', function (e) {
       if (e.target.closest('#nxBackup')) { backup(); return; }
+      if (e.target.closest('#nxRead')) { readIt(!e.detail); return; }
       // A choice put back to Any, or every one (Clear these choices). From the keyboard, the keyboard goes on to the pick
       // that comes up, or after Clear these choices to the first choice.
       var x = e.target.closest('[data-ease],#nxClear');
@@ -2274,6 +2277,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut();
       var t = $('nxOut').querySelector('.nx-t'); if (t) try { t.focus(); } catch (x) { }
     });
+    // Already read it: the pick is marked Read (and with it every copy of the book drops out), and the sheet deals
+    // again, still working through the books not shown yet. Undo puts the status back. From the keyboard, the keyboard
+    // goes to the new pick's title.
+    function readIt(kb) {
+      var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
+      var was = b.status || '', next = function () { var o = $('nxOut'); return o ? o.querySelector('.nx-t') || o.querySelector('button') || $('sheetTitle') : rowOf(b.id); };
+      putBook(Object.assign({}, b, { status: 'read' }));
+      both();
+      if (kb) refocus(next());
+      toast('Marked “' + short(b.title) + '” as read', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return next(); }, false, next);
+    }
     $('nxx').addEventListener('click', closeSheet);
     // From the keyboard, Pick again puts the keyboard on the new pick's title, as a tap on one of the others does.
     $('nxAgain').addEventListener('click', function (e) {

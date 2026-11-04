@@ -1416,6 +1416,33 @@ step('What to read next says each pick in a line for screen readers, and Pick ag
   } finally { await ctx.close(); }
 });
 
+step('Already read it marks the pick Read and deals again, and Undo puts it back', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [MIDDLEMARCH, PIRANESI, CRADLE, { id: 'b09', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Den' }, { id: 'b10', t: 1000, title: 'Emma', authors: ['Jane Austen'] }]);
+    await page.click('#nextBtn');
+    const ids = { Middlemarch: 'b04', Piranesi: 'b03', 'Cat\u2019s Cradle': 'b05', Walden: 'b09', Emma: 'b10' };
+    const was = await page.textContent('.nx-pick .nx-t'), id = ids[was];
+    await page.focus('#nxRead');
+    await page.keyboard.press('Enter');
+    assert.equal((await storedBook(page, id)).status, 'read');
+    assert.equal(await sheetOpen(page), true, 'the sheet closed');
+    const now = await page.textContent('.nx-pick .nx-t');
+    assert.notEqual(now, was, 'the same book is still the pick');
+    assert.equal(await page.evaluate(() => document.activeElement.className), 'nx-t', 'the keyboard isn\'t on the new pick');
+    assert.match(await page.textContent('#toastTx'), new RegExp('^Marked \u201c' + was + '\u201d as read$'));
+    assert.match(await page.textContent('#nxOut > .note'), /^From 4 unread books on hand\./);
+    await page.click('#toastBtn');
+    assert.equal((await storedBook(page, id)).status, undefined, 'Undo didn\'t make it unread again');
+    // Read with a tap this time: deal after deal, the book read never comes back.
+    const gone = await page.textContent('.nx-pick .nx-t');
+    await page.click('#nxRead');
+    for (let k = 0; k < 6; k++) { assert.ok(!(await page.$$eval('#nxOut .nx-t, #nxOut .nx-alt .bk-t', els => els.map(e => e.textContent))).includes(gone)); await page.click('#nxAgain'); }
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
   try {
