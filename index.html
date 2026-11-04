@@ -186,6 +186,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .bdg{display:inline-flex;align-items:center;gap:4px;border-radius:5px;padding:1px 6px;font:600 11.5px var(--sans);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .bdg.reading{background:var(--brass-soft);color:var(--brass)}
 .bdg.read{background:var(--green-soft);color:var(--green)}
+.bdg.aside{background:var(--surface2);color:var(--ink2);box-shadow:inset 0 0 0 1px var(--line2)}
 .bdg.lent{background:var(--accent-soft);color:var(--accent)}
 .bdg.check{border:1px dashed var(--accent);color:var(--accent)}
 .bk-ck{font-size:13px;line-height:1.35;color:var(--accent);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
@@ -582,6 +583,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   var SCOPE = 'https://www.googleapis.com/auth/drive.file';
   var LS = 'shelfmark.library', LSP = 'shelfmark.prefs', LSD = 'shelfmark.drive';
   var STATUSES = [['unread', 'Unread'], ['reading', 'Reading'], ['read', 'Read']];
+  // A book set aside (one given up) keeps the status it had, with aside set: an older Shelfmark, which doesn't know aside,
+  // drops it and shows the book as it was. Here it's a fourth status, which the list and the card show (statusOf).
+  var SHOWN = STATUSES.concat([['aside', 'Set aside']]);
   var FORMATS = [['hardcover', 'Hardcover'], ['paperback', 'Paperback'], ['mass-market', 'Mass-market paperback'], ['board', 'Board book'], ['leather', 'Leather-bound'], ['other', 'Other']];
   var CONDITIONS = [['fine', 'Fine'], ['very-good', 'Very good'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor']];
   // Reading details: what kind of book it is and what reading it is like, for What to read next. Claude fills them in
@@ -637,6 +641,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function pick(v, list) { v = str(v, 40).toLowerCase(); for (var i = 0; i < list.length; i++) if (list[i][0] === v || list[i][1].toLowerCase() === v) return list[i][0]; return ''; }
   function label(v, list) { for (var i = 0; i < list.length; i++) if (list[i][0] === v) return list[i][1]; return ''; }
   function labels(vs, list) { return (vs || []).map(function (v) { return label(v, list); }); }
+  function statusOf(b) { return b.aside ? 'aside' : b.status || 'unread'; }
   function uid() {
     var a = new Uint8Array(9), s = 'b';
     (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function (_, i) { a[i] = Math.random() * 256; });
@@ -710,7 +715,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5), finished: day(o.finished),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
       edition: str(o.edition, 120), signed: yes(o.signed), first: yes(o.first), condition: pick(o.condition, CONDITIONS),
-      added: day(o.added), check: str(o.check, 300),
+      added: day(o.added), check: str(o.check, 300), aside: yes(o.aside),
       kind: pick(o.kind, KINDS), genres: picks(o.genres, GENRES, 4), moods: picks(o.moods, MOODS, 4), pace: pick(o.pace, PACES),
       chapters: pick(o.chapters, CHAPTERS), way: pick(o.way, WAYS), blurb: str(o.blurb, 300)
     };
@@ -991,7 +996,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function toCsv(d) {
     var rows = live(d).sort(authorOrder).map(function (b) {
-      return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(b.status || 'unread', STATUSES), b.rating, b.finished,
+      return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(statusOf(b), SHOWN), b.rating, b.finished,
         b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check,
         label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), labels(b.moods, MOODS).join(', '), label(b.pace, PACES), label(b.chapters, CHAPTERS), label(b.way, WAYS), b.blurb].map(csvCell).join(',');
     });
@@ -1064,7 +1069,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       kind: pick(o.kind, KINDS), moods: picks(o.moods, MOODS, MOODS.length), genre: pick(o.genre, GENRES), pace: pick(o.pace, PACES),
       short: !!o.short, browse: !!o.browse, more: !!o.more };
   }
-  function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
+  function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && !b.aside && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
   var ANY_DETAILS = { kind: '', moods: [], genre: '', pace: '', short: false };
   function picky(c) { return !!(c.kind || c.moods.length || c.genre || c.pace || c.short); }
   function narrowed(c) { return !!(c.len || c.tag || c.room || picky(c)); }
@@ -1084,11 +1089,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     kin = kin || kinOf(all);
     var out = [], g, b, best, read, i, j;
     for (i = 0; i < kin.groups.length; i++) {
-      if (kin.reading[i]) continue;
+      if (kin.reading[i] || kin.aside[i]) continue;
       g = kin.groups[i]; read = kin.read[i]; best = null;
       for (j = 0; j < g.length; j++) {
         b = g[j];
-        if (b.loan || !c.browse && b.way === 'browse' || (read ? !(c.reread && b.status === 'read' && b.rating >= 4) : b.status || kin.waits[b.id]) || !ok(b)) continue;
+        if (b.loan || b.aside || !c.browse && b.way === 'browse' || (read ? !(c.reread && b.status === 'read' && b.rating >= 4) : b.status || kin.waits[b.id]) || !ok(b)) continue;
         if (hasDetails(b)) { best = b; break; }
         if (!best) best = b;
       }
@@ -1097,8 +1102,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return out;
   }
   // The copies of each book (findDup's rule), and the volumes of each set, of a library's books.
-  // groups: [[copy, …], …], in the order the books come, with whether a copy of each is being read (reading) or read
-  // (read). A book with no rest after its title (see titleParts) is a copy of the first one with its head and a rest,
+  // groups: [[copy, …], …], in the order the books come, with whether a copy of each is being read (reading), read
+  // (read) or set aside (aside: given up, so none of it is suggested). A book with no rest after its title (see titleParts) is a copy of the first one with its head and a rest,
   // if there is one, or else of the first with its head alone. sets: {set: {number: {read, word}}}; vol: {id: the
   // book's volume}; waits: {id: true} for a volume with an earlier one in the library that isn't read. Asked again for
   // the same books, unchanged (each choice tapped in What to read next), it gives what it gave last time.
@@ -1106,7 +1111,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function kinOf(all) {
     var L = KINLAST, n = all.length, i, k;
     if (L.kin && L.all.length === n) {
-      for (i = 0; i < n && all[i] === L.all[i] && all[i].status === L.st[i] && all[i].t === L.t[i]; i++);
+      for (i = 0; i < n && all[i] === L.all[i] && statusOf(all[i]) === L.st[i] && all[i].t === L.t[i]; i++);
       if (i === n) return L.kin;
     }
     var up = [], first = new Map(), parts = all.map(kinParts), sets = Object.create(null), vol = Object.create(null), waits = Object.create(null);
@@ -1119,21 +1124,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (k.fk) { join(i, k.fk); if (!first.has(k.rk)) first.set(k.rk, i); }
     }
     for (i = 0; i < n; i++) { k = parts[i]; if (!k.fk) join(i, first.has(k.rk) ? k.rk : k.ek); }
-    var groups = [], reading = [], read = [], at = [], r, g, b, v, s, x;
+    var groups = [], reading = [], read = [], aside = [], at = [], r, g, b, v, s, x, st;
     for (i = 0; i < n; i++) at.push(-1);
     for (i = 0; i < n; i++) {
       b = all[i]; r = top(i); v = parts[i].v;
-      if (at[r] < 0) { at[r] = groups.length; groups.push([]); reading.push(false); read.push(false); }
-      g = at[r]; groups[g].push(b);
-      if (b.status === 'reading') reading[g] = true; else if (b.status === 'read') read[g] = true;
+      if (at[r] < 0) { at[r] = groups.length; groups.push([]); reading.push(false); read.push(false); aside.push(false); }
+      g = at[r]; groups[g].push(b); st = statusOf(b);
+      if (st === 'reading') reading[g] = true; else if (st === 'read') read[g] = true; else if (st === 'aside') aside[g] = true;
       if (!v) continue;
       vol[b.id] = v; s = sets[v.set] || (sets[v.set] = Object.create(null));
       x = s[v.n] || (s[v.n] = { read: false, word: v.word });
-      if (b.status === 'read') x.read = true;
+      if (st === 'read') x.read = true;
     }
     for (var id in vol) { v = vol[id]; s = sets[v.set]; for (x in s) if (+x < v.n && !s[x].read) { waits[id] = true; break; } }
-    L = { groups: groups, reading: reading, read: read, sets: sets, vol: vol, waits: waits };
-    KINLAST = { all: all.slice(), st: all.map(function (b) { return b.status; }), t: all.map(function (b) { return b.t; }), kin: L };
+    L = { groups: groups, reading: reading, read: read, aside: aside, sets: sets, vol: vol, waits: waits };
+    KINLAST = { all: all.slice(), st: all.map(statusOf), t: all.map(function (b) { return b.t; }), kin: L };
     return L;
   }
   // A book's ISBN, titleParts and volume, worked out once and kept while its ISBN, title, subtitle and first author
@@ -1191,7 +1196,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function authorFans(all) {
     var f = {};
     all.forEach(function (b) {
-      if (b.status !== 'read') return;
+      if (statusOf(b) !== 'read') return;
       (b.authors || []).forEach(function (a) {
         var k = authorKey(a); if (!k) return;
         var x = f[k] || (f[k] = { name: a, n: 0, one: b, best: null });
@@ -1473,7 +1478,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     persist(); render(); if (n) toast(n > 1 ? 'Took them back out' : 'Took it back out');
   }
   // What Add a book starts with. The title is the search that found nothing (Add “…”), or its ISBN when it is one; the
-  // status is Reading or Read while that chip is chosen; the room is the one chosen in the room menu, or else the room
+  // status is Reading, Read or Set aside while that chip is chosen; the room is the one chosen in the room menu, or else the room
   // and shelf of the last book added by hand this visit (kept in memory only), so a shelf goes in a book at a time.
   // Another room chosen in the menu wins, without that shelf.
   var handPlace = null;
@@ -1485,6 +1490,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     q = str(q, 300); var b = { title: '' }, i = /^[\d\s-]+[\dXx]$/.test(q) && isbn13(q), room = UI.room && UI.room !== NOROOM ? UI.room : '';
     if (i) b.isbn = i; else b.title = q;
     if (UI.status === 'reading' || UI.status === 'read') b.status = UI.status;
+    if (UI.status === 'aside') b.aside = true;
     if (handPlace) { b.room = handPlace.room; b.shelf = handPlace.shelf; }
     if (room && placeKey(room) !== placeKey(b.room || '')) { b.room = room; b.shelf = ''; }
     return b;
@@ -1566,7 +1572,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function row(b, noPlace) {
     var m = [];
     if (where(b) && !noPlace) m.push('<span class="loc">' + esc(where(b)) + '</span>');
-    if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
+    if (b.aside) m.push('<span class="bdg aside">Set aside</span>');
+    else if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
     else if (b.status === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
     if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
     // In the To check view, what to check takes the badge's place, so most can be settled at the shelf.
@@ -1582,7 +1589,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // What keeps a book out of the list: 'status' (the chip chosen), 'room', 'tag' or 'q' (the search), or '' for nothing.
   // q is the search's words, rk the room chosen's key.
   function hiddenBy(b, q, rk) {
-    if (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && (b.status || 'unread') !== UI.status) return 'status';
+    if (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && statusOf(b) !== UI.status) return 'status';
     if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return 'room';
     if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return 'tag';
     if (q.length && !searchHit(b, q)) return 'q';
@@ -1635,9 +1642,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function drawList() {
     showStore();
-    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, tags = Object.create(null), noRoom = 0;
+    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, aside: 0, lent: 0, check: 0 }, tags = Object.create(null), noRoom = 0;
     all.forEach(function (b) {
-      counts[b.status || 'unread']++; if (b.loan) counts.lent++; if (b.check) counts.check++;
+      counts[statusOf(b)]++; if (b.loan) counts.lent++; if (b.check) counts.check++;
       if (!b.room) noRoom++;
       (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; });
     });
@@ -1647,11 +1654,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
     if (UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
-    // Reading and Read show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
+    // Reading, Read and Set aside show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
     // phone the row doesn't spend itself on zeros before the chips that count.
     var chipDefs = [['', 'All'], ['unread', 'Unread']];
     if (counts.reading || UI.status === 'reading') chipDefs.push(['reading', 'Reading']);
     if (counts.read || UI.status === 'read') chipDefs.push(['read', 'Read']);
+    if (counts.aside || UI.status === 'aside') chipDefs.push(['aside', 'Set aside']);
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
     $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
@@ -1856,7 +1864,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function growTitle() { var t = $('f-title'); if (!t) return; t.style.height = 'auto'; t.style.height = t.scrollHeight + t.offsetHeight - t.clientHeight + 'px'; }
   // clear: the card is a new book kept from before (see draft), and this starts it afresh.
   function bookSheet(b, isNew, clear) {
-    var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
+    // status is what the card shows, Set aside (aside) among them; base is the status a book set aside keeps under it.
+    var st = { status: statusOf(b), base: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
       moods: (b.moods || []).slice(), genres: (b.genres || []).slice() };
     function seg(k, name, from, note) {
       return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' + (note || '') + '</div>';
@@ -1875,7 +1884,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       (isNew ? '<p class="note" id="f-dup" role="status"></p>' : '') + '</div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
-      '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + SHOWN.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
       '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">☆</button>'; }).join('') + '</div>' +
       '<label class="fl fin" id="f-finrow"><span>Finished</span><input id="f-finished" type="date" value="' + esc(b.finished || '') + '"></label></div>' +
       '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
@@ -1917,7 +1926,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return Object.assign({}, b, {
         title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
         format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
-        room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, finished: st.status === 'read' ? v('f-finished') : '', loan: to ? { to: to, since: v('f-since') } : null,
+        room: v('f-room'), shelf: v('f-shelf'), status: st.status === 'aside' ? st.base : st.status, aside: st.status === 'aside', rating: st.rating, finished: st.status === 'read' ? v('f-finished') : '', loan: to ? { to: to, since: v('f-since') } : null,
         tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check,
         kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods.slice(), genres: st.genres.slice(), blurb: $('f-blurb').value
       });
@@ -1951,9 +1960,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
     // hasn't touched since the card opened or last saved. What they're typing stays, and wins when it's saved.
     var FIELDS = ['title', 'sub', 'authors', 'isbn', 'publisher', 'year', 'pages', 'format', 'condition', 'edition', 'signed', 'first',
-      'room', 'shelf', 'status', 'rating', 'finished', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
+      'room', 'shelf', 'status', 'aside', 'rating', 'finished', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
     function put(k, x) {
-      if (k === 'status') st.status = x || 'unread';
+      if (k === 'status') { st.base = x || 'unread'; if (st.status !== 'aside') st.status = st.base; }
+      else if (k === 'aside') st.status = x ? 'aside' : st.base;
       else if (k === 'rating') st.rating = x || 0;
       else if (k === 'check') st.check = x || '';
       else if (k === 'kind' || k === 'way' || k === 'pace' || k === 'chapters') st[k] = x || '';
@@ -2034,14 +2044,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     panel.querySelectorAll('#f-status button').forEach(function (x) {
       x.addEventListener('click', function () {
         if (x.dataset.v === 'read' && st.status !== 'read' && !v('f-finished')) $('f-finished').value = today();
-        st.status = x.dataset.v; drawState(); later();
+        st.status = x.dataset.v; if (st.status !== 'aside') st.base = st.status; drawState(); later();
       });
     });
     // Stars given to an unread book mark it Read (a rating is for a book read). Taking them off leaves the status alone.
     panel.querySelectorAll('#f-rating button').forEach(function (x) {
       x.addEventListener('click', function () {
         st.rating = st.rating === +x.dataset.v ? 0 : +x.dataset.v;
-        if (st.rating && (!st.status || st.status === 'unread')) st.status = 'read';
+        if (st.rating && st.status === 'unread') st.status = st.base = 'read';
         drawState(); later();
       });
     });
@@ -2295,11 +2305,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added these books ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
     }
-    // What the batch says of the book, as its row in the list will: Read or Reading (Read, with "I've read all of these"
-    // ticked, for a book it doesn't say either), stars and a loan, and then a signed copy, a first edition and the format.
+    // What the batch says of the book, as its row in the list will: Read, Reading or Set aside (Read, with "I've read all
+    // of these" ticked, for a book it doesn't say any of), stars and a loan, and then a signed copy, a first edition and the format.
     function stLine(r) {
-      var b = r.b, st = b.status || (readAll ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
-      if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
+      var b = r.b, st = b.aside ? 'aside' : b.status || (readAll ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
+      if (st === 'aside') m.push('<span class="bdg aside">Set aside</span>'); else if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
       if (b.rating) m.push(stars(b.rating));
       if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
       if (ed) m.push('<span class="rv-ed">' + esc(ed) + '</span>');
@@ -2406,8 +2416,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
         // goes where the library already spells its room and shelf, or where a book before it in the batch went. "I've
-        // read all of these" marks Read each book the batch doesn't say is being read or read.
-        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }, read && !r.b.status ? { status: 'read' } : null), bulk, batch), home)); if (!b) return;
+        // read all of these" marks Read each book the batch doesn't say is being read, read or set aside.
+        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }, read && !r.b.status && !r.b.aside ? { status: 'read' } : null), bulk, batch), home)); if (!b) return;
         DOC.books[b.id] = b; n++; ids.push(b.id); if (b.check) checks++; countPlace(home, b);
       });
       if (!n) return;
@@ -2652,7 +2662,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           ? '<h3>' + (chosen(c).length > 1 ? 'Nothing matches all of these' : 'Nothing matches that') + '</h3>' + (said ? '<p>' + esc(said) + '</p>' : '') +
             (deal.easings.length ? '<div class="row nx-ease">' + deal.easings.map(function (e) { return '<button class="btn sm" type="button" data-ease="' + e.k + '">' + labels[e.k] + ' · ' + plural(e.n, 'book') + '</button>'; }).join('') + '</div>' : '') +
             '<button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
-          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
+          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read' + (live(DOC).some(function (b) { return b.aside; }) ? ', set aside' : '') + ' or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         return;
       }
       var t = p[top], b = t.b, dl = detailHtml(b);

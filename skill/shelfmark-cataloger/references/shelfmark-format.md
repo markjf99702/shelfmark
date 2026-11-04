@@ -38,6 +38,7 @@ Each book:
 | `room`, `shelf` | Free text, up to 60 characters each |
 | `status` | `unread` (the default), `reading`, `read` |
 | `rating` | 1–5. A half star rounds up: 4.5 is 5 |
+| `aside` | `true` for a book they gave up: Shelfmark shows it as Set aside and doesn't suggest it. It keeps its `status` under it |
 | `finished` | The day it was finished, `YYYY-MM-DD`, for a book that's `read`. Kept only with `"status": "read"` (the script reads a day with no status as read) |
 | `loan` | `{"to": "Sam", "since": "2026-09-01"}`: lent out, the borrower up to 80 characters, with an optional ISO date |
 | `tags` | List of short labels, up to 20, each up to 40 characters |

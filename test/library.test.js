@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, STATUSES, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -117,6 +117,9 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(['read', 'reading', '', 'unread'].map(status => S.cleanBook({ id: 'a', title: 'T', status, finished: '2026-03-14' }).finished), ['2026-03-14', undefined, undefined, undefined],
     'a finished day is kept for a book that’s read, and dropped for one being read again or unread');
   eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: 'last March' }).finished, undefined, 'and a finished day that isn’t a day is dropped');
+  // A book set aside keeps the status it had, with aside set, and shows as Set aside.
+  eq([true, 'yes', 1, false, 'no', 0].map(aside => S.cleanBook({ id: 'a', title: 'T', status: 'reading', aside })).map(b => [b.status, b.aside || false, S.statusOf(b)]),
+    [['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', false, 'reading'], ['reading', false, 'reading'], ['reading', false, 'reading']], 'a book set aside keeps its status under it, and shows as Set aside');
 }
 
 // ---------- searching ----------
@@ -190,7 +193,8 @@ function randomDoc(r, n) {
 // reading details came (aeff017) and before (149f288). It drops the fields it doesn't know without changing a book's
 // time, so there the book shows as it did before; synced back, the copy with the fields wins (newer()'s field count at
 // the same time) and they come back whole. This needs the repository's history; without it, it says so.
-const NEWER = [{ id: 'f', t: 5, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5, finished: '2026-03-14' }];
+const NEWER = [{ id: 'f', t: 5, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5, finished: '2026-03-14' },
+  { id: 'g', t: 5, title: 'Ulysses', authors: ['James Joyce'], status: 'reading', aside: true }, { id: 'h', t: 5, title: 'Moby-Dick', authors: ['Herman Melville'], aside: true }];
 for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'when reading details came']]) {
   let old = '';
   try { old = execFileSync('git', ['show', rev + ':index.html'], { cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1e8 }); } catch (e) { }
@@ -199,7 +203,7 @@ for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'w
   const lib = S.cleanDoc({ books: NEWER });
   const there = O.cleanDoc(JSON.parse(S.canon(lib)));
   eq(O.live(there).map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]), NEWER.map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]),
-    'Shelfmark as it was ' + when + ' opens a library with finished days, each book as it was, at the same time');
+    'Shelfmark as it was ' + when + ' opens a library with finished days and books set aside, each book as it was, at the same time');
   // It writes its copy back to Drive, with what it knows; here the two are merged, either way round.
   const back = S.cleanDoc(JSON.parse(O.canon(O.mergeDocs(there, O.cleanDoc(JSON.parse(S.canon(lib)))))));
   eq([S.mergeDocs(lib, back), S.mergeDocs(back, lib)], [lib, lib], 'and its copy, synced back, leaves them whole');
@@ -300,6 +304,15 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   const base = S.cleanNext({});
   eq(ids(S.nextPool(lib, base)), ['lg2', 'new', 'nop', 'old'], 'suggestions are unread books on hand: not read, being read, lent out or removed');
   eq(ids(S.nextPool(lib, S.cleanNext({ reread: true }))), ['lg1', 'lg2', 'new', 'nop', 'old'], 'rereads add read books rated four stars or more, and only those');
+  {
+    // A book set aside isn't suggested, nor is another copy of it, nor (a reread) one read before; it isn't read, either,
+    // so its author isn't one you've read.
+    const given = S.live(S.cleanDoc({ books: [{ id: 'x1', t: 1, title: 'Ulysses', authors: ['James Joyce'], aside: true }, { id: 'x2', t: 1, title: 'Ulysses', authors: ['James Joyce'] },
+      { id: 'x3', t: 1, title: 'Dubliners', authors: ['James Joyce'] }, { id: 'x4', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 5, aside: true },
+      { id: 'x5', t: 1, title: 'Persuasion', authors: ['Jane Austen'] }] }));
+    eq([ids(S.nextPool(given, base)), ids(S.nextPool(given, S.cleanNext({ reread: true })))], [['x3', 'x5'], ['x3', 'x5']], 'a book set aside, and its other copies, aren’t suggested, rereads or not');
+    eq(S.dealNext(given, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks.map(p => p.why), [[], []], 'and a book set aside isn’t one you’ve read, so its author isn’t a favorite');
+  }
   eq([S.lengthOf(0), S.lengthOf(249), S.lengthOf(250), S.lengthOf(450), S.lengthOf(451)], ['', 'short', 'medium', 'medium', 'long'], 'length bands go by page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ len: 'Short' }))), ['lg2'], 'a length leaves out books with no page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ tag: 'sf', room: 'Den' }))), ['lg2'], 'tag and room narrow it');
@@ -1046,10 +1059,10 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
       // A finished day: kept for a book that's read, a day with no status says it was read, and a book being read again drops it.
       const finIn = path.join(tmp, 'fin.json'), finDir = fs.mkdtempSync(path.join(tmp, 'fin-'));
-      fs.writeFileSync(finIn, JSON.stringify({ books: [{ title: 'Emma', status: 'read', finished: '2026-03-14' }, { title: 'Persuasion', finished: '2026-04-01' }, { title: 'Sanditon', status: 'reading', finished: '2025-01-01' }] }));
+      fs.writeFileSync(finIn, JSON.stringify({ books: [{ title: 'Emma', status: 'read', finished: '2026-03-14' }, { title: 'Persuasion', finished: '2026-04-01' }, { title: 'Sanditon', status: 'reading', finished: '2025-01-01', aside: 'yes' }] }));
       execFileSync('python3', [py, finIn, '--out', finDir, '--no-link'], { encoding: 'utf8' });
-      const fins = (await S.parseIncoming(fs.readFileSync(path.join(finDir, fs.readdirSync(finDir)[0]), 'utf8'))).batch.books.map(b => [b.status, b.finished]);
-      eq(fins, [['read', '2026-03-14'], ['read', '2026-04-01'], ['reading', undefined]], 'the script keeps the day a book was finished, as Shelfmark does');
+      const fins = (await S.parseIncoming(fs.readFileSync(path.join(finDir, fs.readdirSync(finDir)[0]), 'utf8'))).batch.books.map(b => [b.status, b.finished, b.aside]);
+      eq(fins, [['read', '2026-03-14', undefined], ['read', '2026-04-01', undefined], ['reading', undefined, true]], 'the script keeps the day a book was finished, as Shelfmark does, and a book set aside');
       // Text longer than Shelfmark keeps, and authors or tags past its limits, are cut or dropped with a warning, so the
       // end of a long review isn't lost unseen.
       const longIn = path.join(tmp, 'long.json'), longDir = fs.mkdtempSync(path.join(tmp, 'long-'));
@@ -1263,14 +1276,16 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   const csv = S.toCsv(S.cleanDoc({ books: [
     { id: 'a', t: 1, title: 'Zed, "the" book', authors: ['Amy Zane'], tags: ['x', 'y'], notes: 'line one\nline two', loan: { to: 'Sam', since: '2026-02-03' } },
     { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true, finished: '2026-03-14' },
-    { id: 'c', t: 1, del: 1 }
+    { id: 'c', t: 1, del: 1 },
+    { id: 'd', t: 1, title: 'Ulysses', authors: ['Zoe Zed'], status: 'reading', aside: true }
   ] }));
   const lines = csv.replace(/^﻿/, '').split('\r\n');
   check(lines[0].startsWith('title,subtitle,authors,isbn'), 'the spreadsheet has a header row');
   check(lines[1].startsWith('"\'=HYPERLINK(""x"")"'), 'cells that would run as formulas are defused, and books sort by author');
   check(csv.includes('"Zed, ""the"" book"') && csv.includes('"line one\nline two"'), 'commas, quotes and line breaks are quoted');
   check(!csv.includes(',c,'), 'removed books are left out');
-  { const head = lines[0].split(','), cells = lines[1].split(','); eq([cells[head.indexOf('status')], cells[head.indexOf('finished')]], ['Read', '2026-03-14'], 'a read book’s finished day has a column of its own'); }
+  { const head = lines[0].split(','), cells = lines[1].split(','); eq([cells[head.indexOf('status')], cells[head.indexOf('finished')]], ['Read', '2026-03-14'], 'a read book’s finished day has a column of its own');
+    eq(lines[3].split(',')[head.indexOf('status')], 'Set aside', 'and a book set aside says so'); }
   eq(S.csvCell('-5'), '-5', 'plain negative numbers are left alone');
   // OWASP's CSV Injection page (community.owasp.org/attacks/CSV_Injection) lists = + - @, tab, carriage return and line
   // feed, and their full-width forms, as the starts of a cell to defuse.

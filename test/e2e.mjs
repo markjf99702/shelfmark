@@ -2051,7 +2051,7 @@ step('with a mouse the small controls look as they did, and a focused choice\'s 
     const ctx = await context({ ...DESK, colorScheme });
     try {
       const page = await open(ctx);
-      await seed(page, [{ ...PIRANESI, status: 'read', rating: 3, moods: ['mysterious'] }, MIDDLEMARCH]);
+      await seed(page, [{ ...PIRANESI, status: 'read', rating: 3, moods: ['mysterious'], aside: true }, MIDDLEMARCH]);
       const box = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
       assert.deepEqual(await page.evaluate(() => getComputedStyle(document.querySelector('#chips .chip'), '::after').content), 'none', 'a chip has a tap box with a mouse');
       assert.ok((await box('.selects select:not([hidden])'))[1] < 40, 'a menu is ' + (await box('.selects select:not([hidden])'))[1] + ' tall with a mouse');
@@ -2059,11 +2059,11 @@ step('with a mouse the small controls look as they did, and a focused choice\'s 
       assert.ok((await box('#f-status button'))[1] < 34, 'a status button is ' + (await box('#f-status button'))[1] + ' tall with a mouse');
       const stars = await page.$$eval('#f-rating button', els => els.map(e => Math.round(e.getBoundingClientRect().left)));
       assert.ok(stars.slice(1).every((x, i) => x - stars[i] < 34), 'the stars moved apart with a mouse: ' + stars);
-      // From the keyboard, the chosen status (Read, the row's last) shows its ring whole, inside its round end.
-      await page.focus('#f-status button[data-v="read"]');
+      // From the keyboard, the chosen status (Set aside, the row's last) shows its ring whole, inside its round end.
+      await page.focus('#f-status button[data-v="aside"]');
       await page.keyboard.press('Shift+Tab');
       await page.keyboard.press('Tab');
-      const ring = await page.$eval('#f-status button[data-v="read"]', e => { const c = getComputedStyle(e), seg = getComputedStyle(e.parentNode); return [e.matches(':focus-visible'), c.boxShadow, seg.overflow, c.borderTopRightRadius]; });
+      const ring = await page.$eval('#f-status button[data-v="aside"]', e => { const c = getComputedStyle(e), seg = getComputedStyle(e.parentNode); return [e.matches(':focus-visible'), c.boxShadow, seg.overflow, c.borderTopRightRadius]; });
       assert.equal(ring[0], true, 'the button isn\'t focused from the keyboard');
       assert.match(ring[1], /inset.*inset/, 'no ring inside the button: ' + ring[1]);
       assert.equal(ring[2], 'visible', 'the row cuts its choices off');
@@ -2439,6 +2439,33 @@ step('Read on a card fills in today as the day it was finished, to change or emp
     assert.equal(await page.inputValue('#f-finished'), '', 'stars filled in a finished day');
     await page.click('#bkx');
     assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).finished], ['read', undefined]);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Set aside on a card gives up a book: its own chip and badge, out of What to read next, and back with another status', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [MIDDLEMARCH, { ...PIRANESI, status: 'reading' }]);
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-status button[data-v="aside"]');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).aside], ['reading', true], 'a book set aside keeps its status under it, for an older Shelfmark');
+    assert.equal(await page.textContent('#list .bk[data-id="b03"] .bdg'), 'Set aside');
+    assert.deepEqual(await page.$$eval('#chips .chip', els => els.map(e => e.getAttribute('aria-label'))), ['All, 2', 'Unread, 1', 'Set aside, 1'], 'the chips don\'t count it as set aside');
+    await page.click('#chips [data-s="aside"]');
+    assert.deepEqual(await titles(page), ['Piranesi']);
+    await page.click('#chips [data-s=""]');
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 1 unread book on hand.', 'What to read next counts the book set aside');
+    await page.click('#nxx');
+    await page.waitForTimeout(450);
+    await page.click('#list .bk[data-id="b03"]');
+    assert.equal(await page.getAttribute('#f-status button[data-v="aside"]', 'aria-pressed'), 'true');
+    await page.click('#f-status button[data-v="unread"]');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).aside], [undefined, undefined], 'Unread didn\'t take it back');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

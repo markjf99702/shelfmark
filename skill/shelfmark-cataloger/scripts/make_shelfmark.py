@@ -316,6 +316,7 @@ def clean(b, i, warn):
         out['status'] = 'read'
     if out['status'] != 'read':
         out['finished'] = ''
+    out['aside'] = yes(b.get('aside'))  # a book they gave up: Shelfmark shows it as Set aside
     loan = b.get('loan') if isinstance(b.get('loan'), dict) else {'to': b.get('lent_to') or b.get('lentTo')} if b.get('lent_to') or b.get('lentTo') else None
     if loan and s(loan.get('to'), 80):
         out['loan'] = {'to': s(loan.get('to'), 80)}
