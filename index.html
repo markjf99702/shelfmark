@@ -877,14 +877,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // What a library file (a backup, say) can put back that merging alone doesn't, because the newer change wins: the books
   // in it removed here since (gone, their ids), and for the books in both, the fields blank here but set in the file
   // (fill, {id: [fields]}), such as reading details an older Shelfmark dropped. Only what describes a book is filled:
-  // its read, lent, checked and wishlist state, and its stars, are as they were last set. A book on the wishlist gets no place.
+  // its read, lent, checked and wishlist state, and its stars, are as they were last set. A place is filled as a whole, for a
+  // book with neither room nor shelf (so one moved since to a room with no shelf isn't given the old room's shelf), and a
+  // book on the wishlist gets none.
   var FILL = DETAILS.concat(['pages', 'sub', 'authors', 'isbn', 'publisher', 'year', 'format', 'edition', 'condition', 'room', 'shelf', 'tags', 'notes', 'added']);
   function restorable(mine, file) {
     var merged = mergeDocs(mine, file), gone = [], fill = Object.create(null);
     live(file).forEach(function (b) {
       var m = merged.books[b.id], ks;
       if (m.del) { gone.push(b.id); return; }
-      ks = FILL.filter(function (k) { return m[k] == null && b[k] != null && !(m.wanted && (k === 'room' || k === 'shelf')); });
+      ks = FILL.filter(function (k) { return m[k] == null && b[k] != null && (k !== 'room' && k !== 'shelf' || !m.wanted && m.room == null && m.shelf == null); });
       if (ks.length) fill[b.id] = ks;
     });
     return { gone: gone, fill: fill };

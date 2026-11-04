@@ -132,6 +132,11 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq([S.canon(S.mergeDocs(back, now)), S.canon(S.mergeDocs(now, back))], [S.canon(back), S.canon(back)], 'what was put back wins over the copy from before, both ways round');
   const late = S.restore(S.cleanDoc({ books: [{ id: 'w', t: 5000, del: 1 }] }), backup, true, false, 1000);
   eq(late.books.w.t, 5001, 'a book removed with a time later than now (another device\'s clock) comes back just after it');
+  // A place is filled as a whole: a book moved since to a room with no shelf doesn't get the shelf it had in the old room.
+  const moved = S.cleanDoc({ books: [{ id: 'm', t: 20, title: 'Middlemarch', room: 'Bedroom' }, { id: 'n', t: 20, title: 'Nostromo', shelf: 'Top' }, { id: 'o', t: 20, title: 'Orlando' }] });
+  const placedBefore = S.cleanDoc({ books: [{ id: 'm', t: 10, title: 'Middlemarch', room: 'Den', shelf: 'Top' }, { id: 'n', t: 10, title: 'Nostromo', room: 'Den', shelf: 'Top' }, { id: 'o', t: 10, title: 'Orlando', room: 'Den', shelf: 'Top' }] });
+  eq(S.restorable(moved, placedBefore).fill, { o: ['room', 'shelf'] }, 'a room and shelf are filled in only together, for a book with neither');
+  eq(['m', 'n', 'o'].map(id => { const b = S.restore(moved, placedBefore, false, true, 1000).books[id]; return [b.room, b.shelf]; }), [['Bedroom', undefined], [undefined, 'Top'], ['Den', 'Top']], 'so a book in another room keeps no shelf from the old one');
 }
   eq(S.cleanBook({ id: '123', title: 'T' }).id, 'b123', 'numeric ids get a letter so key order stays stable');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
