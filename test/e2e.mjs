@@ -2527,6 +2527,8 @@ step('Reading now comes first: Finished marks a book read today, with Undo and R
     assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).rating, (await storedBook(page, 'b03')).finished], ['read', 4, today]);
     // From the keyboard: Finished, then Undo, which puts it back and the keyboard on its Finished again.
     await page.waitForTimeout(450);
+    // Closed, the card Rate it opened gives the keyboard to the book's row, not to the page's start.
+    assert.deepEqual(await page.evaluate(() => [document.activeElement.dataset.id, !!document.activeElement.dataset.now]), ['b03', false], 'closing the card from Rate it lost the keyboard');
     await page.focus('[data-fin="b05"]');
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'toastBtn', 'the keyboard isn\'t on Undo');

@@ -1523,9 +1523,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (aside) toast('Set aside “' + short(old.title) + '”', 'Undo', undo, kb, back);
     else toast('Marked “' + short(old.title) + '” as read', 'Undo', undo, kb, back, 'Rate it', function () { return rateIt(id); });
   }
-  // Rate it: the book's card, with the keyboard on its stars (on the stars given, or the first).
+  // Rate it: the book's card, with the keyboard on its stars (on the stars given, or the first). The card is opened from
+  // the book's row in the list, so closed, it gives the keyboard back there rather than to the toast, which has gone.
   function rateIt(id) {
-    var b = DOC.books[id]; if (!b || b.del) return null;
+    var b = DOC.books[id], r = rowOf(id); if (!b || b.del) return null;
+    if (r) try { r.focus({ preventScroll: true }); } catch (e) { }
     bookSheet(Object.assign({}, b), false);
     var s = $('f-rating').querySelector('[aria-pressed="true"]') || $('f-rating').querySelector('button');
     try { s.focus(); } catch (e) { }
