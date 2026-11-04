@@ -1373,6 +1373,11 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const grDig = await imported(grIn, 'goodreads', '--keep-ebooks');
       eq(grDig.batch.books.filter(b => b.format === 'other').map(b => [b.title, b.edition, b.added]), [['A Screen Read', 'Kindle Edition', '2020-01-05'], ['Heard on a Train', 'Audible Audio', undefined]], 'with --keep-ebooks they come in, the binding as their edition');
       check(/Left out: 1 on the to-read shelf with no copy owned\. To put them on the wishlist, run again with --keep-unowned\./.test(grDig.said), 'and only the to-read shelf is left out: ' + grDig.said);
+      // "ebook" as a word of its own: a Notebook or a Picturebook binding is on a shelf, an E-book isn't.
+      const grWords = path.join(tmp, 'goodreads_words.csv');
+      fs.writeFileSync(grWords, table([GR, row(GR, { Title: 'A Picture Book', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'Picturebook' }),
+        row(GR, { Title: 'A Blank Book', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'Notebook' }), row(GR, { Title: 'On a Screen', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'E-book' })], ','));
+      eq((await imported(grWords, 'goodreads')).batch.books.map(b => b.title), ['A Picture Book', 'A Blank Book'], 'a Notebook or Picturebook binding isn\'t taken for an e-book, and an E-book is');
       const ltOut = await imported(ltIn, 'librarything');
       eq(ltOut.batch.books, [
         { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, format: 'paperback', status: 'read', rating: 5, finished: '2024-12-01', loan: { to: 'Sam', since: '2026-08-01' },

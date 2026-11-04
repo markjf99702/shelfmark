@@ -446,7 +446,8 @@ def stars(v):
 
 
 # E-books and audiobooks, as Goodreads's Binding and LibraryThing's Media name them: not on a shelf in the house.
-DIGITAL = re.compile(r'(?i)kindle|e-?book|nook|kobo|audio|audible|mp3|digital|electronic')
+# "ebook" as a word of its own, so a Notebook or a Picturebook isn't one.
+DIGITAL = re.compile(r'(?i)kindle|\be-?book|nook|kobo|audio|audible|mp3|digital|electronic')
 
 
 def binding(v):
