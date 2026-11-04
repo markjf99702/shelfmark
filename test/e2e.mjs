@@ -112,14 +112,24 @@ function detailsLink(books) {
 }
 
 // Open Library, faked: every search finds a work whose cover id counts up from 1001. Searches after the first
-// take `slow` ms to answer, to have lookups on their way at a chosen moment.
+// take `slow` ms to answer, to have lookups on their way at a chosen moment. Look it up's /api/books answers from
+// ol.isbns after ol.lookupMs (never, for Infinity; ol.lookupFail drops the connection). ol.referers has the Referer
+// each request carried.
 const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 async function fakeOpenLibrary(ctx, slow = 0) {
-  const ol = { searches: 0 };
+  const ol = { searches: 0, isbns: {}, lookupMs: 0, lookupFail: false, lookups: 0, referers: [] };
   const cors = { 'Access-Control-Allow-Origin': '*' };
   await ctx.route('https://openlibrary.org/**', async r => {
     const u = new URL(r.request().url());
+    ol.referers.push(r.request().headers()['referer'] || '');
     try {
+      if (u.pathname === '/api/books') {
+        const key = u.searchParams.get('bibkeys') || '', x = ol.isbns[key.replace('ISBN:', '')];
+        ol.lookups++;
+        if (ol.lookupFail) return await r.abort();
+        await (ol.lookupMs === Infinity ? new Promise(() => {}) : wait(ol.lookupMs));
+        return await r.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify(x ? { [key]: x } : {}) });
+      }
       if (u.pathname !== '/search.json') return await r.fulfill({ contentType: 'application/json', headers: cors, body: '{"entries":[]}' });
       const n = ++ol.searches;
       if (n > 1 && slow) await wait(slow);
@@ -970,6 +980,86 @@ step('the privacy page links lead somewhere else', async () => {
     assert.ok(links.length > 4);
     assert.deepEqual(links.filter(([, href]) => href.split('#')[0] === self), [], 'a link on the privacy page goes to the privacy page');
     assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+// Look it up, by a book's ISBN, with Open Library faked (lookups are on only when turned on in Settings).
+const KARAMAZOV = { id: 'k1', t: 1000, title: 'The Brothers Karamazov', authors: ['Fyodor Dostoevsky'], isbn: '9780140449242', added: '2026-10-01', room: 'Study' };
+const WALDEN = { id: 'w1', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], added: '2026-10-01', room: 'Study' };
+const KARAMAZOV_OL = { title: 'The Brothers Karamazov: A Novel in Four Parts and an Epilogue, Translated with an Introduction and Notes', publishers: [{ name: 'Penguin Classics' }], publish_date: '2003', number_of_pages: 796, authors: [{ name: 'Fyodor Dostoevsky' }] };
+async function withLookups(page, books) {
+  await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ sort: 'author', lookups: true })));
+  await seed(page, books);
+}
+
+step('Look it up stays with its own card, fills in only what\'s blank and says what, and shows a long title whole', async () => {
+  const ctx = await context();
+  const ol = await fakeOpenLibrary(ctx);
+  ol.isbns['9780140449242'] = KARAMAZOV_OL;
+  try {
+    const page = await open(ctx);
+    await withLookups(page, [KARAMAZOV, WALDEN]);
+    // The answer comes after the card was closed and another book's opened: it goes nowhere.
+    ol.lookupMs = 1500;
+    await page.click('#list .bk[data-id="k1"]');
+    await page.click('details.more:has(#f-isbn) > summary');
+    await page.click('#f-look');
+    await page.keyboard.press('Escape');
+    await page.click('#list .bk[data-id="w1"]');
+    await page.click('details.more:has(#f-isbn) > summary');
+    await until(() => ol.lookups === 1, 'the lookup to be asked');
+    await wait(2200);
+    assert.deepEqual(await page.evaluate(() => ['f-isbn', 'f-publisher', 'f-year', 'f-pages'].map(id => document.getElementById(id).value)), ['', '', '', ''], 'the other book\'s card was filled in');
+    assert.doesNotMatch(await page.textContent('#toastTx'), /Filled/);
+    await page.click('#bkx');
+    await wait(500);
+    assert.deepEqual(await storedBook(page, 'w1'), WALDEN, 'the answer was saved into another book');
+    // A new book: the long title from Open Library shows whole, and the toast says what was filled in.
+    ol.lookupMs = 100;
+    await page.click('#addBtn');
+    await page.fill('#f-isbn', '0140449248');
+    await page.click('#f-look');
+    await until(() => page.$eval('#f-title', e => e.value !== ''), 'the title to be filled in', 5000);
+    assert.equal(await page.inputValue('#f-title'), KARAMAZOV_OL.title);
+    assert.equal(await page.$eval('#f-title', e => e.scrollHeight <= e.clientHeight + 2), true, 'the long title is cut off');
+    assert.equal(await page.textContent('#toastTx'), 'Filled in the title, author, publisher, year and pages');
+    assert.equal(await page.inputValue('#f-isbn'), '9780140449242');
+    // Asked again with every field filled, it says there was nothing to add.
+    await page.fill('#f-pages', '800');
+    await page.click('#f-look');
+    await until(() => page.$eval('#f-look', e => !e.disabled), 'the lookup to finish', 5000);
+    assert.equal(await page.textContent('#toastTx'), 'Open Library had nothing to add');
+    assert.equal(await page.inputValue('#f-pages'), '800', 'a filled field was written over');
+    // What goes to Open Library doesn't say where it came from.
+    assert.ok(ol.referers.length >= 3, 'Open Library was asked ' + ol.referers.length + ' times');
+    assert.deepEqual(ol.referers.filter(Boolean), [], 'a request to Open Library carried the page\'s address');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Look it up that gets no answer, or loses the connection, says so and gives the button back', async () => {
+  const ctx = await context();
+  await ctx.clock.install();
+  const ol = await fakeOpenLibrary(ctx);
+  try {
+    const page = await open(ctx);
+    await withLookups(page, [KARAMAZOV]);
+    await page.click('#list .bk[data-id="k1"]');
+    await page.click('details.more:has(#f-isbn) > summary');
+    ol.lookupMs = Infinity;
+    await page.click('#f-look');
+    await until(() => ol.lookups === 1, 'the lookup to be asked');
+    assert.deepEqual(await page.$eval('#f-look', e => [e.disabled, e.textContent]), [true, 'Looking…']);
+    await ctx.clock.fastForward(21000);
+    await until(() => page.$eval('#f-look', e => !e.disabled), 'the button to come back', 5000);
+    assert.equal(await page.textContent('#f-look'), 'Look it up');
+    assert.equal(await page.textContent('#toastTx'), 'Couldn’t reach Open Library. Try again in a moment.');
+    ol.lookupFail = true;
+    await page.click('#f-look');
+    await until(() => page.$eval('#f-look', e => !e.disabled), 'the button to come back', 5000);
+    assert.equal(await page.textContent('#toastTx'), 'Couldn’t reach Open Library. Try again in a moment.');
+    assert.equal(await page.inputValue('#f-title'), 'The Brothers Karamazov');
+    assert.deepEqual(page.problems.filter(p => !/ERR_FAILED|Failed to fetch/.test(p)), []);
   } finally { await ctx.close(); }
 });
 

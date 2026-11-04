@@ -1413,7 +1413,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function fetchCover(c) {
     var round = coverRound, ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
-    var opt = ctl ? { signal: ctl.signal } : {}, get = function (u) { return fetch(u, opt).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
+    // Nothing but the search goes to Open Library: not the page's address either.
+    var opt = { signal: ctl ? ctl.signal : undefined, referrerPolicy: 'no-referrer' }, get = function (u) { return fetch(u, opt).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
     get('https://openlibrary.org/search.json?' + c.q + '&fields=key,title,cover_i&limit=1').then(function (j) {
       var w = j && j.docs && j.docs[0];
       if (!w || !/^\/works\/OL\d+W$/.test(w.key || '')) return 0;
@@ -1928,15 +1929,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       box.querySelectorAll('button').forEach(function (x) { x.hidden = cur.indexOf(fold(x.dataset.t)) >= 0; any = any || !x.hidden; });
       box.hidden = !any;
     }
+    // Look it up fills in the fields that are blank, and says which. An answer that comes once its card has closed goes
+    // nowhere: by then the fields could be another book's, in the next card opened.
     if ($('f-look')) $('f-look').addEventListener('click', function () {
       var btn = this, i = isbn13(v('f-isbn'));
       if (!i) { toast('That ISBN doesn’t check out. It’s 10 or 13 digits, usually above the barcode.'); return; }
       btn.disabled = true; btn.textContent = 'Looking…';
       lookup(i).then(function (r) {
+        if (!panel.isConnected) return;
         if (!r) { toast('Open Library doesn’t know that ISBN'); return; }
-        [['f-title', r.title], ['f-sub', r.sub], ['f-authors', r.authors.join(', ')], ['f-publisher', r.publisher], ['f-year', r.year || ''], ['f-pages', r.pages || '']].forEach(function (p) { if (!$(p[0]).value.trim() && p[1]) $(p[0]).value = p[1]; });
-        $('f-isbn').value = i; head(); later(); toast('Filled in what was blank');
-      }).catch(function () { toast('Couldn’t reach Open Library'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
+        var did = [];
+        [['f-title', r.title, 'title'], ['f-sub', r.sub, 'subtitle'], ['f-authors', r.authors.join(', '), r.authors.length > 1 ? 'authors' : 'author'], ['f-publisher', r.publisher, 'publisher'],
+          ['f-year', r.year || '', 'year'], ['f-pages', r.pages || '', 'pages']].forEach(function (p) { if (!$(p[0]).value.trim() && p[1]) { $(p[0]).value = p[1]; did.push(p[2]); } });
+        $('f-isbn').value = i; head(); growTitle(); later();
+        toast(did.length ? 'Filled in the ' + did.slice(0, -1).join(', ') + (did.length > 1 ? ' and ' : '') + did[did.length - 1] : 'Open Library had nothing to add');
+      }).catch(function () { if (panel.isConnected) toast('Couldn’t reach Open Library. Try again in a moment.'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
     });
     $('bkx').addEventListener('click', closeSheet); $('bkx2').addEventListener('click', closeSheet);
     if (isNew) $('f-add').addEventListener('click', function () {
@@ -1953,13 +1960,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
   }
 
-  // Open Library, only when the person has turned lookups on in Settings.
+  // Open Library, only when the person has turned lookups on in Settings. It's sent the ISBN and nothing else (not the
+  // page's address), and a request that hasn't answered in 20 seconds is given up, as a cover's is.
   function lookup(i) {
-    return fetch('https://openlibrary.org/api/books?bibkeys=ISBN:' + i + '&format=json&jscmd=data').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+    var ctl = window.AbortController ? new AbortController() : null, stop = setTimeout(function () { if (ctl) ctl.abort(); }, 20000), opt = { referrerPolicy: 'no-referrer' };
+    if (ctl) opt.signal = ctl.signal;
+    return fetch('https://openlibrary.org/api/books?bibkeys=ISBN:' + i + '&format=json&jscmd=data', opt).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+      clearTimeout(stop);
       var x = j && j['ISBN:' + i]; if (!x) return null;
       var y = /\d{4}/.exec(x.publish_date || '');
       return { title: str(x.title, 300), sub: str(x.subtitle, 300), authors: (x.authors || []).map(function (a) { return str(a.name, 120); }).filter(Boolean), publisher: str(((x.publishers || [])[0] || {}).name, 120), year: y ? +y[0] : 0, pages: int(x.number_of_pages, 0, 50000) };
-    });
+    }, function (e) { clearTimeout(stop); throw e; });
   }
 
   // ---------- bringing books in ----------
