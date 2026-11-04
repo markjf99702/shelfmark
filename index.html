@@ -792,13 +792,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // stable, and so does one named like something every object has ("constructor").
   function bookId(v) { var id = str(v, 40).replace(/[^\w-]/g, ''); return (/^\d+$/.test(id) ? 'b' + id : ownKey(id)).slice(0, 40); }
   // The last moment a JavaScript date can be (ECMA-262 §21.4.1.1, Time Values and Time Range), so a book’s time is a date.
-  var MAX_T = 8.64e15;
+  // A time is a book's last change, in ms. One from a damaged or hand-made file can be far in the future, or past the
+  // last moment a date can hold (MAX_T); that one comes in as the end of the year 9999 (FAR_T), well below MAX_T, so a
+  // change made after it (stamp() gives it a later time) still fits, and an edit or removal made after it wins.
+  var MAX_T = 8.64e15, FAR_T = Date.UTC(9999, 11, 31);
   // Every book that comes in — from storage, Drive, a file or a link — goes through here, so the rest of
   // the page can trust its shape. Empty fields are dropped to keep the library file small. Cleaning a clean book
   // gives it back as it was.
   function cleanBook(o) {
     if (!o || typeof o !== 'object') return null;
-    var id = bookId(o.id), t = +o.t > 0 ? Math.floor(Math.min(+o.t, MAX_T)) : 0;
+    var id = bookId(o.id), t = +o.t > 0 ? (+o.t >= MAX_T ? FAR_T : Math.floor(+o.t)) : 0;
     if (o.del) return id ? { id: id, t: t, del: 1 } : null;
     var title = str(o.title, 300); if (!title) return null;
     // With no valid ISBN, the first number in the field is kept as typed (some books have none, or an odd one).

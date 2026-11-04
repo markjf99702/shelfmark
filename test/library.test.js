@@ -92,8 +92,15 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     const ent = S.cleanDetails({ details: { books: [{ id: 'constructor', title: 'A', kind: 'fiction' }, { id: 'valueOf', title: 'Nothing here', kind: 'fiction' }] } });
     eq(S.matchDetails(doc, ent).map(r => r.bs.map(b => b.id)), [['bconstructor'], []], 'a details entry with such an id finds its book, and one not here finds nothing');
     eq(S.cleanBook({ id: 'a', title: 'T', tags: ['constructor', 'toString', '__proto__'] }).tags, ['constructor', 'toString', '__proto__'], 'tags like "constructor" are kept');
-    const far = S.cleanBook({ id: 'a', t: 1e17, title: 'T' });
-    eq([far.t, new Date(far.t).getTime()], [8.64e15, 8.64e15], 'a time past the last day a date can be is brought back to it');
+    const far = S.cleanBook({ id: 'a', t: 1e17, title: 'T' }), end = Date.UTC(9999, 11, 31);
+    eq([far.t, new Date(far.t).getTime(), S.cleanBook({ id: 'a', t: 8.64e15, title: 'T' }).t], [end, end, end], 'a time past the last day a date can be (or at it, as an older Shelfmark kept one) comes in as the end of 9999');
+    // A later change still wins over a book with such a time: a removal, or an edit that takes a field off, stamped from it.
+    for (const t of [1e17, 8.64e15, 5e15]) {
+      const was = S.cleanDoc({ books: [{ id: 'a', t, title: 'T', authors: ['Ann Lee'], notes: 'x' }] }), at = was.books.a.t;
+      const gone = S.cleanDoc({ books: [{ id: 'a', t: Math.max(Date.now(), at + 1), del: 1 }] }), edit = S.cleanDoc({ books: [{ id: 'a', t: Math.max(Date.now(), at + 1), title: 'T', authors: ['Ann Lee'] }] });
+      eq([S.mergeDocs(was, gone).books.a, S.mergeDocs(gone, was).books.a], [gone.books.a, gone.books.a], 'a removal made after a time of ' + t + ' wins, both ways round');
+      eq([S.mergeDocs(was, edit).books.a, S.mergeDocs(edit, was).books.a], [edit.books.a, edit.books.a], 'and so does an edit that takes a field off');
+    }
     const pool = S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'constructor', t: 1, title: 'A' }, { id: 'b', t: 1, title: 'B' }] })), S.cleanNext({}), rng(1), JSON.parse('{"bconstructor": 1}'), Date.now());
     eq(pool.picks.map(p => p.b.id), ['b', 'bconstructor'], 'what to read next skips a book with such an id once it has been shown');
   }
