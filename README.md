@@ -26,7 +26,7 @@
 - **Add from photos.** Claude reads spines, covers, barcodes and copyright pages and makes a Shelfmark link. Opening it shows the list first. There you can:
   - fix titles and authors;
   - put the whole batch on one shelf;
-  - see books you already own, which are unticked;
+  - see books you already own, which are unticked (another edition, when the ISBNs differ), and another volume of a set you have, which stays ticked with a note;
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right.
 - **Reading details.** Claude can add what each book is like: fiction, nonfiction or poetry; genres; moods (funny, tense, reflective…); pace; chapter length; whether it's read cover to cover, dipped into, or browsed (cookbooks, picture books, reference); a line about it; and a page count where there's none. Ask Claude with the Shelfmark skill, and it reads your library (from Drive, or a backup you send) and hands back a link. Opening it shows the list, then fills in only what each book doesn't have yet. Each book's card has a **Reading details** section to change them by hand.

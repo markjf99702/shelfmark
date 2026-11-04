@@ -647,16 +647,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var i = w.length - 1; while (i > 1 && PARTICLES.test(w[i - 1])) i--;
     return w.slice(i).join(' ');
   }
-  // The part before any colon, without a leading article, plus every number in the whole title: "The Hobbit: or There
-  // and Back Again" matches "The Hobbit", but "Heartstopper: Volume 2" doesn't match Volume 1.
+  // For a cover: the part before any colon, without a leading article, plus every number in the whole title, so an
+  // edition titled "The Hobbit: or There and Back Again" is The Hobbit's.
   function titleKey(t) { var f = fold(t); return f.split(':')[0].replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, '') + '#' + (f.match(/\d+/g) || []).join('.'); }
-  function dupKeys(b) {
-    var k = [], i = isbn13(b.isbn);
-    if (i) k.push('i:' + i);
-    k.push('t:' + titleKey(b.title) + '|' + fold(surname((b.authors || [])[0] || '')).replace(/[^a-z]/g, ''));
-    return k;
+  // Whether two books are the same book. They are when their ISBNs agree, or when their first authors' surnames agree
+  // and so do their titles: the head (the part before any colon, without a leading article), every number in the
+  // title, and the rest (the part after the colon, or else the subtitle), unless one of them has no rest. So "The
+  // Hobbit" is "The Hobbit: or There and Back Again", and a book is the same with or without its subtitle, but "The
+  // Lantern Cycle: Second Dark" isn't "The Lantern Cycle: First Light", nor Volume 2 Volume 1: the volumes of a set
+  // are books of their own. Only letters and digits count, in any script. The skill's script keeps the same rule (keys()).
+  function bare(s) { return s.trim().replace(/^(the|a|an)\s+/, '').replace(/[^\p{L}\p{N}]+/gu, ''); }
+  function titleParts(b) {
+    var f = fold(b.title), i = f.indexOf(':'), who = fold(surname((b.authors || [])[0] || '')).replace(/[^\p{L}]+/gu, '');
+    return { t: bare(i < 0 ? f : f.slice(0, i)) + '#' + (f.match(/\d+/g) || []).join('.') + '|' + who, rest: bare(i < 0 ? fold(b.sub) : f.slice(i + 1)) };
   }
-  function dupIndex(d) { var ix = {}; live(d).forEach(function (b) { dupKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
+  // A book in the library is filed under its ISBN, its head (h:), and its head with its rest (f:) or, having none,
+  // alone (e:). A book coming in looks for its ISBN, then for its head when it has no rest, or else for its head with
+  // the same rest (f:) or with none (e:).
+  function indexKeys(b) { var i = isbn13(b.isbn), p = titleParts(b), k = i ? ['i:' + i] : []; k.push('h:' + p.t, p.rest ? 'f:' + p.t + '|' + p.rest : 'e:' + p.t); return k; }
+  function lookupKeys(b) { var i = isbn13(b.isbn), p = titleParts(b), k = i ? ['i:' + i] : []; if (p.rest) k.push('f:' + p.t + '|' + p.rest, 'e:' + p.t); else k.push('h:' + p.t); return k; }
+  function dupIndex(d) { var ix = Object.create(null); live(d).forEach(function (b) { indexKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
   // Where to look a book's cover up: its ISBN when it has one, otherwise its title (before any colon) and first author.
   function coverQuery(b) {
     var i = isbn13(b.isbn);
@@ -676,7 +686,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (!work || !(work.cover_i > 0)) return 0;
     return c.isbn || titleKey(work.title || '') === c.tk ? work.cover_i : 0;
   }
-  function findDup(ix, b) { var k = dupKeys(b); for (var i = 0; i < k.length; i++) if (ix[k[i]]) return ix[k[i]]; return null; }
+  function findDup(ix, b) { var k = lookupKeys(b); for (var i = 0; i < k.length; i++) if (ix[k[i]]) return ix[k[i]]; return null; }
+  // A book in the library with the same head, numbers and author as one coming in that isn't the same book: its title
+  // goes on after the colon some other way, so it may be another volume of the set.
+  function nearDup(ix, b) { var p = titleParts(b); return p.rest && ix['h:' + p.t] || null; }
+  // Two copies with valid ISBNs that differ are two editions.
+  function otherEdition(a, b) { var i = isbn13(a.isbn), j = isbn13(b.isbn); return !!(i && j && i !== j); }
 
   // A batch is what Claude hands over: {shelfmark: 1, batch: {id, name, made, room, shelf, books: [...]}}.
   // A book's "unsure" note becomes its "check" flag, so it can be looked at later. A phone can review only so many
@@ -699,7 +714,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     };
   }
   // Reading details for books already in the library, from Claude: {shelfmark: 1, details: {id, name, books: [...]}}.
-  // Each entry names its book by id (from the library file) and by title, authors and ISBN, so it finds the book in a
+  // Each entry names its book by id (from the library file) and by title, subtitle, authors and ISBN, so it finds the book in a
   // copy where the id is different. Only reading details and a page count come in; entries with neither are dropped.
   function cleanDetails(o) {
     var d = o && o.details;
@@ -707,28 +722,29 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var books = [];
     d.books.slice(0, BATCH_MAX).forEach(function (x) {
       if (!x || typeof x !== 'object') return;
-      var src = { title: str(x.title, 300) || '?', authors: x.authors || x.author, isbn: x.isbn, pages: x.pages }, e = { id: bookId(x.id) };
+      var src = { title: str(x.title, 300) || '?', sub: x.sub, authors: x.authors || x.author, isbn: x.isbn, pages: x.pages }, e = { id: bookId(x.id) };
       DETAILS.forEach(function (k) { src[k] = x[k]; });
       var c = cleanBook(src);
-      if (str(x.title, 300)) ['title', 'authors', 'isbn'].forEach(function (k) { if (c[k]) e[k] = c[k]; });
+      if (str(x.title, 300)) ['title', 'sub', 'authors', 'isbn'].forEach(function (k) { if (c[k]) e[k] = c[k]; });
       if (!e.id && !e.title) return;
       ['pages'].concat(DETAILS).forEach(function (k) { if (c[k] != null) e[k] = c[k]; });
       if (e.pages || DETAILS.some(function (k) { return k in e; })) books.push(e);
     });
     return { id: ownKey(str(d.id, 80).replace(/[^\w.-]/g, '')) || 'd' + hash(JSON.stringify(books)).toString(36), name: str(d.name, 120), books: books, more: Math.max(0, d.books.length - BATCH_MAX) };
   }
-  // The books each entry is for: the book with its id, or else every copy with the same ISBN or the same title and
-  // author's surname. A book another entry names by id is left to that entry, and when the copies found have different
-  // authors (two translations), the ones with all the entry's authors are taken, if any are.
+  // The books each entry is for: the book with its id, or else every copy of the same book (findDup's rule: the same
+  // ISBN, or the same title and author's surname), so an entry for one volume of a set leaves the others alone. A book
+  // another entry names by id is left to that entry, and when the copies found have different authors (two
+  // translations), the ones with all the entry's authors are taken, if any are.
   function matchDetails(doc, det) {
     var ix = Object.create(null), named = Object.create(null);
     function own(e) { var b = e.id && got(doc.books, e.id); return b && !b.del ? b : null; }
-    live(doc).forEach(function (b) { dupKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
+    live(doc).forEach(function (b) { indexKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
     det.books.forEach(function (e) { var b = own(e); if (b) named[b.id] = 1; });
     return det.books.map(function (e) {
       var b = own(e), bs = [], seen = Object.create(null);
       if (b) return { e: e, bs: [b] };
-      (e.title ? dupKeys(e) : []).forEach(function (k) { (ix[k] || []).forEach(function (x) { if (!seen[x.id] && !named[x.id]) { seen[x.id] = 1; bs.push(x); } }); });
+      (e.title ? lookupKeys(e) : []).forEach(function (k) { (ix[k] || []).forEach(function (x) { if (!seen[x.id] && !named[x.id]) { seen[x.id] = 1; bs.push(x); } }); });
       var same = bs.filter(function (x) { return authorsKey(x) === authorsKey(e); });
       return { e: e, bs: bs.length > 1 && same.length ? same : bs };
     });
@@ -1753,11 +1769,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#behindGo')) syncNow(); });
 
   function reviewSheet(batch) {
-    var inBatch = {}, rows = batch.books.map(function (b, i) {
+    // A book the same as one above it in the list (findDup's rule) may be a second copy, or read twice.
+    var inBatch = Object.create(null), rows = batch.books.map(function (b, i) {
       var twin = null;
-      dupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
-      dupKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
-      return { b: b, dup: null, twin: twin, on: true, mine: false };
+      lookupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
+      indexKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
+      return { b: b, dup: null, near: null, twin: twin, on: true, mine: false };
     });
     // Shelve them in starts out as the library spells the batch's room and shelf.
     var home = placeIndex(live(DOC)), room = place(batch.room, home.rooms);
@@ -1766,15 +1783,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
     function num(n) { return n.toLocaleString('en-US'); }
     // Which books are here already: worked out as the sheet opens, and again when a sync or another tab changes the
-    // library while it's open. A row the person has ticked, unticked or edited (mine) keeps its tick.
-    function check() { var ix = dupIndex(DOC); rows.forEach(function (r) { r.dup = findDup(ix, r.b); if (!r.mine) r.on = !r.dup; }); }
+    // library while it's open. A row the person has ticked, unticked or edited (mine) keeps its tick. A book that may be
+    // another volume of a set already here (near) stays ticked, with a note.
+    function check() { var ix = dupIndex(DOC); rows.forEach(function (r) { r.dup = findDup(ix, r.b); r.near = r.dup ? null : nearDup(ix, r.b); if (!r.mine) r.on = !r.dup; }); }
     function head() {
       var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
       return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
         (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added from this link ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
     }
-    function have(r) { return r.dup ? '<b>Already in your library</b>' + (where(r.dup) ? ' — ' + esc(where(r.dup)) : '') + '. Tick it to add another copy.' : ''; }
+    function have(r) {
+      var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
+      if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
+      if (!d) return '';
+      return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (otherEdition(d, r.b) ? 'this one too.' : 'another copy.');
+    }
     check();
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
       '<div id="rv-head">' + head() + '</div>' +
@@ -1786,7 +1809,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           '<input class="rt" data-f="title" value="' + esc(b.title) + '" aria-label="Title" autocomplete="off"><input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocomplete="off">' +
           (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
           (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
-          '<span class="rv-dup rv-have"' + (r.dup ? '' : ' hidden') + '>' + have(r) + '</span>' +
+          '<span class="rv-dup rv-have"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
           (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
           '</div></li>';
       }).join('') + '</ul></div>' +
@@ -1803,7 +1826,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         panel.querySelectorAll('#rv > li').forEach(function (li) {
           var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
           li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
-          h.innerHTML = have(r); h.hidden = !r.dup;
+          h.innerHTML = have(r); h.hidden = !r.dup && !r.near;
         });
         count();
       }

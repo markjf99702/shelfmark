@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -214,6 +214,32 @@ function randomDoc(r, n) {
   const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }] }));
   eq(S.findDup(series, { title: 'Heartstopper: Volume 2', authors: ['Alice Oseman'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
   eq((S.findDup(series, { title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }) || {}).id, 'v1', 'but volume 1 again is');
+  // The volumes of a set are books of their own, however their titles carry the volume; the same book with or without
+  // its subtitle is still the same book.
+  const set = S.cleanDoc({ books: [
+    { id: 's1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'], room: 'Den', shelf: 'Top' },
+    { id: 's2', t: 1, title: 'Tidewater: Volume One', authors: ['Ben Marsh'] },
+    { id: 's3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I: The Founding', authors: ['Cy Dorn'] },
+    { id: 's4', t: 1, title: 'Gilded Hours', sub: 'A Novel of the Fens', authors: ['Dee Fairweather'] },
+    { id: 's5', t: 1, title: 'Война и мир', authors: ['Лев Толстой'] },
+    { id: 's6', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] },
+    { id: 's7', t: 1, title: 'Sapiens: A Brief History', authors: ['Ann Lee'], isbn: '9780140449136' }
+  ] });
+  const six = S.dupIndex(set), dup = b => (S.findDup(six, b) || {}).id || null, near = b => (S.nearDup(six, b) || {}).id || null;
+  eq([dup({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }), near({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] })], [null, 's1'],
+    'another volume named after the colon is no duplicate, but may be another volume');
+  eq(dup({ title: 'Tidewater: Volume Four', authors: ['Ben Marsh'] }), null, 'a volume numbered in words is no duplicate of another');
+  eq(dup({ title: 'Annals of Ostrava', sub: 'Volume II: The Wars', authors: ['Cy Dorn'] }), null, 'nor is a volume given in the subtitle');
+  eq(dup({ title: 'Lantern Cycle', sub: 'Second Dark', authors: ['Ada Quill'] }), null, 'nor one whose set is the title and volume the subtitle');
+  eq(dup({ title: 'Second Dark', sub: 'The Lantern Cycle', authors: ['Ada Quill'] }), null, 'nor one whose volume is the title and set the subtitle');
+  eq([dup({ title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }), dup({ title: 'Lantern Cycle', sub: 'First Light', authors: ['Ada Quill'] }), dup({ title: 'Tidewater: Volume One', authors: ['Ben Marsh'] })],
+    ['s1', 's1', 's2'], 'but the same volume again is, its name after a colon or as the subtitle');
+  eq([dup({ title: 'Gilded Hours', authors: ['Dee Fairweather'] }), dup({ title: 'Gilded Hours: A Novel of the Fens', authors: ['Dee Fairweather'] }), dup({ title: 'Sapiens', authors: ['Ann Lee'] }),
+    dup({ title: 'Sapiens', sub: 'A Brief History', authors: ['Ann Lee'] })], ['s4', 's4', 's7', 's7'], 'and a book is the same with or without its subtitle');
+  eq([dup({ title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'] }), dup({ title: 'Lantern Cycle', authors: ['Ada Quill'] })], ['s6', 's1'], 'as a title without a colon matches one with');
+  eq(dup({ title: 'Something Else', authors: ['Nobody'], isbn: '0-14-044913-2' }), 's7', 'the same ISBN is the same book whatever the title');
+  eq([dup({ title: 'Анна Каренина', authors: ['Лев Толстой'] }), dup({ title: 'Война и мир', authors: ['Л. Толстой'] })], [null, 's5'], 'titles in other scripts are told apart, and matched');
+  eq(near({ title: 'Something Else: Its Name', authors: ['Nobody'] }), null, 'a book unlike any other may be no other volume');
 }
 
 // ---------- titles in a toast ----------
@@ -413,7 +439,7 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     S.matchDetails(lib, det).forEach(({ e, bs }) => {
       if (bs.some(b => b.del)) never = false;
       if (named.has(e.id)) { if (bs.length !== 1 || bs[0].id !== e.id) every = false; return; }
-      const keys = S.dupKeys(e), copies = live.filter(b => !named.has(b.id) && S.dupKeys(b).some(x => keys.includes(x)));
+      const keys = S.lookupKeys(e), copies = live.filter(b => !named.has(b.id) && S.indexKeys(b).some(x => keys.includes(x)));
       const same = copies.filter(b => S.authorsKey(b) === S.authorsKey(e)), want = copies.length > 1 && same.length ? same : copies;
       if (want.map(b => b.id).sort().join() !== bs.map(b => b.id).sort().join()) every = false;
     });
@@ -496,6 +522,12 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     const filled = S.detailChanges(lib2, tm, true);
     eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Bloom/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
     eq(matched(republics, [{ title: 'The Republic', authors: ['Plato'], kind: 'nonfiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
+    // The volumes of a set: an entry for one fills only that one, and one naming the set alone fills every volume.
+    const cycle = [{ id: 'l1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { id: 'l2', t: 1, title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
+      { id: 'l3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { id: 'l4', t: 1, title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }];
+    eq(matched(cycle, [{ id: 'old', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'], kind: 'fiction' }, { title: 'Annals of Ostrava: Volume I', authors: ['Cy Dorn'], kind: 'nonfiction' },
+      { title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' }, { id: 'old2', title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'], kind: 'nonfiction' }]), [['l2'], ['l3'], ['l1', 'l2'], ['l4']],
+      'details for one volume of a set fill only that volume, its name in the title or the subtitle, and details for the set fill each');
     eq(matched(republics, [{ id: 'r1', title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }, { title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }]), [['r1'], ['r2']],
       'a copy one entry names by id is left out of another entry’s title match');
     // Two copies, two entries without ids: each entry finds both, and each book counts once.
@@ -738,9 +770,32 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
       const edgePage = edge.map(x => S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 }))).filter(Boolean).map(c => { delete c.id; delete c.t; return sorted(c); });
       eq(edgeOut.map(sorted), edgePage, 'the script cuts and splits text where the page does');
       const oddDet = path.join(tmp, 'odd-details.json');
-      fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
+      fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', sub: ' Volume  II ', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
       const oddDetOut = JSON.parse(fs.readFileSync(/File: (\S+)/.exec(execFileSync('python3', [py, oddDet, '--details', '--out', oddDir, '--no-link'], { encoding: 'utf8' }))[1], 'utf8')).details.books;
-      eq(oddDetOut.map(sorted), S.cleanDetails({ details: { books: [{ id: 'b1', title: 'Reprint', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] } }).books.map(sorted), 'and its reading details as the page does');
+      // The script finds the same book twice where the page does: it files and looks for each book under the same keys.
+      const pairs = [
+        { title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle', sub: 'Second Dark', authors: ['Ada Quill'] },
+        { title: 'Tidewater: Volume Four', authors: ['Ben Marsh'] }, { title: 'Annals of Ostrava', sub: 'Volume II: The Wars', authors: ['Cy Dorn'] },
+        { title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'], isbn: '0-261-10221-4' }, { title: 'A Hobbit', authors: 'J.R.R. Tolkien' },
+        { title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'] }, { title: 'The Left Hand of Darkness', authors: ['Ursula K. Le Guin'] },
+        { title: 'Les Misérables: Fantine', authors: ['Victor Hugo'] }, { title: 'Les Miserables', sub: 'Cosette', authors: ['Victor Hugo'] },
+        { title: 'Война и мир', authors: ['Лев Толстой'] }, { title: 'Анна Каренина: Часть 1', authors: ['Лев Толстой'] }, { title: '三体', authors: ['刘慈欣'] },
+        { title: '  An   Odd: Title, 2nd ed. ', sub: 'Ignored', authors: ['Ann Lee, PhD'] }, { title: 'Ivanhoe', authors: ['Sir Walter Scott, III'] },
+        { title: 'Smørrebrød & Co.: 1001 Recipes', authors: ['Jo Nesbø'], isbn: '9780140449137' }, { title: 'De Profundis', authors: ['Charles de Gaulle'] }, { title: 'Untitled' }
+      ];
+      const pairsIn = path.join(tmp, 'pairs.json');
+      fs.writeFileSync(pairsIn, JSON.stringify(pairs));
+      const pyKeys = JSON.parse(execFileSync('python3', ['-c', 'import json, sys, importlib.util as u\ns = u.spec_from_file_location("m", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n' +
+        'print(json.dumps([m.keys(m.clean(b, i, [])) for i, b in enumerate(json.load(open(sys.argv[2], encoding="utf-8")))]))', py, pairsIn], { encoding: 'utf8' }));
+      eq(pyKeys, pairs.map(b => { const c = S.cleanBook(Object.assign({ id: 'n' }, b)); return [S.indexKeys(c), S.lookupKeys(c)]; }), 'the script files and looks for each book under the keys the page does');
+      // So it no longer warns of doubles for the volumes of a set, and still does for a book read twice.
+      const volsIn = path.join(tmp, 'vols.json'), volsDir = fs.mkdtempSync(path.join(tmp, 'vols-'));
+      fs.writeFileSync(volsIn, JSON.stringify({ books: [{ title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
+        { title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }, { title: 'Tidewater: Volume One', authors: ['Ben Marsh'] },
+        { title: 'Tidewater: Volume Two', authors: ['Ben Marsh'] }, { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Middlemarch: A Study of Provincial Life', authors: ['George Eliot'] }] }));
+      const volsSaid = execFileSync('python3', [py, volsIn, '--out', volsDir, '--no-link'], { encoding: 'utf8' });
+      eq(volsSaid.match(/“[^”]*” appears twice/g), ['“Middlemarch: A Study of Provincial Life” appears twice'], 'the script warns of a book read twice, and not of the volumes of a set');
+      eq(oddDetOut.map(sorted), S.cleanDetails({ details: { books: [{ id: 'b1', title: 'Reprint', sub: ' Volume  II ', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] } }).books.map(sorted), 'and its reading details as the page does');
 
       // More books than Shelfmark takes at once: numbered files of up to 3,000, each a batch of its own.
       const bigIn = path.join(tmp, 'big.json'), bigOut = path.join(tmp, 'big');

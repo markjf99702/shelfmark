@@ -448,12 +448,46 @@ def from_export(path, kind, keep):
     return {'name': name, 'books': books}, left
 
 
-def key(b):
-    # Before any colon, plus every number in the title, so "Series: Volume 2" isn't a double of Volume 1.
-    t = re.sub(r'[^a-z0-9]+', '', re.sub(r'^(the|a|an)\s+', '', b['title'].lower().split(':')[0]))
-    t += '#' + '.'.join(re.findall(r'\d+', b['title']))
-    a = (b.get('authors') or [''])[0].lower().split()
-    return t + '|' + (a[-1] if a else '')
+PARTICLES = re.compile(r'^(de|da|di|du|del|della|der|den|van|von|le|la|st\.?|al|el|bin|ibn|ten|ter)$', re.I)
+
+
+def surname(name):
+    """A name's surname, as Shelfmark finds it: 'Ursula K. Le Guin' → 'Le Guin', 'Kurt Vonnegut, Jr.' → 'Vonnegut'."""
+    w = re.sub(f'(?i),?[{WS}]+(jr|sr|ii|iii|iv|ph\\.?d|m\\.?d)\\.?$', '', s(name, 120)).split(' ')
+    if len(w) < 2:
+        return w[0]
+    i = len(w) - 1
+    while i > 1 and PARTICLES.match(w[i - 1]):
+        i -= 1
+    return ' '.join(w[i:])
+
+
+def only(t, cats):
+    """The characters of t in these Unicode categories ('L' letters, 'N' digits), as \\p{L}\\p{N} keep them in JavaScript."""
+    return ''.join(c for c in t if unicodedata.category(c)[0] in cats)
+
+
+def bare(t):
+    return only(re.sub(f'^(the|a|an)[{WS}]+', '', t.strip(WS)), 'LN')
+
+
+def keys(b):
+    """Where Shelfmark files a book and where it looks for one, for finding the same book twice (indexKeys() and
+    lookupKeys() in index.html). Two books are the same when their ISBNs agree, or their first authors' surnames do and
+    so do their titles: the head (before any colon, without "The", "A" or "An"), every number in the title, and the rest
+    (after the colon, or else the subtitle), unless one of them has no rest. So "The Hobbit" is "The Hobbit: or There
+    and Back Again", but the volumes of a set ("Series: Volume 2", "Series: Its Name") are books of their own.
+    Returns (index, lookup)."""
+    f = fold(b['title'])
+    head, colon, rest = f.partition(':')
+    if not colon:
+        rest = fold(b.get('sub') or '')
+    who = only(fold(surname((b.get('authors') or [''])[0])), 'L')
+    t = bare(head) + '#' + '.'.join(re.findall(r'[0-9]+', f)) + '|' + who
+    rest = bare(rest)
+    i = ['i:' + isbn13(b['isbn'])] if isbn13(b.get('isbn')) else []
+    return (i + ['h:' + t, 'f:' + t + '|' + rest if rest else 'e:' + t],
+            i + (['f:' + t + '|' + rest, 'e:' + t] if rest else ['h:' + t]))
 
 
 def build(doc, warn):
@@ -468,11 +502,11 @@ def build(doc, warn):
         raise SystemExit('error: no usable books (each needs at least a title)')
     seen = {}
     for b in books:
-        ks = [key(b)] + (['i' + b['isbn']] if b.get('isbn') else [])
-        hit = next((seen[k] for k in ks if k in seen), None)
+        index, lookup = keys(b)
+        hit = next((seen[k] for k in lookup if k in seen), None)
         if hit:
             warn.append(f'“{b["title"]}” appears twice (also “{hit}”). Two copies, or read twice from overlapping photos?')
-        for k in ks:
+        for k in index:
             seen.setdefault(k, b['title'])
     made = datetime.date.today().isoformat()
     name = s(doc.get('name'), 120)
@@ -510,7 +544,7 @@ def build_details(doc, warn):
         if not title and not bid:
             warn.append(f'#{i + 1}: no id or title, so Shelfmark couldn’t tell which book it is; left out')
             continue
-        e = {'id': bid, 'title': title, 'authors': names(b.get('authors') or b.get('author') or []), 'isbn': first_isbn(s(b.get('isbn'), 200)),
+        e = {'id': bid, 'title': title, 'sub': s(b.get('sub') or b.get('subtitle'), 300) if title else '', 'authors': names(b.get('authors') or b.get('author') or []), 'isbn': first_isbn(s(b.get('isbn'), 200)),
              'pages': whole(b.get('pages'), 0, 50000, 'most')}
         e.update(reading(b, title or bid, warn))
         if e.get('way') == 'browse' and e.get('chapters'):  # a book to browse isn't read chapter by chapter

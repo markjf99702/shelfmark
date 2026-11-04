@@ -407,6 +407,31 @@ step('changing only the room on the review screen keeps each book\'s own shelf',
   } finally { await ctx.close(); }
 });
 
+step('the review screen ticks the next volume of a set, and says when a book here is another edition', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [
+      { id: 'v1', t: 1000, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'], room: 'Den', shelf: 'Top', added: '2026-10-01' },
+      { ...MIDDLEMARCH, isbn: '9780141439549' }, { ...PIRANESI }
+    ]);
+    await page.goto(linkTo({ name: 'Den', books: [
+      { title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle: Third Fire', authors: ['Ada Quill'] },
+      { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780140449136' }, { title: 'Piranesi', authors: ['Susanna Clarke'] },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    const rows = await page.$$eval('#rv > li', els => els.map(li => [li.querySelector('.rv-tick input').checked, [...li.querySelectorAll('.rv-dup')].filter(x => !x.hidden).map(x => x.textContent).join(' / ')]));
+    assert.deepEqual(rows, [
+      [true, 'You have “The Lantern Cycle: First Light” in Den › Top — another volume?'],
+      [true, 'You have “The Lantern Cycle: First Light” in Den › Top — another volume?'],
+      [false, 'Another edition is in your library — Den. Tick it to add this one too.'],
+      [false, 'Already in your library — Hall. Tick it to add another copy.'],
+    ]);
+    assert.equal(await page.textContent('.lede'), 'Den · 4 books · 2 you already have');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a batch of more than 3,000 books says how many didn\'t fit and what to do', async () => {
   const ctx = await context();
   try {
