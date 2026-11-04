@@ -2451,6 +2451,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('imx').addEventListener('click', closeSheet);
     $('imfile').addEventListener('click', function () { $('fileIn').click(); });
     $('imgo').addEventListener('click', function () { var t = $('impaste').value; if (!t.trim()) { $('impaste').focus(); return; } takeIncoming(parseIncoming(t)); });
+    // Pasting a link or Claude's JSON reads it straight away, without Read it, which on a phone sits under the keyboard
+    // just then. Text that's neither waits for the button.
+    $('impaste').addEventListener('paste', function () {
+      var box = this;
+      setTimeout(function () { var t = box.value; if (box.isConnected && (/#(s1[zj]|batch=)/.test(t) || t.indexOf('{') >= 0)) takeIncoming(parseIncoming(t)); }, 0);
+    });
   }
   $('fileIn').addEventListener('change', function () {
     var f = this.files && this.files[0]; this.value = ''; if (!f) return;

@@ -524,6 +524,35 @@ step('a link pasted into Import with a full stop after it opens, and so does Cla
   } finally { await ctx.close(); }
 });
 
+step('pasting a link or Claude\'s JSON into Import opens it, with no need for Read it under the keyboard', async () => {
+  const ctx = await context();
+  try {
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+    const page = await open(ctx);
+    const paste = async text => { await page.evaluate(t => navigator.clipboard.writeText(t), text); await page.focus('#impaste'); await page.keyboard.press('ControlOrMeta+V'); };
+    await page.click('#importBtn');
+    await paste('Here are your books: ' + linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.inputValue('#rv [data-f="title"]'), 'Middlemarch');
+    await page.click('#rvx');
+    await wait(450);
+    await page.click('#importBtn');
+    await paste(JSON.stringify({ shelfmark: 1, batch: { name: 'Hall', books: [{ title: 'Walden', authors: ['Henry David Thoreau'] }] } }, null, 2));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.inputValue('#rv [data-f="title"]'), 'Walden');
+    await page.click('#rvx');
+    await wait(450);
+    // Words that are neither wait for Read it, with nothing said meanwhile.
+    await page.click('#importBtn');
+    await paste('Middlemarch');
+    await wait(400);
+    assert.equal(await page.inputValue('#impaste'), 'Middlemarch');
+    assert.equal(await page.evaluate(() => document.getElementById('toast').classList.contains('show')), false, 'a word pasted was read as a link');
+    assert.equal(await page.isVisible('#imgo'), true);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a spreadsheet export, pasted or opened, says to send it to Claude', async () => {
   const ctx = await context();
   try {
