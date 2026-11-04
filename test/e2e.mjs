@@ -680,6 +680,26 @@ step('a toast\'s Undo goes with the toast, and from the keyboard Undo takes the 
   } finally { await ctx.close(); }
 });
 
+step('a redraw keeps the keyboard where it was: on a chip pressed, and on a book while another tab changes the library', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    const focused = () => page.evaluate(() => { const a = document.activeElement; return a.dataset.id || (a.classList.contains('chip') ? 'chip:' + a.dataset.s : a.tagName); });
+    await page.focus('#chips .chip[data-s="unread"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'chip:unread', 'pressing a chip loses the keyboard');
+    await page.focus('#list .bk[data-id="b04"]');
+    const other = await open(ctx);
+    await other.click('#list .bk[data-id="b03"]');
+    await other.click('#f-status button[data-v="read"]');
+    await other.click('#bkx2');
+    await until(async () => !(await titles(page)).includes('Piranesi'), 'the other tab\'s change to show');
+    assert.equal(await focused(), 'b04', 'another tab\'s change loses the keyboard\'s place in the list');
+    assert.deepEqual([...page.problems, ...other.problems], []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

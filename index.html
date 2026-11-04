@@ -1237,7 +1237,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
+  // The list and the chips are drawn afresh, so the keyboard would lose its place when a chip is pressed, another tab
+  // changes the library or a sync brings a change: it's put back on the same book or chip, if it's still there.
   function render() {
+    var a = document.activeElement, was = a && a.dataset && ($('list').contains(a) && a.classList.contains('bk') ? { id: a.dataset.id } : $('chips').contains(a) ? { s: a.dataset.s } : null);
+    drawList();
+    if (was && (!document.activeElement || document.activeElement === document.body)) refocus(was.id ? rowOf(was.id) : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
+  }
+  function drawList() {
     showStore();
     var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, lent: 0, check: 0 }, tags = Object.create(null), noRoom = 0;
     all.forEach(function (b) {
