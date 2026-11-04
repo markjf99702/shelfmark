@@ -656,6 +656,52 @@ step('a book on the review screen that\'s here on another shelf can be moved her
   } finally { await ctx.close(); }
 });
 
+// A big batch: chips above the list show only the books to check, the ones already here, or the ones left out.
+step('a big batch\'s review screen has chips for the books to check, already here and left out, which only hide the other rows', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...MIDDLEMARCH }]);
+    const books = Array.from({ length: 18 }, (_, i) => ({ title: 'Sample Book ' + (i + 1), authors: ['Ada Example'] }));
+    books[3].unsure = 'glare on the spine'; books[11].unsure = 'could be volume 2';
+    books.splice(7, 0, { title: 'Middlemarch', authors: ['George Eliot'] });
+    await page.goto(linkTo({ name: 'Tall bookcase', room: 'Den', books }));
+    await page.waitForSelector('#rv-add');
+    const chips = () => page.$$eval('#rv-chips .chip', els => els.filter(e => !e.hidden).map(e => e.textContent + (e.getAttribute('aria-pressed') === 'true' ? ' (on)' : '')));
+    const shown = () => page.$$eval('#rv > li', els => els.filter(e => !e.hidden).map(e => e.querySelector('[data-f="title"]').value));
+    assert.deepEqual(await chips(), ['All19 (on)', 'To check2', 'Already have1', 'Left out1']);
+    assert.equal(await page.getAttribute('#rvf-check', 'aria-label'), 'To check, 2');
+    assert.deepEqual(await tapBoxes(page, '#rv-chips .chip'), [], 'the chips');
+    // To check: only those two, and what's changed in them stays when they're all shown again.
+    await page.click('#rvf-check');
+    assert.deepEqual(await shown(), ['Sample Book 4', 'Sample Book 12']);
+    await page.locator('#rv > li:not([hidden]) [data-f="title"]').first().fill('Sample Book Four');
+    await page.locator('#rv > li:not([hidden]) .rv-tick input').nth(1).uncheck();
+    assert.deepEqual(await shown(), ['Sample Book Four', 'Sample Book 12'], 'a book unticked under To check went from the list');
+    assert.deepEqual(await chips(), ['All19', 'To check2 (on)', 'Already have1', 'Left out2']);
+    await page.click('#rvf-all');
+    assert.equal((await shown()).length, 19);
+    assert.equal(await page.inputValue('#rv > li:nth-child(4) [data-f="title"]'), 'Sample Book Four');
+    // Already have: the one copy here; ticked, it stays in view, and Add takes it as another copy.
+    await page.click('#rvf-have');
+    assert.deepEqual(await shown(), ['Middlemarch']);
+    await page.locator('#rv > li:not([hidden]) .rv-tick input').check();
+    assert.deepEqual(await shown(), ['Middlemarch']);
+    await page.click('#rvf-out');
+    assert.deepEqual(await shown(), ['Sample Book 12']);
+    assert.equal(await page.textContent('#rv-add'), 'Add 18 books');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added 18 books — newest first · 1 to check');
+    assert.equal((await titles(page)).length, 19);
+    // A batch of a few has no chips.
+    await wait(450);
+    await page.goto(linkTo({ name: 'Nightstand', books: books.slice(0, 5) }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.$('#rv-chips'), null, 'a batch of five has chips');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a batch of more than 3,000 books says how many didn\'t fit and what to do', async () => {
   const ctx = await context();
   try {

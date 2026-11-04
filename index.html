@@ -357,6 +357,7 @@ details.more .fs{padding:2px 12px 12px}
 .bulk{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 .bulk .two{margin-top:6px}
 .bulk .opt{margin:6px 0 -4px;padding:8px 0;font-size:14.5px}
+.chips.rv-chips{margin:0 0 6px}
 .rv{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
 .rv li{content-visibility:auto;contain-intrinsic-size:auto 100px}
@@ -464,6 +465,7 @@ details.more .fs{padding:2px 12px 12px}
   .nx-f:has(.nx-moods){justify-items:stretch}
   .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:-3px -16px;padding:5px 24px 5px 16px;max-width:none}
   .nx-moods::-webkit-scrollbar{display:none}
+  .chips.rv-chips{margin:-4px -16px 2px;padding-left:16px;padding-right:24px}
 }
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
 .nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
@@ -2718,12 +2720,25 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (r.mv) return '<b>Moves here</b> from ' + (at || 'no shelf') + '.' + mv;
       return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (r.b.wanted ? 'it to your wishlist anyway.' : otherEdition(d, r.b) ? 'this one too.' : 'another copy.') + mv;
     }
+    // A big batch has chips above the list, to show only the books to check, those already here, or those left out.
+    // A chip only hides the other rows: their ticks and edits stay, and Add still adds every book ticked. Which rows show
+    // is settled when a chip is tapped, so a book ticked or edited then doesn't vanish from under the finger.
+    var big = rows.length > 12, show = '', SHOW = [['', 'All'], ['check', 'To check'], ['have', 'Already have'], ['out', 'Left out']];
+    function shows(r, f) { return !f || (f === 'check' ? !!r.b.check : f === 'have' ? !!r.dup : !r.on && !r.mv); }
+    function chips() {
+      return SHOW.map(function (c) {
+        var n = rows.filter(function (r) { return shows(r, c[0]); }).length;
+        return '<button class="chip" type="button" id="rvf-' + (c[0] || 'all') + '" data-rf="' + c[0] + '" aria-pressed="' + (show === c[0]) + '" aria-label="' + c[1] + ', ' + num(n) + '"' +
+          (n || !c[0] || show === c[0] ? '' : ' hidden') + '>' + c[1] + '<span class="n">' + num(n) + '</span></button>';
+      }).join('');
+    }
     check();
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">' + (wishes ? 'Add to your wishlist' : 'Add books from Claude') + '</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
       '<div id="rv-head">' + head() + '</div>' +
       '<div class="bulk"' + (wishes ? ' hidden' : '') + '><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p>' +
       '<label class="opt"><input type="checkbox" id="rv-read"><span>I’ve read all of these</span></label></div>' +
+      (big ? '<div class="chips rv-chips" id="rv-chips" role="group" aria-label="Show"></div>' : '') +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var b = r.b, mt = meta(r), st = stLine(r);
         // The tick box says which book it adds, and its notes describe it: what to check, a book already here, a second copy.
@@ -2754,7 +2769,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('rv-add').textContent = !n ? (m ? 'Move ' + num(m) + (m === 1 ? ' book' : ' books') : 'Add') : (!k ? 'Add ' + num(w) + ' to your wishlist' : 'Add ' + num(k) + (k === 1 ? ' book' : ' books') + (w ? ', ' + num(w) + ' to your wishlist' : '')) + (m ? ', move ' + num(m) : '');
       $('rv-add').disabled = !n && !m;
       $('rv-n').textContent = n + m === rows.length ? '' : num(rows.length - n - m) + ' left out';
+      if (big) { redraw($('rv-chips'), chips()); fades($('rv-chips')); }
     }
+    if (big) $('rv-chips').addEventListener('scroll', function () { fades(this); }, { passive: true });
+    if (big) $('rv-chips').addEventListener('click', function (e) {
+      var c = e.target.closest('.chip'); if (!c) return;
+      show = c.dataset.rf;
+      panel.querySelectorAll('#rv > li').forEach(function (li) { li.hidden = !shows(rows[+li.dataset.i], show); });
+      redraw($('rv-chips'), chips());
+      // On a phone the row scrolls sideways: the chip tapped comes all the way into view, clear of the fade at an edge.
+      var row = $('rv-chips'), on = row.querySelector('[aria-pressed="true"]'), x = on.offsetLeft - row.offsetLeft, end = x + on.offsetWidth - row.clientWidth + 32;
+      if (end > row.scrollLeft) row.scrollLeft = end; else if (x - 16 < row.scrollLeft) row.scrollLeft = Math.max(0, x - 16);
+      fades(row);
+    });
     // A row's tick and its note on a book already here, drawn again.
     function drawHave(li) {
       var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
