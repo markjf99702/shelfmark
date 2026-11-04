@@ -136,9 +136,11 @@ a{color:var(--accent)}
 
 /* book list */
 .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
-.grp{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;margin:14px 2px 0;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.grp{grid-column:1/-1;margin:14px 2px 0;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);overflow:hidden;overflow-wrap:anywhere}
 .grp:first-child{margin-top:0}
-.grp::after{content:"";flex:1;border-top:1px solid var(--line2);transform:translateY(-3px)}
+/* The rule runs on from the count to the edge, on the heading's last line when a long one wraps (the count goes with the
+   shelf's last word). It takes no room on the line, so it never wraps onto a line of its own; the heading clips the rest. */
+.grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
 .grp .n{color:var(--ink3)}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
 .bk:hover{border-color:var(--line2)}
@@ -1290,7 +1292,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b);
       });
-      groups.forEach(function (g) { html += '<h3 class="grp">' + esc(g.name) + ' <span class="n">' + g.bs.length + '</span></h3>' + g.bs.map(row).join(''); });
+      // Read out as "Sunroom › 1, 14 books", not "Sunroom › 1 14".
+      groups.forEach(function (g) {
+        html += '<h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + g.bs.length + '<span class="sr">' + (g.bs.length === 1 ? ' book' : ' books') + '</span></span></h3>' + g.bs.map(row).join('');
+      });
     } else html = vis.map(row).join('');
     L.innerHTML = html;
   }

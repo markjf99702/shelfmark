@@ -563,7 +563,7 @@ step('a room typed with other capitals is one room: one By shelf heading, one Ro
     const heads = () => page.$$eval('#list .grp', els => els.map(e => e.textContent.replace(/\s+/g, ' ')));
     const rooms = () => page.$$eval('#roomSel option', els => els.map(e => e.textContent));
     assert.equal((await heads()).length, 1, 'By shelf splits one shelf: ' + await heads());
-    assert.match((await heads())[0], /^Living room › Left bookcase\W+4\b/);
+    assert.equal(await page.getByRole('heading', { name: /^Living room › Left bookcase ?, 4 books$/i }).count(), 1, 'the shelf heading\'s count runs into its name: ' + await heads());
     assert.deepEqual(await rooms(), ['All rooms', 'Living room']);
     await page.selectOption('#roomSel', 'Living room');
     assert.equal((await titles(page)).length, 4, 'the room menu leaves out a book saved with other capitals');
