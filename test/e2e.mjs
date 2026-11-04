@@ -452,6 +452,7 @@ step('the review screen shows what the batch says of each book, and a long title
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.f || ''), '', 'Enter didn\'t finish the title');
     assert.equal(await title.inputValue(), long + ', Volume One of Three, Revised and Expanded, with a New Preface');
+    assert.equal(await page.locator('#rv li').first().locator('.rv-tick input').getAttribute('aria-label'), 'Add “' + long + ', Volume One of Three, Revised and Expanded, with a New Preface”', 'the tick box doesn\'t say the title as it is now');
     assert.equal((await page.locator('#rv li').nth(1).boundingBox()).y > (await page.locator('#rv li').first().boundingBox()).y + 4 * b.line, true, 'the next row is under the title');
     const third = page.locator('#rv li').nth(2).locator('[data-f="title"]');
     await third.fill('The Overstory\nA Novel');
@@ -514,6 +515,13 @@ step('a title or author changed on the review screen is checked against the libr
     ]);
     assert.equal(await page.textContent('#rv-add'), 'Add 2 books');
     assert.equal(await page.textContent('.lede'), 'Den · 3 books · 2 you already have');
+    // Each tick box names its book, as the title now says, and is described by the row's notes.
+    const named = await page.$$eval('#rv .rv-tick input', els => els.map(e => [e.getAttribute('aria-label'), e.getAttribute('aria-describedby').split(' ').map(id => document.getElementById(id).textContent).join(' ').trim()]));
+    assert.deepEqual(named, [
+      ['Add “Beloved”', 'Already in your library — Den. Tick it to add another copy.'],
+      ['Add “Beloved”', 'Already in your library — Den. Tick it to add another copy.'],
+      ['Add “Jazz”', ''],
+    ]);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -1746,6 +1754,24 @@ step('small grey text, the Reading badge, chip counts, placeholders and stars re
       assert.ok(card.placeholder[0] >= 4.5 && card.placeholder[1] === '1', what + 'a placeholder is ' + card.placeholder);
       assert.ok(card.star[0] >= 3, what + 'a star not given is ' + card.star[0] + ':1 against the card');
       assert.deepEqual(card.star.slice(1), ['☆', '★'], what + 'a star not given looks like one given');
+      // A book left out on the review screen (one already here), and on the details sheet (one not in the library), is
+      // text like any other: its title, author, place and notes, unfaded, against the row.
+      const offRow = sel => page.$$eval(sel, els => els.map(e => {
+        const rgb = s => s.match(/[\d.]+/g).slice(0, 3).map(Number), lum = c => { const l = c.map(x => x / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+        const li = e.closest('li'), [a, b] = [lum(rgb(getComputedStyle(e).color)), lum(rgb(getComputedStyle(li).backgroundColor))].sort((x, y) => y - x);
+        let op = 1; for (let x = e; x && x !== li.parentNode; x = x.parentElement) op *= +getComputedStyle(x).opacity;
+        return [e.className || e.tagName.toLowerCase(), +((a + 0.05) / (b + 0.05)).toFixed(2), op];
+      }));
+      await page.click('#sheet .scrim').catch(() => {});
+      await page.goto(linkTo({ name: 'Study', books: [{ title: 'Walden', authors: ['Henry David Thoreau'], isbn: '9780141439549' }, { title: 'Emma', authors: ['Jane Austen'] }] }));
+      await page.waitForSelector('#rv li.off');
+      const review = await offRow('#rv li.off .rt, #rv li.off input[data-f="authors"], #rv li.off .rv-meta, #rv li.off .rv-have, #rv li.off .rv-have b');
+      await page.click('#rvx');
+      await page.goto(detailsLink([{ id: 'w1', title: 'Walden', kind: 'nonfiction' }, { id: 'zz', title: 'A Book Not Here', kind: 'poetry' }]));
+      await page.waitForSelector('.rv.dt li.off');
+      const details = await offRow('.rv.dt li.off .rt, .rv.dt li.off .rv-dup');
+      assert.equal(review.length, 5, what + 'the review\'s left-out row is missing a part: ' + JSON.stringify(review));
+      for (const [part, ratio, op] of [...review, ...details]) assert.ok(ratio >= 4.5 && op === 1, what + 'a left-out row\'s ' + part + ' is ' + ratio + ':1 at opacity ' + op);
       assert.deepEqual(page.problems, []);
     } finally { await ctx.close(); }
   }

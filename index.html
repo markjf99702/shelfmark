@@ -330,7 +330,9 @@ details.more .fs{padding:2px 12px 12px}
 .rv li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)}
 .rv li{content-visibility:auto;contain-intrinsic-size:auto 100px}
 .rv li.off{background:var(--surface2)}
-.rv li.off .rv-main{opacity:.62}
+/* A book left out (one already here, or not in the library) reads quieter, in the grey of an author's name, and its
+   notes as they are: no fading, which would take its words below 4.5:1 against the row. */
+.rv li.off .rt,.rv li.off .rv-main input{color:var(--ink2)}
 /* reading details from Claude */
 .rv.dt{margin-top:12px}
 .rv.dt li{padding:9px 12px}
@@ -2297,6 +2299,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (placeKey(to.room) === placeKey(bulk.room) && placeKey(to.shelf) === placeKey(bulk.shelf)) at = '';
       return [b.isbn, b.year, b.publisher, at].filter(Boolean).join(' · ');
     }
+    function addWhat(t) { return 'Add “' + (str(t, 300) || 'Untitled') + '”'; }
     function have(r) {
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
       if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
@@ -2311,16 +2314,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="opt"><input type="checkbox" id="rv-read"><span>I’ve read all of these</span></label></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var b = r.b, mt = meta(r), st = stLine(r);
-        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
+        // The tick box says which book it adds, and its notes describe it: what to check, a book already here, a second copy.
+        var notes = [b.check ? 'rv-c-' + i : '', 'rv-n-' + i, r.twin != null ? 'rv-t-' + i : ''].filter(Boolean).join(' ');
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="' + esc(addWhat(b.title)) + '" aria-describedby="' + notes + '"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
           '<span class="rv-ti" data-v="' + esc(b.title) + '"><textarea class="rt" data-f="title" rows="1" maxlength="300" enterkeyhint="done" aria-label="Title" autocomplete="off">' + esc(b.title) + '</textarea></span>' +
           '<input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocapitalize="words" autocorrect="off" autocomplete="off">' +
           '<span class="rv-st"' + (st ? '>' + st : ' hidden>') + '</span>' +
           (detailParts(b).length ? '<span class="rv-det">' + detailHtml(b) + '</span>' : '') +
           (b.blurb ? '<span class="rv-blurb">' + esc(b.blurb) + '</span>' : '') +
           '<span class="rv-meta"' + (mt ? '>' + esc(mt) : ' hidden>') + '</span>' +
-          (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
-          '<span class="rv-dup rv-have"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
-          (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
+          (b.check ? '<span class="rv-flag" id="rv-c-' + i + '">Check: ' + esc(b.check) + '</span>' : '') +
+          '<span class="rv-dup rv-have" id="rv-n-' + i + '"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
+          (r.twin != null ? '<span class="rv-dup" id="rv-t-' + i + '">Also in this list above — a second copy?</span>' : '') +
           '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft">' + storeFlag() + '<span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
@@ -2361,7 +2366,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       r.mine = true;
       if (t.dataset.f === 'title') {
         if (/[\r\n]/.test(t.value)) t.value = t.value.replace(/[\r\n]+/g, ' ');
-        t.parentNode.dataset.v = t.value; r.b.title = t.value;
+        t.parentNode.dataset.v = t.value; r.b.title = t.value; li.querySelector('.rv-tick input').setAttribute('aria-label', addWhat(t.value));
       } else r.b.authors = list(t.value, 12, 120, true);
       edited[li.dataset.i] = li; clearTimeout(editT); editT = setTimeout(recheck, 350);
     });
