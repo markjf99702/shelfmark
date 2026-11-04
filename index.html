@@ -313,7 +313,7 @@ details.more .fs{padding:2px 12px 12px}
 .fl>.seg{justify-self:start;max-width:100%}
 .tagpicks.picks{margin-top:0;gap:6px}
 .tagpicks.picks button{padding:5px 11px;font-size:13px}
-.tagpicks button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+.tagpicks button[aria-pressed="true"],#f-genres button{background:var(--ink);border-color:var(--ink);color:var(--ground)}
 #f-genre{justify-self:start;width:auto;max-width:100%;padding:5px 28px 5px 10px;font-size:16px;border-radius:999px}
 .isbnrow{display:flex;gap:8px}
 .isbnrow input{flex:1}
@@ -1855,7 +1855,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS, '<span class="note">Books you browse (cookbooks, reference, picture books) aren’t suggested in What to read next unless you ask for them.</span>') +
       seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
       '<div class="fl"><span>Moods</span><div class="tagpicks picks" id="f-moods" role="group" aria-label="Moods">' + MOODS.map(function (m) { return '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
-      '<div class="fl"><span>Genres</span><div class="tagpicks picks" id="f-genres"></div><select id="f-genre" aria-label="Add a genre"></select></div>' +
+      '<div class="fl"><span>Genres</span><div class="tagpicks picks" id="f-genres" role="group" aria-label="Genres"></div><select id="f-genre" aria-label="Add a genre"></select></div>' +
       '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
       '</div></details>' +
       '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
@@ -1957,7 +1957,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); drawCount();
       ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
       panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });
-      $('f-genres').innerHTML = st.genres.map(function (g) { return '<button type="button" data-g="' + g + '" aria-pressed="true" aria-label="' + esc(label(g, GENRES)) + ', remove">' + esc(label(g, GENRES)) + ' ×</button>'; }).join('');
+      // A genre chosen is a button that takes it off (it isn't a choice pressed in or out, as a mood is).
+      $('f-genres').innerHTML = st.genres.map(function (g) { return '<button type="button" data-g="' + g + '" aria-label="Remove ' + esc(label(g, GENRES)) + '">' + esc(label(g, GENRES)) + ' ×</button>'; }).join('');
       $('f-genres').hidden = !st.genres.length;
       $('f-genre').innerHTML = '<option value="">Add a genre…</option>' + GENRES.filter(function (g) { return st.genres.indexOf(g[0]) < 0; }).map(function (g) { return '<option value="' + g[0] + '">' + esc(g[1]) + '</option>'; }).join('');
       $('f-genre').hidden = st.genres.length >= 4;
@@ -2003,11 +2004,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('f-moods').addEventListener('click', function (e) {
       var x = e.target.closest('button'); if (!x) return;
       var i = st.moods.indexOf(x.dataset.m);
-      if (i >= 0) st.moods.splice(i, 1); else if (st.moods.length < 4) st.moods.push(x.dataset.m); else { toast('Up to four moods. Tap one to take it off.'); return; }
+      if (i >= 0) st.moods.splice(i, 1); else if (st.moods.length < 4) st.moods.push(x.dataset.m); else { toast('Up to four moods. Take one off first.'); return; }
       drawState(); later();
     });
-    $('f-genres').addEventListener('click', function (e) { var x = e.target.closest('button'); if (!x) return; st.genres = st.genres.filter(function (g) { return g !== x.dataset.g; }); drawState(); later(); });
-    $('f-genre').addEventListener('change', function () { if (this.value && st.genres.length < 4) st.genres.push(this.value); drawState(); later(); });
+    // The genres are drawn again as one goes or comes, so the keyboard is put where the person would be: on the next
+    // genre after one taken off (or Add a genre, after the last), and on the fourth genre once Add a genre has gone.
+    $('f-genres').addEventListener('click', function (e) {
+      var x = e.target.closest('button'); if (!x) return;
+      var i = st.genres.indexOf(x.dataset.g); st.genres.splice(i, 1); drawState(); later();
+      refocus($('f-genres').children[i] || $('f-genre'));
+    });
+    $('f-genre').addEventListener('change', function () {
+      if (this.value && st.genres.length < 4) st.genres.push(this.value);
+      drawState(); later();
+      if (this.hidden) refocus($('f-genres').lastElementChild);
+    });
     // It's back empties the loan, and Undo puts it back: into the card while it's open, or onto the book once it's closed.
     $('f-back').addEventListener('click', function () {
       var was = { to: v('f-lent').trim(), since: v('f-since') };
@@ -2031,10 +2042,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (had.loan && !cur.loan && view === 'lent' && !out) toast('Back from ' + had.loan + '. That was the last book out.', back && 'Undo', back && back.fn);
       else if (had.check && !cur.check && !back) toast('Checked “' + short(cur.title) + '”. ' + (checks ? checks + ' left to check.' : 'That was the last one to check.'));
     }
+    // A tag picked goes into Tags, and its button goes. Picked from the keyboard, the keyboard goes to Tags; a tap leaves
+    // it be, so a phone's keyboard doesn't come up over the card.
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
       var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
       $('f-tags').value = cur.join(', '); drawPicks(); later();
+      if (!e.detail) refocus($('f-tags'));
     });
     function drawPicks() {
       var box = $('f-tagpicks'), cur = list(v('f-tags'), 20, 40).map(fold), any = false; if (!box) return;
@@ -2591,7 +2605,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     openSheet('<div class="hd"><h2 id="sheetTitle">Settings</h2><button class="btn sm quiet" type="button" id="stx">Done</button></div><div class="bd">' +
       '<section class="sect" id="driveSect"></section>' +
       '<section class="sect"><h3>Covers and details from Open Library</h3>' +
-      '<label class="opt"><input type="checkbox" id="stLook"' + (PREF.lookups ? ' checked' : '') + '><span>Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
+      '<label class="opt"><input type="checkbox" id="stLook" aria-label="Show covers and look up details on Open Library" aria-describedby="stLookTx"' + (PREF.lookups ? ' checked' : '') + '><span id="stLookTx">Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
       '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device. The spreadsheet is to read or print; it doesn’t open back in Shelfmark.</p>' +
       '<div class="row"><button class="btn" type="button" id="stDl">Download a backup</button><button class="btn" type="button" id="stCsv">Download a spreadsheet (CSV)</button><button class="btn" type="button" id="stOpen">Open a file…</button></div></section>' +
       '<section class="sect"><h3>This device</h3><p id="stEraseNote"></p>' +

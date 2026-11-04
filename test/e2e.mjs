@@ -1374,6 +1374,51 @@ step('a phone keyboard\'s Search puts it away over the results, and Next goes th
   } finally { await ctx.close(); }
 });
 
+step('a card\'s genres are buttons that take them off, and the keyboard stays where the person is as they go and come', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...WALDEN, genres: ['philosophy', 'nature', 'biography'] }, { ...KARAMAZOV, tags: ['russian', 'gift'] }]);
+    await page.click('#list .bk[data-id="w1"]');
+    await page.click('details.more > summary >> nth=0');
+    const at = () => page.evaluate(() => { const a = document.activeElement; return a.dataset.g || a.id || a.tagName; });
+    assert.deepEqual(await page.$eval('#f-genres', e => [e.getAttribute('role'), e.getAttribute('aria-label')]), ['group', 'Genres']);
+    assert.deepEqual(await page.$$eval('#f-genres button', bs => bs.map(b => [b.getAttribute('aria-label'), b.hasAttribute('aria-pressed')])),
+      [['Remove Philosophy', false], ['Remove Nature and gardening', false], ['Remove Biography and memoir', false]]);
+    // Taken off from the keyboard, the next genre has the keyboard; after the last one, Add a genre does.
+    await page.focus('#f-genres button[data-g="nature"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await at(), 'biography');
+    await page.keyboard.press('Enter');
+    assert.equal(await at(), 'f-genre');
+    // Adding a fourth takes Add a genre away: the keyboard goes to the new genre.
+    await page.selectOption('#f-genre', 'history');
+    await page.selectOption('#f-genre', 'classics');
+    await page.selectOption('#f-genre', 'travel');
+    assert.equal(await page.isVisible('#f-genre'), false);
+    assert.equal(await at(), 'travel');
+    // A fifth mood says how to choose another.
+    for (const m of ['funny', 'tense', 'dark', 'hopeful', 'sad']) await page.click('#f-moods button[data-m="' + m + '"]');
+    assert.equal(await page.textContent('#toastTx'), 'Up to four moods. Take one off first.');
+    await page.click('#bkx');
+    await wait(450);
+    // A tag picked from the keyboard leaves the keyboard in Tags; the button it was on has gone.
+    await page.click('#list .bk[data-id="w1"]');
+    await page.focus('#f-tagpicks button[data-t="gift"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await at(), 'f-tags');
+    assert.equal(await page.inputValue('#f-tags'), 'gift');
+    await page.click('#bkx');
+    // Settings names the lookups box in a few words, and says the rest after.
+    await wait(450);
+    await page.click('#setBtn');
+    const box = page.getByRole('checkbox', { name: 'Show covers and look up details on Open Library', exact: true });
+    assert.equal(await box.count(), 1);
+    assert.match(await page.evaluate(() => document.getElementById(document.getElementById('stLook').getAttribute('aria-describedby')).textContent), /^Show covers, and look up a book’s details by its ISBN\..*openlibrary\.org/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card keeps notes to the 4,000 characters Shelfmark saves, says how many near that, and every field to its limit', async () => {
   const ctx = await context();
   try {
