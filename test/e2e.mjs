@@ -1432,6 +1432,23 @@ step('a browser out of room says so once, not with every save while typing', asy
   } finally { await ctx.close(); }
 });
 
+step('Download a spreadsheet gives a .csv with a byte-order mark and a header row, a book a row, removed books left out', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, { ...MIDDLEMARCH, status: 'read', rating: 5, loan: { to: 'Sam', since: '2026-10-02' } }, { id: 'gone', t: 1000, del: 1 }]);
+    await page.click('#setBtn');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#stCsv')]);
+    assert.match(dl.suggestedFilename(), /^shelfmark-\d{4}-\d\d-\d\d\.csv$/);
+    const csv = await readFile(await dl.path(), 'utf8'), lines = csv.split('\r\n');
+    assert.equal(csv.charCodeAt(0), 0xFEFF, 'the spreadsheet doesn\'t start with a byte-order mark');
+    assert.ok(lines[0].startsWith('\uFEFFtitle,subtitle,authors,'), 'the header row: ' + lines[0].slice(0, 40));
+    assert.deepEqual(lines.slice(1).filter(Boolean).map(l => l.split(',')[0]), ['Piranesi', 'Middlemarch'], 'a row for each book, by author (Clarke, Eliot)');
+    assert.match(lines[2], /,Read,5,Sam,2026-10-02,/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a backup opens on another device, and the library sheet says what merging it would change', async () => {
   const a = await context(), b = await context();
   try {
