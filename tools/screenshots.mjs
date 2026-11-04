@@ -100,8 +100,11 @@ const BATCH = { shelfmark: 1, batch: { id: 'c20261013-sample', name: 'Hall, cons
 const browser = await pw.chromium.launch();
 await mkdir(join(root, 'docs'), { recursive: true });
 
+// A phone (deviceScaleFactor 2) has a touch screen; the link preview is the page as a laptop with a mouse shows it, whose
+// menus and chips are drawn smaller than a touch screen's.
 async function open(viewport, deviceScaleFactor, prefs) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor, hasTouch: true, isMobile: deviceScaleFactor > 1, serviceWorkers: 'block' });
+  const phone = deviceScaleFactor > 1;
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor, hasTouch: phone, isMobile: phone, serviceWorkers: 'block' });
   await ctx.route(url => !url.href.startsWith(base), r => r.abort());
   const page = await ctx.newPage();
   await page.clock.setFixedTime(NOW);
