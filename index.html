@@ -134,7 +134,7 @@ a{color:var(--accent)}
 .search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--ink3);pointer-events:none}
 .search input{padding:11px 12px 11px 40px;border-radius:11px;font-size:16px;background:var(--surface);box-shadow:var(--shadow)}
 .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
-.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:2px}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:5px 2px;margin:-3px 0} /* room for a chip's keyboard ring */
 .chips::-webkit-scrollbar{display:none}
 /* With a mouse (a laptop zoomed in, say) a row that scrolls sideways can't be reached past its edge, so it wraps. */
 @media (pointer:fine){.chips{flex-wrap:wrap;overflow:visible}}
@@ -279,10 +279,16 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .fl{display:grid;gap:4px;min-width:0}
 .fl>span:first-child,.lbl{font:600 11.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--surface)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;background:var(--surface)}
 .seg button{background:none;border:0;padding:7px 14px;font:600 13.5px var(--sans);color:var(--ink2);white-space:nowrap}
 .seg button+button{border-left:1px solid var(--line2)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+/* The row's round ends are the end choices' own (the row doesn't cut its choices off, so it doesn't cut off their tap
+   boxes either), and the keyboard's ring is drawn inside a choice, clear of its neighbours, with a line of the card's
+   colour inside it so it shows on the chosen one too. */
+.seg button:first-child{border-radius:999px 0 0 999px}
+.seg button:last-child{border-radius:0 999px 999px 0}
+.seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 0 4px var(--surface)}
 .stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .stars{display:inline-flex;gap:0}
 /* each star answers a tap about 39px square; the negative margins keep them where they were. A star not given is an
@@ -378,7 +384,7 @@ details.more .fs{padding:2px 12px 12px}
 /* on a phone the moods are one row to swipe along, edge to edge (with a mouse they wrap) */
 @media (max-width:640px) and (pointer:coarse){
   .nx-f:has(.nx-moods){justify-items:stretch}
-  .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 24px 2px 16px;max-width:none}
+  .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:-3px -16px;padding:5px 24px 5px 16px;max-width:none}
   .nx-moods::-webkit-scrollbar{display:none}
 }
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
@@ -480,6 +486,31 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 @media (max-width:340px){
   .two,.loan{grid-template-columns:1fr}
 }
+/* On a touch screen the small controls answer a tap 44px tall: at least 44 by 44 points in Apple's Human Interface
+   Guidelines (Accessibility), and 44 by 44 CSS px in WCAG 2.2 SC 2.5.5 Target Size (Enhanced), level AAA. Where a
+   control is drawn smaller, an invisible box (::after, measured from inside the control's 1px border) takes the taps
+   around it, never reaching a neighbour's; rows that scroll sideways keep room inside for those boxes. With a mouse
+   everything is as it was. */
+@media (pointer:coarse){
+  .seg button{position:relative}
+  .seg button::after{content:"";position:absolute;inset:-7px 0}
+  .tagpicks.picks{gap:10px 6px}
+  .tagpicks.picks button{position:relative;padding:8px 12px}
+  .tagpicks.picks button::after{content:"";position:absolute;inset:-6px 0}
+  .tagpicks:not(.picks) button{padding:6px 10px}
+  .stars button{margin:0;padding:0;width:44px;height:44px}
+  .checks label{min-height:44px}
+  .selects select{min-height:44px}
+  .chips{padding-top:10px;padding-bottom:10px;margin:-8px 0}
+  .chip{position:relative}
+  .chip::after{content:"";position:absolute;inset:-9px 0}
+  .tbtn{position:relative}
+  .tbtn::after{content:"";position:absolute;inset:-6px 0}
+  .nextbtn{position:relative}
+  .nextbtn::after{content:"";position:absolute;inset:-8px 0}
+}
+@media (pointer:coarse){.nx-moods,.nx-chips{row-gap:16px}#f-genres:not([hidden]){margin-bottom:2px}}
+@media (pointer:coarse) and (max-width:640px){.nx-moods{padding-top:10px;padding-bottom:10px;margin:-8px -16px}}
 @media (prefers-reduced-motion:reduce){.nx-more>summary::before{transition:none}.cv img,.toast,details.more>summary::before{transition:none}.sync[data-s="busy"] i,.nx-pick,.nx-alts{animation:none}
   .bk.new{animation:none;background:var(--brass-soft);border-color:var(--brass)}}
 </style>

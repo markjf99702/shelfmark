@@ -1661,30 +1661,90 @@ step('on a phone To check is in view after a first batch, and the sideways rows 
   }
 });
 
-step('on a phone the small controls answer a tap around them, without looking any bigger', async () => {
-  const ctx = await context();
-  try {
-    const page = await open(ctx);
-    await seed(page, [{ ...PIRANESI, kind: 'fiction', moods: ['mysterious'], chapters: 'short', tags: ['sf'] }, { ...MIDDLEMARCH, kind: 'fiction', moods: ['reflective'], chapters: 'long', pages: 880 }]);
-    const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
-    await page.click('#list .bk[data-id="b03"]');
-    for (const n of [1, 5]) { const [w, h] = await size('#f-rating button[data-v="' + n + '"]'); assert.ok(w >= 38 && h >= 38, 'star ' + n + ' is ' + w + 'x' + h); }
-    assert.ok((await size('#bkx'))[1] >= 44, 'Done at the top is ' + (await size('#bkx'))[1] + ' tall');
-    // Where the stars and the card's fields are drawn is the same as with the stars' and Done's old, tight boxes.
-    const look = () => page.evaluate(() => [...document.querySelectorAll('#f-rating button')].map(b => { const r = document.createRange(); r.selectNodeContents(b); const g = r.getBoundingClientRect(); return [g.left, g.top]; })
-      .concat([['#sheet .hd', '#f-title', '#f-room'].map(q => document.querySelector(q).getBoundingClientRect().bottom)]));
-    const now = await look(), tight = await page.addStyleTag({ content: '.stars button{padding:2px 3px!important;margin:0!important}.hd .btn{min-height:0!important;margin:0!important}' });
-    assert.deepEqual(now, await look(), 'the stars or the card moved');
-    await tight.evaluate(e => e.remove());
-    await page.click('#f-del');
-    assert.ok((await size('#toastBtn'))[1] >= 40, 'Undo is ' + (await size('#toastBtn'))[1] + ' tall');
-    assert.ok((await size('#toast'))[1] < 60, 'the toast grew');
-    await page.click('#toastBtn');
-    await page.click('#nextBtn');
-    assert.ok((await size('#nxMore > summary'))[1] >= 40, 'More choices is ' + (await size('#nxMore > summary'))[1] + ' tall');
-    assert.ok((await size('#nxCrit .opt'))[1] >= 40, 'Short chapters is ' + (await size('#nxCrit .opt'))[1] + ' tall');
-    assert.deepEqual(page.problems, []);
-  } finally { await ctx.close(); }
+// Each control answers a tap over its whole box, the invisible part included: at every edge of that box, 1px in, the
+// control is what's there, so none reaches over a neighbour's. h is the height the box must have, at least.
+async function tapBoxes(page, q, h = 44) {
+  return page.evaluate(([q, h]) => [...document.querySelectorAll(q)].filter(e => e.getClientRects().length).map(e => {
+    e.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = e.getBoundingClientRect(), c = getComputedStyle(e), a = getComputedStyle(e, '::after'), ext = a.content !== 'none' && a.position === 'absolute';
+    // the invisible box is placed from inside the control's border
+    const top = Math.min(r.top, ext ? r.top + parseFloat(c.borderTopWidth) + parseFloat(a.top) : r.top), bottom = Math.max(r.bottom, ext ? r.bottom - parseFloat(c.borderBottomWidth) - parseFloat(a.bottom) : r.bottom);
+    const name = (e.id || e.dataset.v || e.dataset.m || e.dataset.mood || e.dataset.s || e.dataset.t || e.textContent.trim()).slice(0, 20);
+    if (bottom - top < h - 0.5) return name + ' answers ' + Math.round(bottom - top) + 'px tall';
+    const cx = (r.left + r.right) / 2, cy = (top + bottom) / 2;
+    for (const [x, y] of [[cx, top + 1], [cx, bottom - 1], [r.left + 1, cy], [r.right - 1, cy]]) {
+      if (y < 0 || y > innerHeight) continue;
+      const hit = document.elementFromPoint(x, y), own = hit && (hit === e || e.contains(hit) || (hit.closest('label') === e));
+      if (!own) return name + ' loses a tap at ' + Math.round(x) + ',' + Math.round(y) + ' to ' + (hit ? hit.tagName + (hit.id ? '#' + hit.id : '') + ' ' + hit.textContent.trim().slice(0, 20) : 'nothing');
+    }
+    return '';
+  }).concat(document.querySelector(q) ? [] : ['nothing matches ' + q]).filter(Boolean), [q, h]);
+}
+
+step('on a phone the small controls answer a tap 44px tall, and none takes another\'s taps', async () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }]) {
+    const ctx = await context({ ...PHONE, viewport });
+    try {
+      const page = await open(ctx);
+      await seed(page, [{ ...PIRANESI, kind: 'fiction', moods: ['mysterious'], genres: ['fantasy', 'literary'], chapters: 'short', tags: ['sf'] }, { ...MIDDLEMARCH, kind: 'fiction', moods: ['reflective'], chapters: 'long', pages: 880, tags: ['classics'] },
+        { ...CRADLE, room: 'Den', status: 'reading' }, { id: 'b09', t: 1000, title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 5, added: '2026-09-01', room: 'Den' }]);
+      const w = viewport.width + 'px: ';
+      const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+      // The list: its chips, menus, What to read next and the top bar's buttons.
+      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      await page.click('#list .bk[data-id="b03"]');
+      // The card: status, stars, tag picks; with its sections open, the reading details, genres, Signed and First edition.
+      await page.evaluate(() => document.querySelectorAll('.panel details').forEach(d => d.open = true));
+      for (const q of ['#f-status button', '#f-rating button', '.seg button', '#f-moods button', '#f-genres button', '.checks label']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      assert.deepEqual(await tapBoxes(page, '#f-tagpicks button', 28), [], w + 'the tag picks');
+      const stars = await page.$$eval('#f-rating button', els => els.map(e => Math.round(e.getBoundingClientRect().left)));
+      assert.deepEqual(stars.slice(1).map((x, i) => x - stars[i]), [44, 44, 44, 44], w + 'the stars aren\'t 44px apart');
+      assert.ok((await size('#bkx'))[1] >= 44, 'Done at the top is ' + (await size('#bkx'))[1] + ' tall');
+      // Done's box is no taller in the header than before, and the card's fields are where they were.
+      const look = () => page.evaluate(() => ['#sheet .hd', '#f-title'].map(q => document.querySelector(q).getBoundingClientRect().bottom));
+      const now = await look(), tight = await page.addStyleTag({ content: '.hd .btn{min-height:0!important;margin:0!important}' });
+      assert.deepEqual(now, await look(), 'the card moved');
+      await tight.evaluate(e => e.remove());
+      await page.click('#f-del');
+      assert.ok((await size('#toastBtn'))[1] >= 40, 'Undo is ' + (await size('#toastBtn'))[1] + ' tall');
+      assert.ok((await size('#toast'))[1] < 60, 'the toast grew');
+      await page.click('#toastBtn');
+      await page.click('#nextBtn');
+      await page.click('#nxMore > summary');
+      for (const q of ['#nxCrit .seg button', '#nxCrit .nx-moods .chip', '#nxCrit .nx-chips .chip']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      assert.ok((await size('#nxMore > summary'))[1] >= 40, 'More choices is ' + (await size('#nxMore > summary'))[1] + ' tall');
+      assert.ok((await size('#nxCrit .opt'))[1] >= 40, 'Short chapters is ' + (await size('#nxCrit .opt'))[1] + ' tall');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, w + 'the page scrolls sideways');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
+step('with a mouse the small controls look as they did, and a focused choice\'s ring isn\'t cut off', async () => {
+  for (const colorScheme of ['light', 'dark']) {
+    const ctx = await context({ ...DESK, colorScheme });
+    try {
+      const page = await open(ctx);
+      await seed(page, [{ ...PIRANESI, status: 'read', rating: 3, moods: ['mysterious'] }, MIDDLEMARCH]);
+      const box = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+      assert.deepEqual(await page.evaluate(() => getComputedStyle(document.querySelector('#chips .chip'), '::after').content), 'none', 'a chip has a tap box with a mouse');
+      assert.ok((await box('.selects select:not([hidden])'))[1] < 40, 'a menu is ' + (await box('.selects select:not([hidden])'))[1] + ' tall with a mouse');
+      await page.click('#list .bk[data-id="b03"]');
+      assert.ok((await box('#f-status button'))[1] < 34, 'a status button is ' + (await box('#f-status button'))[1] + ' tall with a mouse');
+      const stars = await page.$$eval('#f-rating button', els => els.map(e => Math.round(e.getBoundingClientRect().left)));
+      assert.ok(stars.slice(1).every((x, i) => x - stars[i] < 34), 'the stars moved apart with a mouse: ' + stars);
+      // From the keyboard, the chosen status (Read, the row's last) shows its ring whole, inside its round end.
+      await page.focus('#f-status button[data-v="read"]');
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      const ring = await page.$eval('#f-status button[data-v="read"]', e => { const c = getComputedStyle(e), seg = getComputedStyle(e.parentNode); return [e.matches(':focus-visible'), c.boxShadow, seg.overflow, c.borderTopRightRadius]; });
+      assert.equal(ring[0], true, 'the button isn\'t focused from the keyboard');
+      assert.match(ring[1], /inset.*inset/, 'no ring inside the button: ' + ring[1]);
+      assert.equal(ring[2], 'visible', 'the row cuts its choices off');
+      assert.equal(ring[3], '999px');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
 });
 
 step('on a phone a tap leaves no hover look behind, and no grey-blue flash', async () => {
