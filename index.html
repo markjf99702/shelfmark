@@ -3207,10 +3207,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   // ---------- the what-to-read-next sheet ----------
-  // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
+  // The choices stay in this device's prefs. "Pick again" works through every match before repeating one. More choices
+  // opens closed each time, keeping what's set in it (its summary says how many), so the pick starts on screen; while
+  // the sheet is open, it stays as it is when the choices are drawn again (c.more).
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
   function nextSheet() {
     var c = cleanNext(PREF.next), dealt = {}, deal = null, top = 0, round = 0, ask = '', sayT = 0;
+    c.more = false;
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
       '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut"></div><p class="sr" id="nxSay" aria-live="polite"></p></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>').classList.add('tall');
@@ -3227,6 +3230,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // reading details, and of those, the ones the books of the kind chosen have.
     // all and kin, when given, are the library and its kinOf, worked out once for the choices and the deal together.
     function drawCrit(all, kin) {
+      if ($('nxMore')) c.more = $('nxMore').open;
       var has = nextOffers(all || home(DOC), c, kin); fitNext(c, has);
       var fit = has.fit, moods = MOODS.filter(function (m) { return fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return fit.genres[g[0]]; });
       var tk = Object.keys(fit.tags).sort(COLL.compare), rk = Object.keys(fit.rooms).sort(COLL.compare), lens = LENGTHS.filter(function (o) { return !o[0] || fit.lens[o[0]]; }), favs = has.reread;
@@ -3255,8 +3259,6 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       row = box.querySelector('.nx-moods');
       if (row) { var on = row.querySelector('[aria-pressed="true"]'); row.scrollLeft = left >= 0 ? left : on ? on.offsetLeft - row.offsetLeft - 16 : 0; fades(row); }
       if (focus && box.querySelector(focus)) try { box.querySelector(focus).focus({ preventScroll: true }); } catch (e) { }
-      // A details element's toggle doesn't bubble, so it's listened for here, each time the choices are drawn.
-      if ($('nxMore')) $('nxMore').addEventListener('toggle', function () { c.more = this.open; PREF.next = c; savePrefs(); });
     }
     // Pick again works through every match before repeating one (see nextDeal). Once round says it's going round
     // again, every deal says so, until a choice changes.

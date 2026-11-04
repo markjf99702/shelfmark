@@ -2804,20 +2804,58 @@ step('Already read it marks the pick Read and deals again, and Undo puts it back
   } finally { await ctx.close(); }
 });
 
+// Nine books with every reading detail, a tag, a room, a page count and a day added, so What to read next offers every choice.
+const EVERY_CHOICE = (() => {
+  const kinds = ['fiction', 'nonfiction', 'poetry'], moods = ['reflective', 'funny', 'dark', 'hopeful', 'tense'], genres = ['classics', 'history', 'science', 'fantasy'];
+  return Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'], kind: kinds[i % 3], moods: [moods[i % 5]], genres: [genres[i % 4]],
+    pace: ['slow', 'medium', 'fast'][i % 3], chapters: i % 3 ? 'short' : 'long', tags: ['t' + (i % 2)], room: ['Den', 'Hall'][i % 2], pages: 150 + i * 60, added: '2026-0' + (1 + i % 5) + '-01' }));
+})();
+const pickInView = page => page.evaluate(() => {
+  const t = document.querySelector('.nx-pick .nx-t').getBoundingClientRect(), b = document.querySelector('#sheet .bd').getBoundingClientRect();
+  return t.top >= b.top && t.bottom <= b.bottom;
+});
+
+step('What to read next opens with More choices closed, keeping what\'s set in it, so the pick starts on screen', async () => {
+  for (const [w, opts] of [['phone: ', PHONE], ['small phone: ', { ...PHONE, viewport: { width: 360, height: 740 } }], ['computer: ', DESK]]) {
+    const ctx = await context(opts);
+    try {
+      const page = await open(ctx);
+      // An older Shelfmark kept More choices open from one time to the next.
+      await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { more: true } })));
+      await seed(page, EVERY_CHOICE);
+      await page.click('#nextBtn');
+      assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), false, w + 'More choices opened open');
+      assert.equal(await pickInView(page), true, w + 'the pick starts out of sight');
+      // Open, it stays open while choices are made in it, and its summary counts them.
+      await page.click('#nxMore > summary');
+      await page.selectOption('#nxGenre', 'history');
+      await page.selectOption('#nxTag', 't1');
+      assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), true, w + 'a choice closed More choices');
+      assert.match(await page.textContent('#nxMore > summary'), /^More choices · 2 set$/);
+      // Next time it's closed again, with the genre still chosen and said so.
+      await page.click('#nxx');
+      await wait(450);
+      await page.click('#nextBtn');
+      assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), false, w + 'More choices stayed open');
+      assert.match(await page.textContent('#nxMore > summary'), /^More choices · 2 set$/);
+      assert.deepEqual([await page.inputValue('#nxGenre'), await page.inputValue('#nxTag')], ['history', 't1']);
+      assert.match(await page.textContent('#nxOut > .note'), /^From 2 unread books that match\./);
+      assert.equal(await pickInView(page), true, w + 'the pick is out of sight');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
   try {
     const page = await open(ctx);
-    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { more: true } })));
-    const kinds = ['fiction', 'nonfiction', 'poetry'], moods = ['reflective', 'funny', 'dark', 'hopeful', 'tense'], genres = ['classics', 'history', 'science', 'fantasy'];
-    await seed(page, Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, t: 1000, title: 'Book ' + (i + 1), authors: ['Ann Lee'], kind: kinds[i % 3], moods: [moods[i % 5]], genres: [genres[i % 4]],
-      pace: ['slow', 'medium', 'fast'][i % 3], chapters: i % 3 ? 'short' : 'long', tags: ['t' + (i % 2)], room: ['Den', 'Hall'][i % 2], pages: 150 + i * 60, added: '2026-0' + (1 + i % 5) + '-01' })));
+    await seed(page, EVERY_CHOICE);
     await page.click('#nextBtn');
+    await page.click('#nxMore > summary');
     assert.equal(await page.evaluate(() => document.getElementById('nxMore').open), true);
-    const inView = () => page.evaluate(() => {
-      const t = document.querySelector('.nx-pick .nx-t').getBoundingClientRect(), b = document.querySelector('#sheet .bd').getBoundingClientRect();
-      return t.top >= b.top && t.bottom <= b.bottom;
-    });
+    const inView = () => pickInView(page);
+    await page.evaluate(() => { document.querySelector('#sheet .bd').scrollTop = 0; });
     assert.equal(await inView(), false, 'the pick is in view from the start, so this proves nothing');
     const was = await page.textContent('.nx-pick .nx-t');
     await page.click('#nxAgain');
