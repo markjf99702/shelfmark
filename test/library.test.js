@@ -967,6 +967,19 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
       eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
+      // Text longer than Shelfmark keeps, and authors or tags past its limits, are cut or dropped with a warning, so the
+      // end of a long review isn't lost unseen.
+      const longIn = path.join(tmp, 'long.json'), longDir = fs.mkdtempSync(path.join(tmp, 'long-'));
+      fs.writeFileSync(longIn, JSON.stringify({ books: [
+        { title: 'Middlemarch', authors: ['George Eliot'], notes: 'A study of provincial life. '.repeat(225), blurb: 'A town, a marriage. '.repeat(17) },
+        { title: 'Collected ' + 'Tales '.repeat(60), authors: Array.from({ length: 15 }, (_, i) => 'Writer ' + (i + 1)), tags: Array.from({ length: 24 }, (_, i) => 'tag ' + (i + 1)) },
+        { title: 'Emma', authors: ['Jane Austen'], notes: 'n'.repeat(4000), blurb: 'b'.repeat(300), tags: Array.from({ length: 20 }, (_, i) => 'tag ' + i) }] }));
+      const longSaid = execFileSync('python3', [py, longIn, '--out', longDir, '--no-link'], { encoding: 'utf8' });
+      const longWarn = longSaid.split('\n').filter(l => l.startsWith('warning: ')).map(l => l.slice(9));
+      eq(longWarn, ['“Middlemarch”: notes are 6,299 characters; Shelfmark keeps 4,000', '“Middlemarch”: the blurb is 339 characters; Shelfmark keeps 300',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: the title is 369 characters; Shelfmark keeps 300',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: 15 authors; Shelfmark keeps the first 12',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: 24 tags; Shelfmark keeps the first 20'], 'the script says what it cut or dropped, and nothing at the limits');
 
       // The script reads numbers, yes/no and lists the way the page does: each book it writes is the page's own reading
       // of the same input.

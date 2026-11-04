@@ -1327,6 +1327,29 @@ step('typing in a card is kept when the page closes straight after', async () =>
   } finally { await ctx.close(); }
 });
 
+step('a card keeps notes to the 4,000 characters Shelfmark saves, says how many near that, and every field to its limit', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    await page.click('#list .bk[data-id="w1"]');
+    assert.equal(await page.locator('#f-notes-n').isVisible(), false, 'a count shows under short notes');
+    await page.fill('#f-notes', 'Simplify, simplify. '.repeat(195)); // 3,900
+    assert.equal(await page.textContent('#f-notes-n'), '4,000 characters at most: 3,900 used');
+    await page.focus('#f-notes');
+    await page.keyboard.press('Control+End');
+    await page.keyboard.insertText('x'.repeat(300));
+    assert.equal((await page.inputValue('#f-notes')).length, 4000, 'the notes box took more than is kept');
+    assert.equal(await page.textContent('#f-notes-n'), '4,000 characters at most: 4,000 used');
+    await page.click('#bkx');
+    assert.equal((await storedBook(page, 'w1')).notes.length, 4000);
+    await page.click('#list .bk[data-id="w1"]');
+    const limits = await page.evaluate(() => Object.fromEntries(['f-title', 'f-sub', 'f-publisher', 'f-edition', 'f-room', 'f-shelf', 'f-lent', 'f-notes', 'f-blurb'].map(id => [id, document.getElementById(id).maxLength])));
+    assert.deepEqual(limits, { 'f-title': 300, 'f-sub': 300, 'f-publisher': 120, 'f-edition': 120, 'f-room': 60, 'f-shelf': 60, 'f-lent': 80, 'f-notes': 4000, 'f-blurb': 300 });
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a card closed while typing doesn\'t save over the next book opened', async () => {
   const ctx = await context(DESK);
   try {

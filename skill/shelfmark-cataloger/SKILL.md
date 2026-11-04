@@ -79,9 +79,10 @@ The script:
 - checks ISBN check digits, and drops and flags any that fail;
 - maps words like "hardback", "VG" and "finished" onto Shelfmark's values;
 - warns about likely doubles: the same title (with or without its subtitle) and author twice, or the same ISBN. The volumes of a set aren't doubles;
+- warns about anything longer than Shelfmark keeps: notes over 4,000 characters, a title or a line about the book over 300, more than 12 authors or 20 tags;
 - prints a summary, a **link** and a `.shelfmark.json` file path.
 
-If it prints warnings, read them: a dropped ISBN or a double usually means one more look at the photo. Another volume of the same set doesn't warn, so keep every volume you see.
+If it prints warnings, read them: a dropped ISBN or a double usually means one more look at the photo. Another volume of the same set doesn't warn, so keep every volume you see. Pass on any that say notes were cut (a long Goodreads review, say), so the person can keep the whole text somewhere else.
 
 Links are compressed, so a few shelves' worth makes a link of a few thousand characters. For a few hundred books or more, lead with the file; the script says so when a link gets too long to pass around safely.
 

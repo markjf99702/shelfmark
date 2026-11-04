@@ -260,6 +260,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .card-tt{flex:1;min-width:0;display:grid;gap:8px}
 /* Add a book: a book that's here already says so under Author (out of the way while there's nothing to say) */
 #f-dup{margin:-2px 0 0}
+#f-notes-n{margin:0}
 #f-dup:empty{position:absolute;margin:0}
 /* the title is a box of one line that grows to show a long one whole */
 .card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px;min-height:0;resize:none;overflow:hidden;display:block}
@@ -1799,21 +1800,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
-      '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
+      '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" maxlength="300" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
       '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" autocomplete="off"></label>' +
       (isNew ? '<p class="note" id="f-dup" role="status"></p>' : '') + '</div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
       '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">★</button>'; }).join('') + '</div></div>' +
-      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" placeholder="Living room" autocomplete="off"></label>' +
-      '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" placeholder="Tall bookcase, top" autocomplete="off"></label></div>' +
-      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" placeholder="On the shelf" autocomplete="off"></label>' +
+      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" autocomplete="off"></label>' +
+      '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" autocomplete="off"></label></div>' +
+      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" autocomplete="off"></label>' +
       '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
       '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back</button>' +
       '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
-      '<label class="fl"><span>Notes</span><textarea id="f-notes" rows="3">' + esc(b.notes) + '</textarea></label>' +
+      '<div class="fl"><label class="fl"><span>Notes</span><textarea id="f-notes" rows="3" maxlength="4000" aria-describedby="f-notes-n">' + esc(b.notes) + '</textarea></label><span class="note" id="f-notes-n" hidden></span></div>' +
       '<details class="more"><summary><span class="sum-l">Reading details</span><span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
       seg('kind', 'Fiction or not', KINDS) + seg('way', 'How it reads', WAYS, '<span class="note">Books you browse (cookbooks, reference, picture books) aren’t suggested in What to read next unless you ask for them.</span>') +
       seg('pace', 'Pace', PACES) + seg('chapters', 'Chapters', CHAPTERS) +
@@ -1822,13 +1823,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="fl"><span>About it</span><textarea id="f-blurb" rows="2" maxlength="300" placeholder="A line about the book, without spoilers">' + esc(b.blurb) + '</textarea></label>' +
       '</div></details>' +
       '<details class="more"' + (isNew ? ' open' : '') + '><summary>Edition and details</summary><div class="fs">' +
-      '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" autocomplete="off"></label>' +
+      '<label class="fl"><span>Subtitle</span><input id="f-sub" value="' + esc(b.sub) + '" maxlength="300" autocomplete="off"></label>' +
       '<label class="fl"><span>ISBN</span><span class="isbnrow"><input id="f-isbn" class="mono" inputmode="text" autocapitalize="characters" spellcheck="false" value="' + esc(b.isbn) + '" autocomplete="off">' + (PREF.lookups ? '<button class="btn sm" type="button" id="f-look">Look it up</button>' : '') + '</span></label>' +
-      '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" autocomplete="off"></label>' +
+      '<div class="two"><label class="fl"><span>Publisher</span><input id="f-publisher" value="' + esc(b.publisher) + '" maxlength="120" autocomplete="off"></label>' +
       '<div class="two"><label class="fl"><span>Year</span><input id="f-year" inputmode="numeric" value="' + (b.year || '') + '" autocomplete="off"></label><label class="fl"><span>Pages</span><input id="f-pages" inputmode="numeric" value="' + (b.pages || '') + '" autocomplete="off"></label></div></div>' +
       '<div class="two"><label class="fl"><span>Format</span><select id="f-format">' + opts(FORMATS, b.format || '', '—') + '</select></label>' +
       '<label class="fl"><span>Condition</span><select id="f-condition">' + opts(CONDITIONS, b.condition || '', '—') + '</select></label></div>' +
-      '<label class="fl"><span>Edition</span><input id="f-edition" value="' + esc(b.edition) + '" placeholder="e.g. 2nd printing, book club edition" autocomplete="off"></label>' +
+      '<label class="fl"><span>Edition</span><input id="f-edition" value="' + esc(b.edition) + '" maxlength="120" placeholder="e.g. 2nd printing, book club edition" autocomplete="off"></label>' +
       '<div class="checks"><label><input type="checkbox" id="f-signed"' + (b.signed ? ' checked' : '') + '> Signed</label><label><input type="checkbox" id="f-first"' + (b.first ? ' checked' : '') + '> First edition</label></div>' +
       '<label class="fl"><span>Added to the library</span><input id="f-added" type="date" value="' + esc(b.added || '') + '"></label>' +
       '</div></details></div></div></div>' +
@@ -1908,7 +1909,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
       panel.querySelectorAll('#f-rating button').forEach(function (x) { x.classList.toggle('on', +x.dataset.v <= st.rating); x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
-      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim();
+      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); drawCount();
       ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
       panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });
       $('f-genres').innerHTML = st.genres.map(function (g) { return '<button type="button" data-g="' + g + '" aria-pressed="true" aria-label="' + esc(label(g, GENRES)) + ', remove">' + esc(label(g, GENRES)) + ' ×</button>'; }).join('');
@@ -1924,12 +1925,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var n = read(), d = n && findDup(dupIndex(DOC), n), at = d && where(d);
       $('f-dup').textContent = !d ? '' : otherEdition(d, n) ? 'You already have another edition' + (at ? ' — ' + at : '') + '.' : 'You already have this' + (at ? ' — ' + at : '') + '. Add another copy?';
     }
+    // Notes keep 4,000 characters (an older Shelfmark open in another tab would cut longer ones as it synced): near that,
+    // a count under them says how many are used.
+    function drawCount() {
+      var used = v('f-notes').length, n = $('f-notes-n');
+      n.hidden = used <= 3800; n.textContent = used > 3800 ? '4,000 characters at most: ' + used.toLocaleString('en-US') + ' used' : '';
+    }
     panel.addEventListener('input', function (e) {
       if (isNew && /^f-(title|authors|isbn)$/.test(e.target.id)) { clearTimeout(dupT); dupT = setTimeout(drawDup, 250); }
       if (e.target.id === 'f-title') { if (/[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' '); growTitle(); }
       if (e.target.id === 'f-title' || e.target.id === 'f-room' || e.target.id === 'f-shelf' || e.target.id === 'f-isbn') head();
       if (e.target.id === 'f-lent') { if (v('f-lent').trim() && !v('f-since')) $('f-since').value = today(); drawState(); }
       if (e.target.id === 'f-tags') drawPicks();
+      if (e.target.id === 'f-notes') drawCount();
       later();
     });
     panel.addEventListener('change', later);

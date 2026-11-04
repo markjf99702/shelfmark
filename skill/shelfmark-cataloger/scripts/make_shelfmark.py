@@ -108,6 +108,29 @@ def cut(t, n):
     return t
 
 
+def u16(t):
+    """How long text is as Shelfmark counts it: in UTF-16, so an emoji is two."""
+    return sum(2 if ord(c) > 0xFFFF else 1 for c in t)
+
+
+ALL = 10 ** 9  # as a limit: no limit, for seeing how long text is before Shelfmark cuts it
+
+
+def short(t, n=60):
+    """A long title cut at a word near n characters, for a warning."""
+    if u16(t) <= n:
+        return t
+    c = cut(t, n + 1)
+    w = c.rfind(' ')
+    return (c[:w] if w >= n // 2 else cut(t, n)).rstrip(' ,;:.-') + '…'
+
+
+def too_long(title, what, whole_text, n, warn):
+    """Says when text is longer than Shelfmark keeps, so the end of a long review or reading log isn't lost unseen."""
+    if u16(whole_text) > n:
+        warn.append(f'“{title}”: {what} {u16(whole_text):,} characters; Shelfmark keeps {n:,}')
+
+
 def s(v, n):
     """Text in one line, as Shelfmark's str()."""
     return cut(re.sub(f'[{WS}]+', ' ', text(v)).strip(WS), n)
@@ -247,6 +270,7 @@ def reading(b, title, warn):
             warn.append(f'“{title}”: more than four {key}; kept the first four')
         out[key] = keep[:4]
     out['blurb'] = s(b.get('blurb'), 300)
+    too_long(title, 'the blurb is', s(b.get('blurb'), ALL), 300, warn)
     return out
 
 
@@ -258,8 +282,13 @@ def clean(b, i, warn):
     if not title:
         warn.append(f'#{i + 1}: no title, left out')
         return None
+    name = short(title)  # in the warnings about what's cut or dropped
+    too_long(name, 'the title is', s(b.get('title'), ALL), 300, warn)
     flags = [s(b.get('unsure') or b.get('check'), 300)]
     out = {'title': title, 'sub': s(b.get('sub') or b.get('subtitle'), 300), 'authors': names(b.get('authors') or b.get('author') or [])}
+    every = names(b.get('authors') or b.get('author') or [], ALL)
+    if len(every) > 12:
+        warn.append(f'“{name}”: {len(every)} authors; Shelfmark keeps the first 12')
     raw = s(b.get('isbn'), 200)
     if re.search(r'\d', raw):  # an empty Goodreads cell, ="", is no ISBN at all
         good = first_isbn(raw)
@@ -287,7 +316,11 @@ def clean(b, i, warn):
         if day(loan.get('since')):
             out['loan']['since'] = day(loan.get('since'))
     out['tags'] = items(b.get('tags'), 20, 40)
+    every = items(b.get('tags'), ALL, 40)
+    if len(every) > 20:
+        warn.append(f'“{name}”: {len(every)} tags; Shelfmark keeps the first 20')
     out['notes'] = para(b.get('notes'), 4000)
+    too_long(name, 'notes are', para(b.get('notes'), ALL), 4000, warn)
     out['edition'] = s(b.get('edition'), 120)
     out['signed'] = yes(b.get('signed'))
     out['first'] = yes(b.get('first')) or yes(b.get('first_edition'))
