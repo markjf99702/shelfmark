@@ -306,6 +306,17 @@ def reading(b, title, warn):
     return out
 
 
+def check_note(note, own):
+    """Claude's note on what to check, then the script's own (an ISBN that fails its check digit, left off), in the 300
+    characters Shelfmark keeps: a note too long for both is shortened, with an ellipsis, so the script's is kept whole."""
+    tail = '; '.join(own)
+    whole = '; '.join(f for f in (note, tail) if f)
+    room = 300 - u16(tail) - 3  # for '…; '
+    if u16(whole) <= 300 or not tail or room < 1:
+        return cut(whole, 300)
+    return cut(note, room).rstrip(' ,;:.-') + '…; ' + tail
+
+
 def clean(b, i, warn):
     if not isinstance(b, dict):
         warn.append(f'#{i + 1}: not a book object, left out')
@@ -369,7 +380,7 @@ def clean(b, i, warn):
     out['added'] = day(b.get('added'))
     no_day(name, 'added', b.get('added'), warn)
     out.update(reading(b, title, warn))
-    flag = '; '.join(f for f in flags if f)[:300]
+    flag = check_note(flags[0], flags[1:])
     if flag:
         out['unsure'] = flag
     return {k: v for k, v in out.items() if v not in ('', 0, False, None, [], {})}

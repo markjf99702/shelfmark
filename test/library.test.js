@@ -1213,6 +1213,14 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit', 'A Kindle book'], 'the script’s link opens with every usable book, in order');
       eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
       check(!got.books[1].isbn && /glare on the spine; ISBN read as 9780140449137 fails its check digit/.test(got.books[1].check), 'a misread ISBN is dropped and flagged, not guessed');
+      // A long note of Claude's is shortened to leave room for that line: Shelfmark keeps 300 characters (in UTF-16).
+      const noteIn = path.join(tmp, 'note.json'), noteDir = fs.mkdtempSync(path.join(tmp, 'note-')), isbnSaid = 'ISBN read as 9780140449137 fails its check digit, so it was left off';
+      const notes = ['😀'.repeat(150), 'The spine is faded and the lower half is hidden by a bookend, so the title could be any of three. '.repeat(3), 'Short note.'];
+      fs.writeFileSync(noteIn, JSON.stringify({ books: notes.map(n => ({ title: 'T', isbn: '9780140449137', unsure: n })) }));
+      execFileSync('python3', [py, noteIn, '--out', noteDir, '--no-link'], { encoding: 'utf8' });
+      const noted = (await S.parseIncoming(fs.readFileSync(path.join(noteDir, fs.readdirSync(noteDir)[0]), 'utf8'))).batch.books.map(b => b.check);
+      check(noted.every(c => c.endsWith('; ' + isbnSaid) && c.length <= 300), 'a long note to check keeps the line saying the ISBN was left off' + '\n    got ' + JSON.stringify(noted.map(c => c.slice(-80))));
+      eq([noted[0].startsWith('😀😀') && noted[0].includes('😀…; ISBN'), noted[1].startsWith('The spine is faded') && /\w…; ISBN/.test(noted[1]), noted[2]], [true, true, 'Short note.; ' + isbnSaid], 'and keeps the start of the note, cut at a whole character, with an ellipsis');
       eq(got.books[2].loan, { to: 'Sam', since: '2026-09-01' }, 'loans come through');
       eq([got.books[2].isbn, got.books[2].check], ['9780618260300', undefined], 'the script keeps the first valid ISBN from a list, as LibraryThing gives them');
       eq([got.books[3].isbn, got.books[3].check], [undefined, undefined], 'and takes an empty Goodreads cell for no ISBN, without a flag');
