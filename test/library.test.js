@@ -332,7 +332,7 @@ for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'w
   eq([S.surname('Kurt Vonnegut, Jr.'), S.surname('Ann Lee, Ph.D.'), S.surname('Bo Chen III.')], ['Vonnegut', 'Lee', 'Chen'], 'and the other endings a name can have');
   eq(S.surname('Homer'), 'Homer', 'single name');
   eq(S.titleKey('The Hobbit: or There and Back Again'), S.titleKey('The Hobbit'), 'title key drops the article and subtitle');
-  check(S.titleKey('Heartstopper: Volume 2') !== S.titleKey('Heartstopper: Volume 1'), 'numbered volumes of a series have different title keys');
+  check(S.titleKey('Clarissa: Volume 2') !== S.titleKey('Clarissa: Volume 1'), 'numbered volumes of a series have different title keys');
   const lib = S.cleanDoc({ books: [
     { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'], room: 'Den' },
     { id: 'w', t: 1, title: 'War and Peace', authors: ['Leo Tolstoy'], isbn: '0140449132' },
@@ -343,21 +343,21 @@ for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'w
   eq((S.findDup(ix, { title: 'Voyna i mir', isbn: '978-0-14-044913-6' }) || {}).id, 'w', 'same ISBN in the other form is a duplicate');
   eq(S.findDup(ix, { title: 'The Hobbit', authors: ['Someone Else'] }), null, 'same title, different author is not');
   eq(S.coverQuery({ title: 'War and Peace', isbn: '0-14-044913-2' }), { key: 'i9780140449136', q: 'isbn=9780140449136', isbn: '9780140449136' }, 'a cover is looked up by ISBN when there is one');
-  eq(S.coverQuery({ title: 'Freakonomics: A Rogue Economist', authors: ['Steven D. Levitt', 'Stephen J. Dubner'] }), { key: 'tfreakonomics|steven d. levitt', q: 'title=Freakonomics&author=Steven%20D.%20Levitt', tk: S.titleKey('Freakonomics') }, 'otherwise by title before the colon and first author');
+  eq(S.coverQuery({ title: 'The Federalist: Written in Favour of the New Constitution', authors: ['Alexander Hamilton', 'James Madison'] }), { key: 'tthe federalist|alexander hamilton', q: 'title=The%20Federalist&author=Alexander%20Hamilton', tk: S.titleKey('The Federalist') }, 'otherwise by title before the colon and first author');
   {
-    const botany = S.coverQuery({ title: 'The Botany of Desire', authors: ['Michael Pollan'] });
-    const eds = [{ title: 'Die Botanik der Begierde', covers: [3232846] }, { title: 'The Botany of Desire', covers: [-1] }, { title: 'The botany of desire', covers: [227571] }];
-    eq(S.pickCover({ title: 'The Botany of Desire', cover_i: 3232846 }, eds, botany), 227571, 'the cover comes from an edition whose title matches, not the German one');
-    eq(S.pickCover({ title: 'Some Other Book', cover_i: 55 }, [{ title: 'Some Other Book', covers: [55] }], botany), 0, 'a search hit with a different title gives no cover rather than a wrong one');
-    eq(S.pickCover({ title: 'The Botany of Desire', cover_i: 77 }, [], botany), 77, 'with no edition covers, a work whose title matches lends its own');
+    const origin = S.coverQuery({ title: 'On the Origin of Species', authors: ['Charles Darwin'] });
+    const eds = [{ title: 'Die Entstehung der Arten', covers: [3232846] }, { title: 'On the Origin of Species', covers: [-1] }, { title: 'On the origin of species', covers: [227571] }];
+    eq(S.pickCover({ title: 'On the Origin of Species', cover_i: 3232846 }, eds, origin), 227571, 'the cover comes from an edition whose title matches, not the German one');
+    eq(S.pickCover({ title: 'Some Other Book', cover_i: 55 }, [{ title: 'Some Other Book', covers: [55] }], origin), 0, 'a search hit with a different title gives no cover rather than a wrong one');
+    eq(S.pickCover({ title: 'On the Origin of Species', cover_i: 77 }, [], origin), 77, 'with no edition covers, a work whose title matches lends its own');
     const byIsbn = S.coverQuery({ title: 'x', isbn: '9780140449136' });
     eq(S.pickCover({ cover_i: 9 }, [{ title: 'War and Peace', isbn_10: ['0140449132'], covers: [42] }, { title: 'War and Peace', covers: [43] }], byIsbn), 42, 'with an ISBN, the edition carrying that ISBN wins');
     eq(S.pickCover({ cover_i: 9 }, [{ title: 'War and Peace', covers: [43] }], byIsbn), 9, 'and otherwise the work cover the ISBN search found');
   }
   eq(S.coverQuery({ title: 'Cien años de soledad' }).q, 'title=Cien%20a%C3%B1os%20de%20soledad', 'a title with no author is looked up alone, safely encoded');
-  const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }] }));
-  eq(S.findDup(series, { title: 'Heartstopper: Volume 2', authors: ['Alice Oseman'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
-  eq((S.findDup(series, { title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }) || {}).id, 'v1', 'but volume 1 again is');
+  const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Clarissa: Volume 1', authors: ['Samuel Richardson'] }] }));
+  eq(S.findDup(series, { title: 'Clarissa: Volume 2', authors: ['Samuel Richardson'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
+  eq((S.findDup(series, { title: 'Clarissa: Volume 1', authors: ['Samuel Richardson'] }) || {}).id, 'v1', 'but volume 1 again is');
   // The volumes of a set are books of their own, however their titles carry the volume; the same book with or without
   // its subtitle is still the same book.
   const set = S.cleanDoc({ books: [
@@ -393,8 +393,8 @@ eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life o
   'a toast quotes a title up to its colon, cut at a word near 40 characters');
 eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
 // Titles and lines about books are shown with curly apostrophes, like Shelfmark's own words.
-eq(["The Pilgrim's Progress", "'Salem's Lot", "Rock 'n' Roll", "'The Raven' and Other Poems", "Songs of the '90s", "Dickens' London", "'Tis the Season", "O'Brien's 'Going After Cacciato'", "Jane Eyre", ''].map(S.curly),
-  ['The Pilgrim’s Progress', '’Salem’s Lot', 'Rock ’n’ Roll', '‘The Raven’ and Other Poems', 'Songs of the ’90s', 'Dickens’ London', '’Tis the Season', 'O’Brien’s ‘Going After Cacciato’', 'Jane Eyre', ''],
+eq(["The Pilgrim's Progress", "'Salem's Lot", "Rock 'n' Roll", "'The Raven' and Other Poems", "Songs of the '90s", "Achilles' Heel", "'Tis the Season", "O'Brien's 'Going After Cacciato'", "Jane Eyre", ''].map(S.curly),
+  ['The Pilgrim’s Progress', '’Salem’s Lot', 'Rock ’n’ Roll', '‘The Raven’ and Other Poems', 'Songs of the ’90s', 'Achilles’ Heel', '’Tis the Season', 'O’Brien’s ‘Going After Cacciato’', 'Jane Eyre', ''],
   'straight apostrophes are shown curly, and a quote of a few words opens with ‘');
 eq(S.short("The Pilgrim's Progress: from This World"), 'The Pilgrim’s Progress', 'and so are they in a toast');
 eq(['Den › Tall bookcase', 'Study › Window bookcase, brass owl bookend shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
@@ -664,7 +664,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   // (What decides a merge is the time, then how many fields a copy has, then its text, so these books have a few
   // times between them and any number of fields, but short text.)
   const lite = () => r() < 0.12 ? { id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), del: 1 } : {
-    id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), title: any(['Same', 'Other', 'Dune']), authors: any([[], ['Ann Lee'], ['Ann Lee', 'Bo Chen']]),
+    id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), title: any(['Same', 'Other', 'Third']), authors: any([[], ['Ann Lee'], ['Ann Lee', 'Bo Chen']]),
     notes: any(['', 'x', 'line one\nline two']), rating: any([0, 3, 5]), status: any(['', 'read', 'reading']), kind: any(['', 'fiction']), moods: any([[], ['funny'], ['dark', 'sad']]),
     tags: any([[], ['sf'], ['sf', 'kids']]), loan: any([null, { to: 'Sam' }, { to: 'Sam', since: '2026-01-02' }]), signed: any([false, true]), pages: any([0, 300]) };
   const doc = () => S.cleanDoc({ books: Array.from({ length: 6 }, lite), seen: { ['c' + Math.floor(r() * 3)]: 1 + Math.floor(r() * 9) } });
@@ -701,8 +701,8 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   // the book named by id; or else each copy not named by another entry that has the entry's ISBN, or is the same book
   // with the same first author (or, like the entry, none); and of those, when there are several and some have all the
   // entry's authors, just those, plus every copy with the ISBN.
-  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Republic', 'Plato', '9780465069347'], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
-  const whoOf = () => any([0, 0, 1, 2]), people = (w, who) => [[who], [who, 'F. M. Cornford'], [who, 'Allan Bloom']][w];
+  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Odyssey', 'Homer', '9780140268867'], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
+  const whoOf = () => any([0, 0, 1, 2]), people = (w, who) => [[who], [who, 'S. H. Butcher'], [who, 'Samuel Butler']][w];
   let never = true, every = true, byIsbn = true;
   for (let k = 0; k < 400; k++) {
     const made = {}, books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const w = Math.floor(r() * SHELF.length), [title, who, isbn] = SHELF[w];
@@ -869,20 +869,20 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
 (async () => {
   // ---------- reading details ----------
   {
-    const b = S.cleanBook({ id: 'r', t: 1, title: 'Dune', kind: 'Fiction', genres: ['Science fiction', 'sf', 'nonsense', 'Classics', 'adventure', 'Fantasy', 'Horror', 'Thriller'],
-      moods: 'adventurous, Tense, bogus', pace: 'Medium', chapters: 'huge', way: 'Cover to cover', blurb: '  A desert   planet. ' });
-    eq([b.kind, b.genres, b.moods, b.pace, b.chapters, b.way, b.blurb], ['fiction', ['sf', 'classics', 'fantasy', 'horror'], ['adventurous', 'tense'], 'medium', undefined, 'through', 'A desert planet.'],
+    const b = S.cleanBook({ id: 'r', t: 1, title: 'The War of the Worlds', kind: 'Fiction', genres: ['Science fiction', 'sf', 'nonsense', 'Classics', 'adventure', 'Fantasy', 'Horror', 'Thriller'],
+      moods: 'adventurous, Tense, bogus', pace: 'Medium', chapters: 'huge', way: 'Cover to cover', blurb: '  Martians   land in Surrey. ' });
+    eq([b.kind, b.genres, b.moods, b.pace, b.chapters, b.way, b.blurb], ['fiction', ['sf', 'classics', 'fantasy', 'horror'], ['adventurous', 'tense'], 'medium', undefined, 'through', 'Martians land in Surrey.'],
       'reading details take a value or its label, drop unknown ones, and keep up to four genres');
     const lib = S.cleanDoc({ books: [
-      { id: 'a1', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Den' },
-      { id: 'a2', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Sunroom' },
-      { id: 'c1', t: 5, title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593', pages: 412, kind: 'fiction', moods: ['tense'] },
+      { id: 'a1', t: 5, title: 'Up from Slavery', authors: ['Booker T. Washington'], room: 'Den' },
+      { id: 'a2', t: 5, title: 'Up from Slavery', authors: ['Booker T. Washington'], room: 'Hall' },
+      { id: 'c1', t: 5, title: 'The War of the Worlds', authors: ['H. G. Wells'], isbn: '9780141441030', pages: 412, kind: 'fiction', moods: ['tense'] },
       { id: 'gone', t: 6, del: 1 }
     ] });
     const det = S.cleanDetails({ shelfmark: 1, details: { id: 'd1', name: 'Reading details', books: [
-      { id: 'a1', title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', genres: ['biography'], moods: ['inspiring'], pace: 'medium', pages: 448, blurb: 'A former First Lady on growing up and the White House.' },
-      { id: 'zzz', title: 'Dune', authors: ['Frank Herbert'], isbn: '0441013597', kind: 'fiction', genres: ['sf'], moods: ['adventurous'], pages: 600 },
-      { title: 'Becoming', authors: ['Michelle Obama'], way: 'through' },
+      { id: 'a1', title: 'Up from Slavery', authors: ['Booker T. Washington'], kind: 'nonfiction', genres: ['biography'], moods: ['inspiring'], pace: 'medium', pages: 448, blurb: 'A life from slavery in Virginia to the founding of a school in Alabama.' },
+      { id: 'zzz', title: 'The War of the Worlds', authors: ['H. G. Wells'], isbn: '0141441038', kind: 'fiction', genres: ['sf'], moods: ['adventurous'], pages: 600 },
+      { title: 'Up from Slavery', authors: ['Booker T. Washington'], way: 'through' },
       { id: 'gone', title: 'Removed one', kind: 'fiction' },
       { id: 'x', title: 'Unknown Book', authors: ['Nobody'], kind: 'poetry' },
       { id: 'y', title: 'No details at all' }, 'junk'
@@ -892,10 +892,10 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy another entry doesn’t name by id), and a removed or unknown book by nothing');
     const a1 = S.withDetails(lib.books.a1, m[0].e, false);
     eq([a1.kind, a1.genres, a1.pages, a1.room], ['nonfiction', ['biography'], 448, 'Den'], 'details fill in a book, page count included, and leave the rest alone');
-    const dune = S.withDetails(lib.books.c1, m[1].e, false);
-    eq([dune.kind, dune.moods, dune.genres, dune.pages], ['fiction', ['tense'], ['sf'], 412], 'only blanks are filled: details already there and the page count stay');
-    const dune2 = S.withDetails(lib.books.c1, m[1].e, true);
-    eq([dune2.moods, dune2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
+    const wells = S.withDetails(lib.books.c1, m[1].e, false);
+    eq([wells.kind, wells.moods, wells.genres, wells.pages], ['fiction', ['tense'], ['sf'], 412], 'only blanks are filled: details already there and the page count stay');
+    const wells2 = S.withDetails(lib.books.c1, m[1].e, true);
+    eq([wells2.moods, wells2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
     eq(S.withDetails(Object.assign({}, lib.books.c1, { genres: ['sf'] }), m[1].e, false), null, 'nothing new → no change');
     // Entries whose ids aren't in this library (made from another copy of it, or from an older backup) find books by
     // ISBN and by title and author both, and so every copy.
@@ -904,25 +904,25 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     eq(matched(eliots, [{ id: 'old', title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', kind: 'fiction' }]), [['d1', 'd2']], 'an entry with an ISBN finds the copy without one too');
     eq(matched(eliots, [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }]), [['d1', 'd2']], 'as an entry without one does');
     // Two translations: the same title and first author, but each entry is for one of them.
-    const republics = [{ id: 'r1', t: 1, title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], room: 'Den' }, { id: 'r2', t: 1, title: 'The Republic', authors: ['Plato', 'Allan Bloom'], room: 'Study' }];
+    const odysseys = [{ id: 'r1', t: 1, title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], room: 'Den' }, { id: 'r2', t: 1, title: 'The Odyssey', authors: ['Homer', 'Samuel Butler'], room: 'Study' }];
     const tr = S.cleanDetails({ details: { books: [
-      { id: 'x1', title: 'The Republic', authors: ['Plato', 'F.M. Cornford'], blurb: 'Plato’s dialogue on justice, in Cornford’s translation.', pages: 360 },
-      { id: 'x2', title: 'The Republic', authors: ['Plato', 'Allan Bloom'], blurb: 'Plato’s dialogue on justice, in Bloom’s literal translation.', pages: 490 }] } });
-    const lib2 = S.cleanDoc({ books: republics }), tm = S.matchDetails(lib2, tr);
+      { id: 'x1', title: 'The Odyssey', authors: ['Homer', 'S.H. Butcher'], blurb: 'Odysseus’s long voyage home, in Butcher and Lang’s prose.', pages: 360 },
+      { id: 'x2', title: 'The Odyssey', authors: ['Homer', 'Samuel Butler'], blurb: 'Odysseus’s long voyage home, in Butler’s plain prose.', pages: 490 }] } });
+    const lib2 = S.cleanDoc({ books: odysseys }), tm = S.matchDetails(lib2, tr);
     eq(tm.map(r => r.bs.map(b => b.id)), [['r1'], ['r2']], 'two translations each get the entry with their own translator');
     const filled = S.detailChanges(lib2, tm, true);
-    eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Bloom/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
-    eq(matched(republics, [{ title: 'The Republic', authors: ['Plato'], kind: 'nonfiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
+    eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Butler/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
+    eq(matched(odysseys, [{ title: 'The Odyssey', authors: ['Homer'], kind: 'fiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
     // A copy with the entry's ISBN is that edition, though another copy matches the entry's authors and it has none.
-    const plato = [{ id: 'k0', t: 1, title: 'The Republic', authors: ['Plato'] }, { id: 'k1', t: 1, title: 'The Republic', isbn: '9780465069347' }];
-    eq(matched(plato, [{ title: 'The Republic', authors: ['Plato'], isbn: '9780465069347', kind: 'nonfiction' }]), [['k1', 'k0']], 'an entry with an ISBN fills the copy with that ISBN, and the copy with its title and author');
+    const homer = [{ id: 'k0', t: 1, title: 'The Odyssey', authors: ['Homer'] }, { id: 'k1', t: 1, title: 'The Odyssey', isbn: '9780140268867' }];
+    eq(matched(homer, [{ title: 'The Odyssey', authors: ['Homer'], isbn: '9780140268867', kind: 'fiction' }]), [['k1', 'k0']], 'an entry with an ISBN fills the copy with that ISBN, and the copy with its title and author');
     // The volumes of a set: an entry for one fills only that one, and one naming the set alone fills every volume.
     const cycle = [{ id: 'l1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { id: 'l2', t: 1, title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
       { id: 'l3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { id: 'l4', t: 1, title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }];
     eq(matched(cycle, [{ id: 'old', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'], kind: 'fiction' }, { title: 'Annals of Ostrava: Volume I', authors: ['Cy Dorn'], kind: 'nonfiction' },
       { title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' }, { id: 'old2', title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'], kind: 'nonfiction' }]), [['l2'], ['l3'], ['l1', 'l2'], ['l4']],
       'details for one volume of a set fill only that volume, its name in the title or the subtitle, and details for the set fill each');
-    eq(matched(republics, [{ id: 'r1', title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }, { title: 'The Republic', authors: ['Plato', 'F. M. Cornford'], kind: 'nonfiction' }]), [['r1'], ['r2']],
+    eq(matched(odysseys, [{ id: 'r1', title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], kind: 'fiction' }, { title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], kind: 'fiction' }]), [['r1'], ['r2']],
       'a copy one entry names by id is left out of another entry’s title match');
     // Two copies, two entries without ids: each entry finds both, and each book counts once.
     const waldens = S.cleanDoc({ books: [{ id: 'a1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }, { id: 'a2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }] });
@@ -957,9 +957,9 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
 
     // An older Shelfmark that doesn't know the reading details drops them without changing the time. Its copy mustn't win.
-  const full = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune', kind: 'fiction', moods: ['tense'] }] }), bare = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune' }] });
+  const full = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'The Time Machine', kind: 'fiction', moods: ['tense'] }] }), bare = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'The Time Machine' }] });
   eq([S.mergeDocs(full, bare).books.o.kind, S.mergeDocs(bare, full).books.o.kind], ['fiction', 'fiction'], 'at the same time, the copy with the reading details wins, whichever way round');
-  eq(S.mergeDocs(full, S.cleanDoc({ books: [{ id: 'o', t: 10, title: 'Dune' }] })).books.o.kind, undefined, 'but a later edit still wins');
+  eq(S.mergeDocs(full, S.cleanDoc({ books: [{ id: 'o', t: 10, title: 'The Time Machine' }] })).books.o.kind, undefined, 'but a later edit still wins');
 
   // What to read next, by reading details.
     const now = new Date('2026-11-02T12:00:00').getTime();
@@ -1230,7 +1230,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   eq(await sheetSaid('"Book Id","Title","Primary Author"\n"101","The Hobbit","Tolkien, J. R. R."'), hint, 'and so does a LibraryThing one');
   eq(await sheetSaid('��B\u0000o\u0000o\u0000k\u0000 \u0000I\u0000d\u0000\t\u0000T\u0000i\u0000t\u0000l\u0000e\u0000\r\u0000\n\u0000'), hint, 'and LibraryThing\'s UTF-16 one, read as UTF-8');
   eq(await sheetSaid(S.toCsv(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'T' }] }))), hint, 'and Shelfmark\'s own spreadsheet');
-  eq(await sheetSaid('Title\tAuthor\nDune\tFrank Herbert'), hint, 'and cells copied from a spreadsheet');
+  eq(await sheetSaid('Title\tAuthor\nThe Time Machine\tH. G. Wells'), hint, 'and cells copied from a spreadsheet');
   eq(await sheetSaid('The title of my favourite book, I forget'), 'refused', 'plain text that mentions a title is refused as before');
 
   // The skill's script and the page must agree on the link format.
@@ -1506,19 +1506,19 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
         eq(pyList(n), list.map(x => x[0]), 'the script’s ' + n + ' match the page’s');
       const detIn = path.join(tmp, 'details.json');
       fs.writeFileSync(detIn, JSON.stringify({ name: 'Reading details', books: [
-        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Spice, sand and a prophecy.', pages: 612 },
-        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: 'cooking', way: 'browse', chapters: 'short' },
+        { id: 'b1', title: 'The War of the Worlds', authors: ['H. G. Wells'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Martians land in Surrey, and nothing stops them.', pages: 612 },
+        { id: 'b2', title: 'The Boston Cooking-School Cook Book', kind: 'nonfiction', genres: 'cooking', way: 'browse', chapters: 'short' },
         { title: 'Nothing to say' }
       ] }));
       const detSaid = execFileSync('python3', [py, detIn, '--details', '--out', tmp], { encoding: 'utf8' });
       const detGot = await S.parseIncoming(/Link: (\S+)/.exec(detSaid)[1]);
       eq(detGot.kind, 'details', 'the script’s details link opens as reading details');
       eq(detGot.details.books, [
-        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], pages: 612, kind: 'fiction', genres: ['sf', 'classics'], moods: ['adventurous'], pace: 'medium', chapters: 'medium', way: 'through', blurb: 'Spice, sand and a prophecy.' },
-        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: ['food'], way: 'browse' }
+        { id: 'b1', title: 'The War of the Worlds', authors: ['H. G. Wells'], pages: 612, kind: 'fiction', genres: ['sf', 'classics'], moods: ['adventurous'], pace: 'medium', chapters: 'medium', way: 'through', blurb: 'Martians land in Surrey, and nothing stops them.' },
+        { id: 'b2', title: 'The Boston Cooking-School Cook Book', kind: 'nonfiction', genres: ['food'], way: 'browse' }
       ], 'every detail comes through, with words mapped onto Shelfmark’s');
       check(/mood “bogus” isn’t one Shelfmark knows/.test(detSaid) && /“Nothing to say”: no reading details, left out/.test(detSaid), 'and the script says what it left off');
-      check(/“Salt Fat Acid Heat”: chapters left off, since it’s a book to browse/.test(detSaid), 'including chapters for a book to browse, which SKILL.md says to leave out');
+      check(/“The Boston Cooking-School Cook Book”: chapters left off, since it’s a book to browse/.test(detSaid), 'including chapters for a book to browse, which SKILL.md says to leave out');
       const withDet = execFileSync('python3', [py, detIn, '--out', tmp, '--no-link'], { encoding: 'utf8' });
       const newBooks = (await S.parseIncoming(fs.readFileSync(path.join(tmp, fs.readdirSync(tmp).find(f => /^reading-details-\d{4}-\d\d-\d\d\.shelfmark\.json$/.test(f))), 'utf8'))).batch.books;
       eq([newBooks[0].genres, newBooks[1].way], [['sf', 'classics'], 'browse'], 'a batch of new books carries reading details too');

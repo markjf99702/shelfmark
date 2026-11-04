@@ -135,11 +135,11 @@ Without the library file (no Drive connector and no backup), leave out `--librar
 
 ```json
 {"name": "Reading details", "books": [
-  {"id": "b7q2x9m1kd", "title": "Dune", "authors": ["Frank Herbert"], "kind": "fiction", "genres": ["sf", "classics"],
-   "moods": ["adventurous", "challenging"], "pace": "medium", "chapters": "medium", "way": "through", "pages": 600,
-   "blurb": "A desert planet, the spice everyone wants, and a duke's young heir who may be its messiah."},
-  {"id": "b3n8r5t0pa", "title": "Salt Fat Acid Heat", "authors": ["Samin Nosrat"], "kind": "nonfiction", "genres": ["food"],
-   "moods": ["informative"], "way": "browse", "blurb": "How four elements make food taste good, with recipes to practise them."}
+  {"id": "b7q2x9m1kd", "title": "The War of the Worlds", "authors": ["H. G. Wells"], "kind": "fiction", "genres": ["sf", "classics"],
+   "moods": ["adventurous", "tense"], "pace": "fast", "chapters": "short", "way": "through", "pages": 192,
+   "blurb": "Martians land in Surrey, and a man makes his way through the ruins of their invasion."},
+  {"id": "b3n8r5t0pa", "title": "The Boston Cooking-School Cook Book", "authors": ["Fannie Merritt Farmer"], "kind": "nonfiction", "genres": ["food"],
+   "moods": ["informative"], "way": "browse", "blurb": "A cooking school's recipes, with every measure level and exact."}
 ]}
 ```
 

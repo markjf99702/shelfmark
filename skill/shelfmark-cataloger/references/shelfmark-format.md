@@ -63,7 +63,7 @@ Shelfmark ignores fields it doesn't know, cuts text to the limits above, brings 
 {"shelfmark": 1, "details": {
   "id": "d20261102-…", "name": "Reading details",
   "books": [
-    {"id": "b7q2x9m1kd", "title": "Dune", "authors": ["Frank Herbert"], "kind": "fiction", "genres": ["sf"], "moods": ["adventurous"], "pace": "medium", "pages": 600}
+    {"id": "b7q2x9m1kd", "title": "The War of the Worlds", "authors": ["H. G. Wells"], "kind": "fiction", "genres": ["sf"], "moods": ["adventurous"], "pace": "fast", "pages": 192}
   ]}}
 ```
 

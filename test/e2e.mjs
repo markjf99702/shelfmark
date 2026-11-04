@@ -722,7 +722,7 @@ step('books added from a link keep the shelf\'s order, and the sort chosen befor
     const page = await open(ctx);
     await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ sort: 'shelf', lookups: false })));
     await seed(page, [PIRANESI]);
-    const shelf = ['Wuthering Heights', 'Beloved', 'Middlemarch', 'Gilead', 'Dune', 'Circe', 'Emma', 'Atonement'];
+    const shelf = ['Wuthering Heights', 'Beloved', 'Middlemarch', 'Gilead', 'Dracula', 'Circe', 'Emma', 'Atonement'];
     await page.goto(linkTo({ name: 'Den, left case', room: 'Den', books: shelf.map(title => ({ title, authors: ['Ann Lee'] })) }));
     await page.waitForSelector('#rv-add');
     await page.click('#rv-add');
@@ -4366,8 +4366,8 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     await seed(page, [
       { ...PIRANESI, kind: 'fiction', moods: ['mysterious', 'reflective'], chapters: 'short', blurb: 'An endless house of statues and tides.' },
       { ...MIDDLEMARCH, kind: 'fiction', moods: ['reflective'], chapters: 'long' },
-      { id: 'b06', t: 1000, title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', moods: ['inspiring'], genres: ['biography'] },
-      { id: 'b07', t: 1000, title: 'Salt Fat Acid Heat', authors: ['Samin Nosrat'], kind: 'nonfiction', genres: ['food'], way: 'browse' },
+      { id: 'b06', t: 1000, title: 'Up from Slavery', authors: ['Booker T. Washington'], kind: 'nonfiction', moods: ['inspiring'], genres: ['biography'] },
+      { id: 'b07', t: 1000, title: 'The Boston Cooking-School Cook Book', authors: ['Fannie Merritt Farmer'], kind: 'nonfiction', genres: ['food'], way: 'browse' },
       { id: 'b08', t: 1000, title: 'Not Described', authors: ['Ann Lee'] },
     ]);
     await page.click('#nextBtn');
