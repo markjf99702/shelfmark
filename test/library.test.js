@@ -519,26 +519,38 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   check(only, 'details change nothing but the reading details and a blank page count');
   check(kept, 'and without Replace leave the details a book has');
 
-  // Details find every copy they're for, and never a removed book.
-  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Republic', 'Plato', ''], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
-  let never = true, every = true;
-  for (let k = 0; k < 300; k++) {
-    const books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const [title, who, isbn] = any(SHELF);
-      return { id: 'k' + i, t: 1, del: r() < 0.15 ? 1 : 0, title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.3 ? [who, any(['F. M. Cornford', 'Allan Bloom'])] : [who], isbn: r() < 0.5 ? isbn : '' }; });
+  // Details find every copy they're for, and never a removed book. Which copies those are is worked out here from how
+  // each book was made (which of the four it is, and whether it has authors and the ISBN), not with Shelfmark's keys:
+  // the book named by id; or else each copy not named by another entry that has the entry's ISBN, or is the same book
+  // with the same first author (or, like the entry, none); and of those, when there are several and some have all the
+  // entry's authors, just those, plus every copy with the ISBN.
+  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Republic', 'Plato', '9780465069347'], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
+  const whoOf = () => any([0, 0, 1, 2]), people = (w, who) => [[who], [who, 'F. M. Cornford'], [who, 'Allan Bloom']][w];
+  let never = true, every = true, byIsbn = true;
+  for (let k = 0; k < 400; k++) {
+    const made = {}, books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const w = Math.floor(r() * SHELF.length), [title, who, isbn] = SHELF[w];
+      const b = { id: 'k' + i, t: 1, del: r() < 0.15 ? 1 : 0, title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.15 ? [] : people(whoOf(), who), isbn: r() < 0.5 ? isbn : '' };
+      made[b.id] = { w, isbn: b.isbn, authors: b.authors.join('|') }; return b; });
     const lib = S.cleanDoc({ books }), live = S.live(lib);
-    const det = S.cleanDetails({ details: { books: Array.from({ length: 1 + Math.floor(r() * 4) }, () => { const [title, who, isbn] = any(SHELF);
-      return { id: any(['', 'k' + Math.floor(r() * 10), 'zz']), title, authors: r() < 0.3 ? [who, any(['F. M. Cornford', 'Allan Bloom'])] : [who], isbn: r() < 0.5 ? isbn : '', kind: 'fiction' }; }) } });
+    const raw = Array.from({ length: 1 + Math.floor(r() * 4) }, () => { const w = Math.floor(r() * SHELF.length), [title, who, isbn] = SHELF[w];
+      return { w, id: any(['', 'k' + Math.floor(r() * 10), 'zz']), title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.1 ? [] : people(whoOf(), who), isbn: r() < 0.5 ? isbn : '', kind: 'fiction' }; });
+    const det = S.cleanDetails({ details: { books: raw.map(({ w, ...e }) => e) } });
     const named = new Set(det.books.map(e => e.id).filter(id => lib.books[id] && !lib.books[id].del));
-    S.matchDetails(lib, det).forEach(({ e, bs }) => {
+    S.matchDetails(lib, det).forEach(({ e, bs }, n) => {
+      const x = raw[n], ids = bs.map(b => b.id).sort().join();
       if (bs.some(b => b.del)) never = false;
-      if (named.has(e.id)) { if (bs.length !== 1 || bs[0].id !== e.id) every = false; return; }
-      const keys = S.lookupKeys(e), copies = live.filter(b => !named.has(b.id) && S.indexKeys(b).some(x => keys.includes(x)));
-      const same = copies.filter(b => S.authorsKey(b) === S.authorsKey(e)), want = copies.length > 1 && same.length ? same : copies;
-      if (want.map(b => b.id).sort().join() !== bs.map(b => b.id).sort().join()) every = false;
+      if (named.has(e.id)) { if (ids !== e.id) every = false; return; }
+      const free = live.filter(b => !named.has(b.id)), isbn = b => !!x.isbn && made[b.id].isbn === x.isbn;
+      const found = free.filter(b => isbn(b) || made[b.id].w === x.w && !made[b.id].authors === !x.authors.length);
+      const same = found.filter(b => made[b.id].authors === x.authors.join('|'));
+      const want = found.length > 1 && same.length ? found.filter(b => same.includes(b) || isbn(b)) : found;
+      if (want.map(b => b.id).sort().join() !== ids) every = false;
+      if (free.some(b => isbn(b) && !bs.includes(b))) byIsbn = false;
     });
   }
   check(never, 'details never find a removed book');
   check(every, 'and find every copy they’re for: the book named by id, or each copy with the ISBN or title and author');
+  check(byIsbn, 'and a copy with the entry’s ISBN always gets it');
 
   // What to read next, dealt again and again as its sheet does: no book twice in a deal, books not yet shown first,
   // and nothing lent out, being read, read (unless rereads are asked for) or browsed (unless asked for).
@@ -705,6 +717,9 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     const filled = S.detailChanges(lib2, tm, true);
     eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Bloom/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
     eq(matched(republics, [{ title: 'The Republic', authors: ['Plato'], kind: 'nonfiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
+    // A copy with the entry's ISBN is that edition, though another copy matches the entry's authors and it has none.
+    const plato = [{ id: 'k0', t: 1, title: 'The Republic', authors: ['Plato'] }, { id: 'k1', t: 1, title: 'The Republic', isbn: '9780465069347' }];
+    eq(matched(plato, [{ title: 'The Republic', authors: ['Plato'], isbn: '9780465069347', kind: 'nonfiction' }]), [['k1', 'k0']], 'an entry with an ISBN fills the copy with that ISBN, and the copy with its title and author');
     // The volumes of a set: an entry for one fills only that one, and one naming the set alone fills every volume.
     const cycle = [{ id: 'l1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { id: 'l2', t: 1, title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
       { id: 'l3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { id: 'l4', t: 1, title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }];

@@ -824,18 +824,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The books each entry is for: the book with its id, or else every copy of the same book (findDup's rule: the same
   // ISBN, or the same title and author's surname), so an entry for one volume of a set leaves the others alone. A book
   // another entry names by id is left to that entry, and when the copies found have different authors (two
-  // translations), the ones with all the entry's authors are taken, if any are.
+  // translations), the ones with all the entry's authors are taken, if any are. A copy with the entry's ISBN is always
+  // taken: it is that edition, whatever its authors say (one typed in without any, say).
   function matchDetails(doc, det) {
     var ix = Object.create(null), named = Object.create(null);
     function own(e) { var b = e.id && got(doc.books, e.id); return b && !b.del ? b : null; }
     live(doc).forEach(function (b) { indexKeys(b).forEach(function (k) { (ix[k] = ix[k] || []).push(b); }); });
     det.books.forEach(function (e) { var b = own(e); if (b) named[b.id] = 1; });
     return det.books.map(function (e) {
-      var b = own(e), bs = [], seen = Object.create(null);
+      var b = own(e), bs = [], seen = Object.create(null), i = isbn13(e.isbn);
       if (b) return { e: e, bs: [b] };
       (e.title ? lookupKeys(e) : []).forEach(function (k) { (ix[k] || []).forEach(function (x) { if (!seen[x.id] && !named[x.id]) { seen[x.id] = 1; bs.push(x); } }); });
       var same = bs.filter(function (x) { return authorsKey(x) === authorsKey(e); });
-      return { e: e, bs: bs.length > 1 && same.length ? same : bs };
+      return { e: e, bs: bs.length > 1 && same.length ? bs.filter(function (x) { return same.indexOf(x) >= 0 || i && isbn13(x.isbn) === i; }) : bs };
     });
   }
   function authorsKey(b) { return (b.authors || []).map(authorKey).sort().join('|'); }
