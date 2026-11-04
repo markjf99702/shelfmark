@@ -343,6 +343,16 @@ details.more .fs{padding:2px 12px 12px}
 /* A book left out (one already here, or not in the library) reads quieter, in the grey of an author's name, and its
    notes as they are: no fading, which would take its words below 4.5:1 against the row. */
 .rv li.off .rt,.rv li.off .rv-main input{color:var(--ink2)}
+/* marking what's been read: each row ticks with a tap anywhere on it, and a ticked one is tinted; a shelf's heading stays
+   at the top of the sheet while its books go by */
+.mr-sel{margin:0 0 12px}
+.mr-sel select{font-size:16px}
+.mr-shelf+.mr-shelf{margin-top:12px}
+.mr .grp{top:-16px;background:var(--surface);padding:10px 2px 8px}
+.mr .rv li{padding:0}
+.mr-row{display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;padding:11px 12px;cursor:pointer}
+.mr-row input{margin-top:3px}
+.mr .rv li:has(input:checked){background:var(--green-soft);border-color:var(--green)}
 /* reading details from Claude */
 .rv.dt{margin-top:12px}
 .rv.dt li{padding:9px 12px}
@@ -2653,6 +2663,78 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     takeIncoming(f.text().then(parseIncoming));
   });
 
+  // ---------- marking what's been read, a shelf at a time ----------
+  // The unread books, shelf by shelf, each with a tick, to stand at a bookcase and tick what's been read there. The Shelf
+  // menu narrows the list to one shelf (kept for the visit); ticks on other shelves stay ticked. Mark … as read marks
+  // them all at once, with Undo. They get no finished day: they were read some time ago.
+  var markShelf = '';
+  function markSheet() {
+    var ticked = Object.create(null), groups = [], total = 0;
+    function group() {
+      var at = placeIndex(live(DOC)), g = null, here = Object.create(null);
+      groups = [];
+      live(DOC).filter(function (b) { return statusOf(b) === 'unread'; }).sort(shelfOrder).forEach(function (b) {
+        var k = keys(b).rk + '\u0001' + keys(b).sk;
+        if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
+        g.bs.push(b); here[b.id] = k;
+      });
+      total = Object.keys(here).length;
+      if (!groups.some(function (g) { return g.k === markShelf; })) markShelf = '';
+      Object.keys(ticked).forEach(function (id) { if (!here[id]) delete ticked[id]; else ticked[id] = here[id]; });
+    }
+    function lede() { return total ? plural(total, 'unread book') + (groups.length > 1 ? ', on ' + plural(groups.length, 'shelf', 'shelves') : '') + '. Tick the ones you’ve read.' : 'Every book here is read, being read or set aside.'; }
+    function menu() {
+      return '<option value="">All shelves · ' + total + '</option>' + groups.map(function (g) { return '<option value="' + esc(g.k) + '"' + (g.k === markShelf ? ' selected' : '') + '>' + esc(g.name) + ' · ' + g.bs.length + '</option>'; }).join('');
+    }
+    function items() {
+      return groups.filter(function (g) { return !markShelf || g.k === markShelf; }).map(function (g) {
+        return '<section class="mr-shelf"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3><ul class="rv">' + g.bs.map(function (b) {
+          return '<li><label class="mr-row"><input type="checkbox" data-id="' + esc(b.id) + '"' + (ticked[b.id] ? ' checked' : '') + '><span class="rv-main"><span class="rt">' + esc(b.title) + '</span>' +
+            (byLine(b) ? '<span class="rv-by">' + esc(byLine(b)) + '</span>' : '') + '</span></label></li>';
+        }).join('') + '</ul></section>';
+      }).join('');
+    }
+    group();
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Mark what you’ve read</h2><button class="btn sm quiet" type="button" id="mrx">Close</button></div><div class="bd mr">' +
+      '<p class="lede" id="mr-lede">' + lede() + '</p>' +
+      '<label class="fl mr-sel"' + (groups.length > 1 ? '' : ' hidden') + '><span>Shelf</span><select id="mrShelf">' + menu() + '</select></label>' +
+      '<div id="mrList">' + items() + '</div></div>' +
+      '<div class="ft">' + storeFlag() + '<span class="note grow" id="mr-n"></span><button class="btn primary" type="button" id="mrGo">Mark as read</button></div>');
+    function count() {
+      var n = Object.keys(ticked).length, away = Object.keys(ticked).filter(function (id) { return markShelf && ticked[id] !== markShelf; }).length;
+      $('mrGo').textContent = n ? 'Mark ' + n + ' as read' : 'Mark as read'; $('mrGo').disabled = !n;
+      $('mr-n').textContent = away ? plural(away, 'book') + ' ticked on other shelves' : '';
+    }
+    function draw() { redraw($('mrList'), items()); count(); }
+    sheetRefresh = function (changed) {
+      if (!changed) return;
+      group(); $('mr-lede').textContent = lede(); $('mrShelf').innerHTML = menu(); $('mrShelf').closest('label').hidden = groups.length < 2; draw();
+    };
+    $('mrx').addEventListener('click', closeSheet);
+    $('mrShelf').addEventListener('change', function () { markShelf = this.value; draw(); panel.querySelector('.bd').scrollTop = 0; });
+    $('mrList').addEventListener('change', function (e) {
+      var id = e.target.dataset.id; if (!id) return;
+      if (e.target.checked) { var g = groups.filter(function (g) { return g.bs.some(function (b) { return b.id === id; }); })[0]; ticked[id] = g ? g.k : ''; } else delete ticked[id];
+      count();
+    });
+    // From the keyboard, Undo takes the keyboard, and then it goes back to where the sheet was opened from.
+    $('mrGo').addEventListener('click', function (e) {
+      var ids = [], from = sheetFrom;
+      Object.keys(ticked).forEach(function (id) { var b = DOC.books[id]; if (b && !b.del && statusOf(b) === 'unread') { DOC.books[id] = cleanBook(stamp(Object.assign({}, b, { status: 'read' }), b)); ids.push(id); } });
+      if (!ids.length) return;
+      var saved = persist(); closeSheet(); render();
+      function back() { return isShown(from) ? from : $('q'); }
+      if (!saved) toast(STORE_TOAST[STORE]);
+      else toast('Marked ' + plural(ids.length, 'book') + ' as read', 'Undo', function () {
+        var n = 0;
+        ids.forEach(function (id) { var b = DOC.books[id]; if (b && !b.del && b.status === 'read' && !b.finished) { DOC.books[id] = cleanBook(stamp(Object.assign({}, b, { status: '' }), b)); n++; } });
+        if (n) { persist(); render(); }
+        return back();
+      }, !e.detail, back);
+    });
+    count();
+  }
+
   // ---------- the what-to-read-next sheet ----------
   // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
@@ -2751,7 +2833,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
             (byLine(x.b) ? '<span class="bk-a">' + esc(byLine(x.b)) + '</span>' : '') + (w ? '<span class="nx-w">' + esc(w) + '</span>' : '') + '</span></button>';
         }).join('') + '</div>' : '') +
-        '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' + ask;
+        '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' +
+        // With no book marked read yet (a library that came in unread), the pick could well be one already read.
+        (live(DOC).some(function (x) { return statusOf(x) === 'read'; }) ? '' : '<div class="nx-ask nx-mark"><p class="note">No book here is marked read yet, so this could be one you’ve read.</p>' +
+          '<button class="btn sm" type="button" id="nxMark">Mark what you’ve read, a shelf at a time</button></div>') + ask;
     }
     function both() { var all = live(DOC), kin = kinOf(all); drawCrit(all, kin); dealNow(all, kin); }
     function changed() { PREF.next = c; savePrefs(); dealt = {}; round = 0; both(); }
@@ -2782,6 +2867,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('nxOut').addEventListener('click', function (e) {
       if (e.target.closest('#nxBackup')) { backup(); return; }
+      if (e.target.closest('#nxMark')) { markSheet(); return; }
       if (e.target.closest('#nxRead')) { readIt(!e.detail); return; }
       // A choice put back to Any, or every one (Clear these choices). From the keyboard, the keyboard goes on to the pick
       // that comes up, or after Clear these choices to the first choice.
@@ -2838,6 +2924,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var all = live(DOC);
     openSheet('<div class="hd"><h2 id="sheetTitle">Settings</h2><button class="btn sm quiet" type="button" id="stx">Done</button></div><div class="bd">' +
       '<section class="sect" id="driveSect"></section>' +
+      (all.some(function (b) { return statusOf(b) === 'unread'; }) ? '<section class="sect"><h3>Books you’ve read</h3><p>Tick the ones you’ve read, a shelf at a time, and mark them all read at once.</p>' +
+        '<div class="row"><button class="btn" type="button" id="stMark">Mark what you’ve read</button></div></section>' : '') +
       '<section class="sect"><h3>Covers and details from Open Library</h3>' +
       '<label class="opt"><input type="checkbox" id="stLook" aria-label="Show covers and look up details on Open Library" aria-describedby="stLookTx"' + (PREF.lookups ? ' checked' : '') + '><span id="stLookTx">Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
       '<section class="sect"><h3>Backups</h3><p>' + plural(all.length, 'book') + ' in this browser. A backup file holds everything and opens here on any device. The spreadsheet is to read or print; it doesn’t open back in Shelfmark.</p>' +
@@ -2846,6 +2934,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="row"><button class="btn danger" type="button" id="stErase">Erase this device’s copy</button></div></section></div>');
     renderDrive();
     $('stx').addEventListener('click', closeSheet);
+    if ($('stMark')) $('stMark').addEventListener('click', markSheet);
     $('stLook').addEventListener('change', function () { PREF.lookups = this.checked; savePrefs(); if (!PREF.lookups) { coverQ = []; coverQueued = {}; } render(); });
     $('stDl').addEventListener('click', backup);
     $('stCsv').addEventListener('click', function () { download('shelfmark-' + today() + '.csv', toCsv(DOC), 'text/csv'); });

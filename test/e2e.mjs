@@ -1909,6 +1909,11 @@ step('on a phone, every field in a sheet is 16px or more, so Safari on an iPhone
     await page.click('#nxMore summary');
     assert.deepEqual(await small(), [], 'What to read next');
     await page.click('#nxx');
+    await wait(450);
+    await page.click('#setBtn');
+    await page.click('#stMark');
+    assert.deepEqual(await small(), [], 'Mark what you\'ve read');
+    await page.click('#mrx');
     await page.goto(linkTo({ name: 'Den', books: [{ title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
     await page.waitForSelector('#rv-add');
     assert.deepEqual(await small(), [], 'the review');
@@ -2535,6 +2540,45 @@ step('Reading now comes first: Finished marks a book read today, with Undo and R
     await page.click('#toastBtn');
     assert.deepEqual(await nowTitles(), ['Cat\u2019s Cradle'], 'Undo didn\'t bring it back to Reading now');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Mark what you\'ve read lists the unread books shelf by shelf, narrows to a shelf, and marks the ticked ones read at once, with Undo', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...MIDDLEMARCH, shelf: 'Top' }, PIRANESI, { ...CRADLE, room: 'Den', shelf: 'Top' }, { id: 'b07', t: 1000, title: 'Emma', authors: ['Jane Austen'], room: 'Den', shelf: 'Low' }]);
+    // No book is marked read yet, so the note under the pick offers it.
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('.nx-mark .note'), 'No book here is marked read yet, so this could be one you’ve read.');
+    await page.click('#nxMark');
+    assert.equal(await page.textContent('#sheetTitle'), 'Mark what you’ve read');
+    assert.equal(await page.textContent('#mr-lede'), '4 unread books, on 3 shelves. Tick the ones you’ve read.');
+    assert.deepEqual(await page.$$eval('#mrShelf option', os => os.map(o => o.textContent)), ['All shelves · 4', 'Den › Low · 1', 'Den › Top · 2', 'Hall · 1']);
+    const rows = () => page.$$eval('#mrList .rt', els => els.map(e => e.textContent));
+    await page.selectOption('#mrShelf', { label: 'Den › Top · 2' });
+    assert.deepEqual(await rows(), ['Middlemarch', 'Cat\u2019s Cradle'], 'the Shelf menu doesn\'t narrow it to that shelf');
+    assert.equal(await page.isDisabled('#mrGo'), true);
+    await page.click('#mrList .mr-row:has-text("Middlemarch") .rt'); // a tap on the title ticks it
+    assert.equal(await page.textContent('#mrGo'), 'Mark 1 as read');
+    await page.selectOption('#mrShelf', '');
+    assert.equal(await page.isChecked('#mrList input[data-id="b04"]'), true, 'a tick went when the shelf changed');
+    await page.click('#mrList .mr-row:has-text("Piranesi")');
+    await page.selectOption('#mrShelf', { label: 'Hall · 1' });
+    assert.deepEqual([await page.textContent('#mrGo'), await page.textContent('#mr-n')], ['Mark 2 as read', '1 book ticked on other shelves']);
+    await page.click('#mrGo');
+    assert.equal(await sheetOpen(page), false);
+    const st = async id => { const b = await storedBook(page, id); return [b.status, b.finished]; };
+    assert.deepEqual([await st('b04'), await st('b03'), await st('b05')], [['read', undefined], ['read', undefined], [undefined, undefined]], 'marked read with no finished day, only the ticked ones');
+    assert.equal(await page.textContent('#toastTx'), 'Marked 2 books as read');
+    await page.click('#toastBtn');
+    assert.deepEqual([await st('b04'), await st('b03')], [[undefined, undefined], [undefined, undefined]], 'Undo didn\'t put them back');
+    // Settings opens it too, on the shelf chosen before.
+    await page.click('#setBtn');
+    await page.click('#stMark');
+    assert.equal(await page.inputValue('#mrShelf') !== '', true, 'the shelf chosen before wasn\'t kept');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -3487,8 +3531,8 @@ step('What to read next chooses by fiction or not, mood and chapters, and leaves
     await seed(page, [PIRANESI, MIDDLEMARCH]);
     await page.click('#nextBtn');
     // Before any book has details, a note under the pick says how to get them, with a backup to send Claude.
-    assert.match(await page.textContent('#nxOut .nx-ask'), /Ask Claude, with the Shelfmark skill, to add reading details to your library\. It reads the library from a backup you send it/);
-    assert.ok((await page.locator('.nx-pick').boundingBox()).y < (await page.locator('.nx-ask').boundingBox()).y, 'the note comes before the pick');
+    assert.match(await page.textContent('#nxOut .nx-ask:not(.nx-mark)'), /Ask Claude, with the Shelfmark skill, to add reading details to your library\. It reads the library from a backup you send it/);
+    assert.ok((await page.locator('.nx-pick').boundingBox()).y < (await page.locator('.nx-ask:not(.nx-mark)').boundingBox()).y, 'the note comes before the pick');
     const [file] = await Promise.all([page.waitForEvent('download'), page.click('#nxBackup')]);
     assert.match(file.suggestedFilename(), /^shelfmark-library-\d{4}-\d{2}-\d{2}\.json$/);
     assert.equal(await page.locator('#nxCrit [data-k="kind"]').count(), 0);
