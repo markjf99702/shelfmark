@@ -158,6 +158,7 @@ a{color:var(--accent)}
 .bdg.read{background:var(--green-soft);color:var(--green)}
 .bdg.lent{background:var(--accent-soft);color:var(--accent)}
 .bdg.check{border:1px dashed var(--accent);color:var(--accent)}
+.bk-ck{font-size:13px;line-height:1.35;color:var(--accent);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .bdg.stars{color:var(--brass);padding:0;font-size:12px;letter-spacing:.5px}
 
 /* covers: a cloth-bound stand-in, with the real cover on top when lookups are on */
@@ -1202,13 +1203,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
     else if (b.status === 'read') m.push('<span class="bdg read">Read</span>');
     if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
-    if (b.check) m.push('<span class="bdg check">Check</span>');
+    // In the To check view, what to check takes the badge's place, so most can be settled at the shelf.
+    var why = UI.status === 'check' && b.check;
+    if (b.check && !why) m.push('<span class="bdg check">To check</span>');
     if (b.rating) m.push(stars(b.rating));
     var by = byLine(b) + (b.year ? (byLine(b) ? ' · ' : '') + b.year : '');
     return '<button class="bk" type="button" data-id="' + esc(b.id) + '">' + cover(b) + '<span class="bk-tx">' +
       '<span class="bk-t">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
       (by ? '<span class="bk-a">' + esc(by) + '</span>' : '') +
-      (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + '</span></button>';
+      (m.length ? '<span class="bk-m">' + m.join('') + '</span>' : '') + (why ? '<span class="bk-ck">Check: ' + esc(b.check) + '</span>' : '') + '</span></button>';
   }
   function visible(all) {
     var q = searchWords(UI.q), rk = UI.room && UI.room !== NOROOM ? placeKey(UI.room) : '';

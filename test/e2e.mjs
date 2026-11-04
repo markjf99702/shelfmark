@@ -600,6 +600,27 @@ step('a room typed with other capitals is one room: one By shelf heading, one Ro
   } finally { await ctx.close(); }
 });
 
+step('a book to check says To check, and the To check view says what to check', async () => {
+  for (const width of [390, 320]) {
+    const ctx = await context({ ...PHONE, viewport: { width, height: 760 } });
+    try {
+      const page = await open(ctx);
+      const long = 'The spine shows a publication date, which usually means an advance reading copy, so check it isn’t a proof; and there are two volumes, and the spine doesn’t show which one this is';
+      await seed(page, [{ ...PIRANESI, check: 'glare on the spine' }, { ...MIDDLEMARCH, check: long }, CRADLE]);
+      assert.equal(await page.textContent('#list .bk[data-id="b03"] .bdg.check'), 'To check', 'the badge reads like a tick of approval');
+      await page.click('#chips .chip[data-s="check"]');
+      assert.deepEqual(await titles(page), ['Piranesi', 'Middlemarch']);
+      assert.equal(await page.textContent('#list .bk[data-id="b03"] .bk-ck'), 'Check: glare on the spine');
+      assert.equal(await page.locator('#list .bdg.check').count(), 0, 'the reason takes the badge\'s place');
+      // A long reason is two lines at most, and nothing runs off the side.
+      const [h, lh] = await page.$eval('#list .bk[data-id="b04"] .bk-ck', e => [e.getBoundingClientRect().height, parseFloat(getComputedStyle(e).lineHeight)]);
+      assert.ok(h <= 2 * lh + 1, 'the reason runs to ' + h + 'px, more than two lines of ' + lh);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

@@ -5,7 +5,7 @@
 **A catalog for the books in your house: what you have, where each one is, what you've read, and who borrowed what.** Photograph a shelf, send the photos to Claude, and open the link it gives you: Shelfmark shows the books to check, with the ones you already own unticked, before anything is added. Your catalog stays in your browser, and in your own Google Drive if you turn on sync.
 
 <p align="center">
-  <img src="docs/phone-shelves.png" alt="The library on a phone, sorted by shelf: under Bedroom › Nightstand, Pride and Prejudice and A Wizard of Earthsea are marked Read with their stars, The Name of the Wind is flagged Check, and To Kill a Mockingbird and The Hobbit wait unread" width="250">
+  <img src="docs/phone-shelves.png" alt="The library on a phone, sorted by shelf: under Bedroom › Nightstand, Pride and Prejudice and A Wizard of Earthsea are marked Read with their stars, The Name of the Wind is flagged To check, and To Kill a Mockingbird and The Hobbit wait unread" width="250">
   &nbsp;
   <img src="docs/phone-review.png" alt="Add books from Claude: five books from a photo of the hall console table, to be shelved in Hall › Console table, with The Overstory flagged to check for glare over the author and Piranesi unticked because it's already in the library" width="250">
   &nbsp;
