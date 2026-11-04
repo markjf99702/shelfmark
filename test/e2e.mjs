@@ -1830,7 +1830,7 @@ step('on a phone, a narrow one too, the menus and the search box show their word
     const ctx = await context(size);
     try {
       const page = await open(ctx);
-      await seed(page, [{ ...PIRANESI, tags: ['sf'] }, { ...MIDDLEMARCH, room: 'Living room', tags: ['classics', 'signed first'] }]);
+      await seed(page, [{ ...PIRANESI, tags: ['sf'], status: 'read', finished: '2026-10-03' }, { ...MIDDLEMARCH, room: 'Living room', tags: ['classics', 'signed first'] }]);
       await page.selectOption('#sortSel', 'added');
       await page.evaluate(() => document.fonts.ready);
       // How much of each box's words fits inside it, as text drawn in its own font.
@@ -1849,6 +1849,9 @@ step('on a phone, a narrow one too, the menus and the search box show their word
       await page.selectOption('#tagSel', 'signed first');
       assert.deepEqual(await fits('#roomSel'), ['Living room', true], 'the room chosen is cut short at ' + size.viewport.width);
       assert.deepEqual(await fits('#tagSel'), ['signed first', true], 'the tag chosen is cut short at ' + size.viewport.width);
+      // The longest sort, offered once a book has the day it was finished.
+      await page.selectOption('#sortSel', 'finished');
+      for (const id of ['#roomSel', '#tagSel', '#sortSel']) assert.equal((await fits(id))[1], true, (await fits(id))[0] + ' is cut short at ' + size.viewport.width + ', sorted Recently finished');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(page.problems, []);
     } finally { await ctx.close(); }
@@ -2466,6 +2469,24 @@ step('Set aside on a card gives up a book: its own chip and badge, out of What t
     await page.click('#f-status button[data-v="unread"]');
     await page.click('#bkx');
     assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).aside], [undefined, undefined], 'Unread didn\'t take it back');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('the count says how many were read this year, and the Read list is in the order they were finished', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx), y = new Date().getFullYear();
+    await seed(page, [MIDDLEMARCH, { ...PIRANESI, status: 'read', finished: y + '-01-02' }, { ...CRADLE, status: 'read', finished: y + '-02-01' },
+      { id: 'b07', t: 1000, title: 'Emma', authors: ['Jane Austen'], status: 'read', finished: (y - 1) + '-12-30' }, { id: 'b08', t: 1000, title: 'Persuasion', authors: ['Jane Austen'], status: 'read' }]);
+    assert.equal(await page.textContent('#count'), '5 books · 4 read, 2 this year');
+    await page.click('#chips [data-s="read"]');
+    assert.deepEqual(await titles(page), ['Cat’s Cradle', 'Piranesi', 'Emma', 'Persuasion'], 'the Read list isn\'t latest finished first, then the rest by author');
+    assert.equal(await page.inputValue('#sortSel'), 'finished');
+    assert.equal(await page.textContent('#sortSel option[value="finished"]'), 'Recently finished');
+    await page.click('#chips [data-s=""]');
+    assert.equal(await page.inputValue('#sortSel'), 'author', 'leaving Read didn\'t put the sort back');
+    assert.equal((await titles(page))[0], 'Emma', 'the list isn\'t by author again');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

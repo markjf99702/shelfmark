@@ -1053,6 +1053,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function placeOrder(a, b) { a = a || '￿'; b = b || '￿'; return COLL.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0); }
   function shelfOrder(x, y) { var a = keys(x), b = keys(y); return placeOrder(a.rk, b.rk) || placeOrder(a.sk, b.sk) || authorOrder(x, y); }
   function addedOrder(x, y) { return (y.added || '').localeCompare(x.added || '') || y.t - x.t; }
+  // Recently finished: read books by the day they were finished, the latest first, then the rest by author.
+  function finished(b) { return !b.aside && b.finished || ''; }
+  function finishedOrder(x, y) { return finished(y).localeCompare(finished(x)) || authorOrder(x, y); }
 
   // ---------- what to read next ----------
   // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
@@ -1419,7 +1422,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   try { var raw = localStorage.getItem(LS); if (raw) DOC = cleanDoc(JSON.parse(raw)); } catch (e) { }
   var PREF = { sort: 'author', lookups: false };
   try { Object.assign(PREF, JSON.parse(localStorage.getItem(LSP) || '{}')); } catch (e) { }
-  if (['author', 'title', 'shelf', 'added'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
+  if (['author', 'title', 'shelf', 'added', 'finished'].indexOf(PREF.sort) < 0) PREF.sort = 'author';
   PREF.lookups = PREF.lookups === true;
   // sort, when set, is how the list is sorted for this visit only, over the saved PREF.sort: after books are added
   // from a link they show newest first, without undoing a sort the person chose.
@@ -1669,6 +1672,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('tagSel').innerHTML = '<option value="">All tags</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
     $('tagSel').value = UI.tag; $('tagSel').hidden = !tk.length;
     var sort = UI.sort || PREF.sort;
+    // Recently finished is offered once a book has the day it was finished (or while it's chosen).
+    var fin = $('sortSel').querySelector('option[value="finished"]'), fins = sort === 'finished' || all.some(finished);
+    if (fins && !fin) $('sortSel').insertAdjacentHTML('beforeend', '<option value="finished">Recently finished</option>'); else if (!fins && fin) fin.remove();
     $('sortSel').value = sort;
     $('tools').hidden = !all.length;
     // A chip newly chosen is brought into view where the row scrolls sideways (on a touch screen): when To check or Lent
@@ -1700,10 +1706,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return;
     }
     var vis = visible(all);
-    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder }[sort] || authorOrder;
+    var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder, finished: finishedOrder }[sort] || authorOrder;
     vis.sort(order);
     var filtered = vis.length !== all.length;
-    $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') + (counts.read ? ' · ' + counts.read + ' read' : '');
+    // "256 books · 3 lent out · 40 read, 12 this year": this year's are the books finished on a day this calendar year.
+    var year = today().slice(0, 4), thisYear = all.filter(function (b) { return finished(b).slice(0, 4) === year; }).length;
+    $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') +
+      (counts.read ? ' · ' + counts.read + ' read' + (thisYear ? ', ' + thisYear + ' this year' : '') : '');
     if (!vis.length) {
       // A search with a chip, room or tag chosen as well: when it's the filter that hides the book, say so.
       var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag) ? all.filter(function (b) { return searchHit(b, words); }).length : 0;
@@ -3071,7 +3080,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
     else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
   });
-  $('chips').addEventListener('click', function (e) { var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s; render(); });
+  // The Read list is in the order the books were finished, once one has its day; leaving it, the sort is as it was.
+  $('chips').addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s;
+    if (UI.status === 'read' && (UI.sort || PREF.sort) !== 'finished' && live(DOC).some(finished)) UI.sort = 'finished';
+    else if (UI.status !== 'read' && UI.sort === 'finished') UI.sort = '';
+    render();
+  });
   $('chips').addEventListener('scroll', function () { fades(this); }, { passive: true });
   window.addEventListener('resize', function () { fades($('chips')); fades(document.querySelector('#nxCrit .nx-moods')); growTitle(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fades($('chips')); });

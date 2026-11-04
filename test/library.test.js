@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -121,6 +121,12 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq([true, 'yes', 1, false, 'no', 0].map(aside => S.cleanBook({ id: 'a', title: 'T', status: 'reading', aside })).map(b => [b.status, b.aside || false, S.statusOf(b)]),
     [['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', false, 'reading'], ['reading', false, 'reading'], ['reading', false, 'reading']], 'a book set aside keeps its status under it, and shows as Set aside');
 }
+
+// ---------- sorting ----------
+eq(S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', finished: '2025-12-01' }, { id: 'b', t: 1, title: 'Beloved', authors: ['Toni Morrison'] },
+  { id: 'c', t: 1, title: 'Ulysses', authors: ['James Joyce'], status: 'read', finished: '2026-02-03', aside: true }, { id: 'd', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], status: 'read', finished: '2026-02-03' },
+  { id: 'e', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], status: 'read', finished: '2026-03-14' }] })).sort(S.finishedOrder).map(b => b.id), ['e', 'd', 'a', 'c', 'b'],
+  'Recently finished puts read books latest first, then the rest (one set aside too) by author');
 
 // ---------- searching ----------
 eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');
