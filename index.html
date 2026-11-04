@@ -987,6 +987,52 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return head.split(/[,\t;]/).some(function (c) { return c.replace(/^[\s"']+|[\s"']+$/g, '').toLowerCase() === 'title'; });
   }
 
+  // A plain list of books, the way any Claude answers a photo of a shelf without the skill: a book a line, as "Title by
+  // Author" or "Title — Author" (an en dash, or a hyphen with spaces round it, too), numbered, bulleted or neither.
+  // Markdown's ** and _ and quotes round a title come off, and so do words after the author (" — a novel of…").
+  // In brackets at the end of a line, "check: …" is what to check and "translated by …" a translator; a year is left
+  // out (it's most likely when the book was written, not the year printed in this copy) and anything else goes in the
+  // notes. When two or more lines are numbered or bulleted, only those are books, so the words before and after the list
+  // aren't taken for one; either way an author starts with a capital and doesn't end like a sentence. Fewer than two
+  // books isn't a list: [] then. Each comes as {title, authors, check, notes}, to clean like any book from Claude.
+  var LIST_MARK = /^[ \t]*(?:\d{1,4}[.)]|[-*+•‣◦–—]|\(\d{1,4}\))[ \t]+/;
+  function listBook(line) {
+    var marked = LIST_MARK.test(line), s = line.replace(LIST_MARK, '').replace(/\s+/g, ' ').trim(), check = '', notes = [], also = [], title, who, m;
+    while ((m = /[ \t]*[(\[]([^()\[\]]*)[)\]][ \t]*[.,;]?[ \t]*$/.exec(s)) && m.index > 0) {
+      var g = m[1].replace(/[*_]/g, '').trim(), c = /^(?:check|unsure|not sure|uncertain)\b[:\s—–-]*/i.exec(g), tr = /^(translated|trans\.|tr\.|edited|ed\.)(?:\s+by)?\s+(.+)$/i.exec(g);
+      s = s.slice(0, m.index).trim();
+      if (c) check = g.slice(c[0].length) || 'Claude wasn’t sure of this one';
+      else if (tr && !/^\p{Ll}/u.test(tr[2])) { also.unshift(tr[2]); notes.unshift((/^ed/i.test(tr[1]) ? 'Edited by ' : 'Translated by ') + tr[2]); }
+      else if (g && !/^\d{4}$/.test(g)) notes.unshift(g);
+    }
+    if ((m = /^(\*\*|__|\*|_|“|"|‘|«)(.+?)(\*\*|__|\*|_|”|"|’|»)(.*)$/.exec(s))) {
+      // A title marked out: what follows it starts with "by", a dash, a colon or a comma.
+      var rest = /^ ?(?:by |[—–] ?|- |: |, )(.+)$/i.exec(m[4]);
+      if (!rest) return null;
+      title = m[2]; who = rest[1];
+    } else {
+      // "Title by Author", the last " by " before any dash (a title may have one: "Death by Black Hole"), or else
+      // "Title — Author".
+      var d = /[—–]| - /.exec(s), head = d ? s.slice(0, d.index) : s, k = head.toLowerCase().lastIndexOf(' by ');
+      if (k > 0) { title = head.slice(0, k); who = head.slice(k + 4); } else if (d) { title = s.slice(0, d.index); who = s.slice(d.index + d[0].length); } else return null;
+    }
+    title = title.replace(/^[\s*_]+|[\s*_,:;]+$/g, '');
+    who = who.replace(/[—–].*$| - .*$/, '').replace(/,\s+\p{Ll}.*$/u, '').replace(/^[\s*_]+|[\s*_,;]+$/g, '');
+    if (marked) who = who.replace(/\.$/, '');
+    if (!title || !who || /[:?!]$/.test(who) || /\.$/.test(who) && !/(?:^|[\s.])(?:\p{Lu}|Jr|Sr)\.$/u.test(who)) return null;
+    if (/^(?:\?+|(?:author )?(?:unknown|unclear|illegible))/i.test(who)) who = '';
+    else if (/^\p{Ll}/u.test(who) || who.split(' ').length > 12 || !marked && title.split(' ').length > 15) return null;
+    // "Terry Pratchett and Neil Gaiman" is two authors; "Will and Ariel Durant" stays one.
+    var two = who.split(' and ');
+    if (two.length > 1 && two.every(function (x) { return x.indexOf(' ') > 0; })) who = two.join(', ');
+    return { marked: marked, title: title, authors: list(who, 12, 120, true).concat(also), check: check, notes: notes.join('\n') };
+  }
+  function listBooks(t) {
+    var all = String(t || '').split(/\r?\n/).map(listBook).filter(Boolean), marked = all.filter(function (b) { return b.marked; });
+    var books = (marked.length >= 2 ? marked : all).map(function (b) { delete b.marked; return b; });
+    return books.length >= 2 ? books : [];
+  }
+
   // Where a book from a batch goes. The review screen's "Shelve them in" fields start out as the batch's own room
   // and shelf, which fill in for any book Claude didn't place. Each field the person changes moves every book there
   // (emptied, it leaves each book's own as it is); a field left as the batch gave it still only fills in, so
@@ -2493,7 +2539,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // by a mail app, whose pieces are joined back (the longest join that reads wins), or quoted in a reply, with "> " at
   // the start of each line. One that doesn't read however it's joined didn't come through whole (cut short, or a
   // character lost in copying), and says so (e.say). Pasted JSON can come with Claude’s words around it, as a phone
-  // copies a whole reply: inside a ```json code block, or after "Here you go:".
+  // copies a whole reply: inside a ```json code block, or after "Here you go:". Without either, a plain list of books
+  // from any Claude chat ("1. Middlemarch by George Eliot") opens too (see listBooks).
   function parseIncoming(t) {
     function read(o) {
       if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
@@ -2534,6 +2581,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       (a[0] >= 0 && (o[0] < 0 || a[0] < o[0]) ? [a, o] : [o, a]).forEach(function (x) { if (x[0] >= 0 && x[1] > x[0]) tries.push(t.slice(x[0], x[1] + 1)); });
       return Promise.resolve().then(function () {
         for (var i = 0; i < tries.length; i++) try { return read(JSON.parse(tries[i])); } catch (e) { }
+        // Or a plain list of books, a title and author a line.
+        var ls = listBooks(t);
+        if (ls.length) return read({ name: 'A pasted list', books: ls });
         return read(JSON.parse(t));
       });
     }
@@ -2909,17 +2959,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
       '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
       '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A file from Claude, or a Shelfmark backup (.json)</span></div>' +
-      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, or the JSON text" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
+      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, the JSON text, or a list of books" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
       '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>' +
       '<p class="note" style="margin-top:14px">Moving from Goodreads or LibraryThing? Send Claude your export, with the Shelfmark skill, and open what it gives you here. Reading details from Claude open here too.</p></div>');
     $('imx').addEventListener('click', closeSheet);
     $('imfile').addEventListener('click', function () { $('fileIn').click(); });
     $('imgo').addEventListener('click', function () { var t = $('impaste').value; if (!t.trim()) { $('impaste').focus(); return; } takeIncoming(parseIncoming(t)); });
-    // Pasting a link or Claude's JSON reads it straight away, without Read it, which on a phone sits under the keyboard
-    // just then. Text that's neither waits for the button.
+    // Pasting a link, Claude's JSON or a list of books reads it straight away, without Read it, which on a phone sits
+    // under the keyboard just then. Text that's none of these waits for the button.
     $('impaste').addEventListener('paste', function () {
       var box = this;
-      setTimeout(function () { var t = box.value; if (box.isConnected && (/#(s1[zj]|batch=)/.test(t) || t.indexOf('{') >= 0)) takeIncoming(parseIncoming(t)); }, 0);
+      setTimeout(function () { var t = box.value; if (box.isConnected && (/#(s1[zj]|batch=)/.test(t) || t.indexOf('{') >= 0 || listBooks(t).length)) takeIncoming(parseIncoming(t)); }, 0);
     });
   }
   $('fileIn').addEventListener('change', function () {

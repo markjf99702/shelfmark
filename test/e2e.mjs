@@ -738,7 +738,7 @@ step('a link pasted into Import with a full stop after it opens, and so does Cla
   } finally { await ctx.close(); }
 });
 
-step('pasting a link or Claude\'s JSON into Import opens it, with no need for Read it under the keyboard', async () => {
+step('pasting a link, Claude\'s JSON or a plain list of books into Import opens it, with no need for Read it under the keyboard', async () => {
   const ctx = await context();
   try {
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
@@ -754,6 +754,16 @@ step('pasting a link or Claude\'s JSON into Import opens it, with no need for Re
     await paste(JSON.stringify({ shelfmark: 1, batch: { name: 'Hall', books: [{ title: 'Walden', authors: ['Henry David Thoreau'] }] } }, null, 2));
     await page.waitForSelector('#rv-add');
     assert.equal(await page.inputValue('#rv [data-f="title"]'), 'Walden');
+    await page.click('#rvx');
+    await wait(450);
+    // A plain list from any Claude chat opens the same way, a book a row to fix before adding.
+    await page.click('#importBtn');
+    await paste('Here are the books on your shelf:\n\n1. **Middlemarch** by George Eliot\n2. Walden — Henry David Thoreau (check: spine faded)\n\nI couldn’t read one by the window.');
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await page.$$eval('#rv [data-f="title"]', els => els.map(e => e.value)), ['Middlemarch', 'Walden']);
+    assert.deepEqual(await page.$$eval('#rv [data-f="authors"]', els => els.map(e => e.value)), ['George Eliot', 'Henry David Thoreau']);
+    assert.equal(await page.textContent('#rv .rv-flag'), 'Check: spine faded');
+    assert.equal(await page.textContent('#rv-add'), 'Add 2 books');
     await page.click('#rvx');
     await wait(450);
     // Words that are neither wait for Read it, with nothing said meanwhile.

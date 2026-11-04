@@ -1108,6 +1108,36 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     ['Sorry, I can’t read {the spine} on the left, or [the one] beside it.', 'refused', 'words with braces in them, and no books'],
     ['```json\n{"books": [{"title": "Unfinished"\n```', 'refused', 'a code block cut short'],
   ]) eq(await said(text), want, 'a pasted reply opens: ' + what);
+  // A plain list from any Claude chat, without the skill: a title and author a line, opened in the review screen.
+  {
+    const reply = 'Here are the books I can see on your shelf, left to right:\n\n' +
+      '1. **Middlemarch** by George Eliot\n' +
+      '2. *Jane Eyre* by Charlotte Brontë (check: glare over the author)\n' +
+      '3. Stand by Your Lighthouse by Mira Example\n' +
+      '4. Walden — Henry David Thoreau\n' +
+      '5. The Odyssey by Homer (translated by Samuel Butler)\n' +
+      '6. “The Twin Lamps” by Ada Example and Ben Sample (1871)\n' +
+      '7. The Quiet Garden by Ada and Ben Example\n' +
+      '8. **Moby-Dick** by Herman Melville — a whaling voyage told by Ishmael\n' +
+      '9. The Lost Almanac by Unknown\n\n' +
+      'I couldn’t read the thin black spine third from the right, sorry by the way.\nLet me know if you’d like them sorted by author.';
+    const r = await S.parseIncoming(reply);
+    eq([r.kind, r.batch.name], ['batch', 'A pasted list'], 'a pasted list of books opens as a batch');
+    eq(r.batch.books.map(b => [b.title, b.authors || []]), [['Middlemarch', ['George Eliot']], ['Jane Eyre', ['Charlotte Brontë']], ['Stand by Your Lighthouse', ['Mira Example']], ['Walden', ['Henry David Thoreau']],
+      ['The Odyssey', ['Homer', 'Samuel Butler']], ['The Twin Lamps', ['Ada Example', 'Ben Sample']], ['The Quiet Garden', ['Ada and Ben Example']], ['Moby-Dick', ['Herman Melville']], ['The Lost Almanac', []]],
+      'a pasted list: only the numbered lines, markdown and quotes off, the last " by " before a dash, words after the author left out, two authors joined by "and"');
+    eq([r.batch.books[1].check, r.batch.books[4].notes, r.batch.books[5].year], ['glare over the author', 'Translated by Samuel Butler', undefined], 'and (check: …) is what to check, a translator goes in the notes, and a year in brackets is left out');
+    eq((await S.parseIncoming(reply)).batch.id, r.batch.id, 'the same list pasted twice is the same batch, so the second time says so');
+    const titlesOf = async t => { try { return (await S.parseIncoming(t)).batch.books.map(b => b.title + ' / ' + (b.authors || []).join(' & ')).join('; '); } catch (e) { return 'refused'; } };
+    for (const [text, want, what] of [
+      ['Middlemarch by George Eliot\nWalden – Henry David Thoreau\r\n', 'Middlemarch / George Eliot; Walden / Henry David Thoreau', 'two lines with no numbers'],
+      ['- Middlemarch by George Eliot\n• Emma by Jane Austen\n', 'Middlemarch / George Eliot; Emma / Jane Austen', 'bulleted lines'],
+      ['Middlemarch by George Eliot', 'refused', 'one book is not a list'],
+      ['I can see these on the shelf, sorted by colour.\nLet me know if you want them listed by author.', 'refused', 'sentences with "by" in them'],
+      ['Top shelf:\n1. Middlemarch — George Eliot\n2. Emma — Jane Austen\nBottom shelf: lots by Dickens\n', 'Middlemarch / George Eliot; Emma / Jane Austen', 'a heading with "by" in it, beside a numbered list'],
+      ['1. Middlemarch by George Eliot\n2. Emma by Jane Austen\n```json\n{"books": [{"title": "Walden"}]}\n```', 'Walden / ', 'Claude\'s JSON in the same reply wins over its list'],
+    ]) eq(await titlesOf(text), want, 'a pasted list: ' + what);
+  }
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
   // A spreadsheet export can't be read here; it's refused with a word on what to do instead.
