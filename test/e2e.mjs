@@ -826,6 +826,32 @@ step('pasting a link, Claude\'s JSON or a plain list of books into Import opens 
 });
 
 // For anyone without the skill: Import copies instructions for any Claude, whose reply the paste box reads.
+step('in the app on an iPhone\'s Home Screen, Import starts with the paste box and says links open in Safari', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const order = () => page.$$eval('#sheet .bd > *', els => els.map(e => e.className.split(' ')[0] || e.tagName.toLowerCase()));
+    await page.click('#importBtn');
+    assert.equal(await page.locator('#sheet .im-app').count(), 0, 'Safari, or a phone that isn\'t an iPhone, gets the iPhone\'s note');
+    assert.deepEqual((await order()).slice(0, 2), ['steps', 'noskill']);
+    await page.click('#imx');
+    // Safari sets navigator.standalone only in an app opened from the Home Screen.
+    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
+    await page.reload();
+    await page.click('#importBtn');
+    assert.equal(await page.textContent('#sheet .im-app'), 'Links from Claude open in Safari, not in this app. Press and hold the link in Claude, copy it, and paste it here.');
+    assert.deepEqual((await order()).slice(0, 4), ['lede', 'fl', 'row', 'steps'], 'the paste box isn\'t first');
+    assert.equal(await page.textContent('#sheet .pastebox > span'), 'Paste what Claude gave you');
+    assert.match(await page.textContent('#sheet .steps'), /Copy it and paste it above, and you’ll see the list here/);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'sheetTitle', 'the keyboard came up over Import');
+    // A link pasted there opens as from Safari.
+    await page.fill('#impaste', linkTo({ name: 'Den', books: [{ title: 'Emma', authors: ['Jane Austen'] }] }));
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Copy instructions for Claude copies them, or shows them where the browser won\'t copy, and a reply that follows them opens', async () => {
   const ctx = await context();
   await ctx.addInitScript(() => { window.copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => window.refuse ? Promise.reject(new Error('no')) : (window.copied.push(t), Promise.resolve()) } }); });

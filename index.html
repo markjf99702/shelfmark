@@ -425,6 +425,8 @@ details.more .fs{padding:2px 12px 12px}
 .rv-mv{display:block;width:max-content;margin:6px 0 2px;padding:5px 11px;font-size:13px;line-height:18px}
 .rv-mv[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
 .pastebox{margin-top:14px}
+.pastebox.first{margin-top:10px}
+.im-app{margin:0}
 .pastebox textarea{font:16px/1.4 var(--mono);min-height:90px}
 .opt{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
 .opt input{margin-top:2px}
@@ -3157,14 +3159,23 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   // paste: the paste box takes the keyboard as it opens, for a link that didn't come through whole.
+  // Shelfmark added to an iPhone's Home Screen is reported to keep its own storage, apart from Safari's (WebKit bug
+  // 181849), and a link tapped in Claude opens in Safari, so books from it could land in a copy that's never opened here.
+  // There, Import starts with the paste box and says so. (navigator.standalone is Safari's own, true only in an app
+  // opened from the Home Screen; Android's installed app is left as it is.)
+  function homeScreenApp() { return window.navigator.standalone === true; }
   function importSheet(paste) {
+    var app = homeScreenApp();
+    var box = '<label class="fl pastebox"><span>' + (app ? 'Paste what Claude gave you' : 'Or paste what Claude gave you') + '</span><textarea id="impaste" placeholder="A Shelfmark link, the JSON text, or a list of books" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
+      '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>';
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
-      '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
-      '<div class="noskill"><p class="note"><b>No skill?</b> Copy these instructions and send them to Claude with your photos, then paste its reply below.</p><button class="btn sm" type="button" id="imcopy">Copy instructions for Claude</button>' +
+      (app ? '<p class="lede im-app">Links from Claude open in Safari, not in this app. Press and hold the link in Claude, copy it, and paste it here.</p>' + box.replace('class="fl pastebox"', 'class="fl pastebox first"') : '') +
+      '<ol class="steps" style="margin:' + (app ? '18px' : '0') + ' 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). ' +
+        (app ? 'Copy it and paste it above' : 'Tap it') + ', and you’ll see the list here to check before anything is added.</span></li></ol>' +
+      '<div class="noskill"><p class="note"><b>No skill?</b> Copy these instructions and send them to Claude with your photos, then paste its reply ' + (app ? 'above' : 'below') + '.</p><button class="btn sm" type="button" id="imcopy">Copy instructions for Claude</button>' +
       '<textarea id="imsay" readonly rows="6" aria-label="Instructions for Claude" hidden>' + esc(ASK_CLAUDE) + '</textarea></div>' +
       '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A file from Claude, or a Shelfmark backup (.json)</span></div>' +
-      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, the JSON text, or a list of books" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
-      '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>' +
+      (app ? '' : box) +
       '<p class="note" style="margin-top:14px">Moving from Goodreads or LibraryThing? Send Claude your export, with the Shelfmark skill, and open what it gives you here. Reading details from Claude open here too.</p></div>');
     $('imx').addEventListener('click', closeSheet);
     $('imfile').addEventListener('click', function () { $('fileIn').click(); });
