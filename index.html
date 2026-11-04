@@ -1154,7 +1154,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var bare = could.filter(function (b) { var l = lacks(b, c); l.forEach(function (k) { if (lacking.indexOf(k) < 0) lacking.push(k); }); return l.length; });
     return {
       pool: pool.length, fresh: fresh, even: w.every(function (x) { return x === w[0]; }),
+      // fans: books by authors you've liked (see fanOf); readBy: by any author you've read, liked or not.
       fans: pool.filter(function (b) { return fanOf(b, fans); }).length,
+      readBy: pool.filter(function (b) { return (b.authors || []).some(function (a) { return fans[authorKey(a)]; }); }).length,
       noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' }), kin).filter(function (b) { return !b.pages; }).length : 0,
       bare: bare.length, lacking: ['kind', 'moods', 'genre', 'pace', 'short'].filter(function (k) { return lacking.indexOf(k) >= 0; }), plain: bare.every(function (b) { return !hasDetails(b); }),
       ruled: hand.length - could.length, hand: hand.length,
@@ -1186,7 +1188,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (some) {
       n.push('From ' + plural(deal.pool, c.reread ? 'book' : 'unread book', c.reread ? 'books' : 'unread books') + (narrowed(c) ? (deal.pool === 1 ? ' that matches' : ' that match') : ' on hand') + '.');
       if (again) n.push('Going round again: you’ve seen ' + (deal.pool === 2 ? 'both' : 'all ' + deal.pool) + '.');
-      else if (c.lean === 'loved' && !deal.fans) n.push('None of them are by authors you’ve read yet, so this is a random pick.');
+      else if (c.lean === 'loved' && !deal.fans) n.push((deal.pool === 1 ? 'It isn’t by an author' : 'None of them are by authors') + ' you’ve ' + (deal.readBy ? 'liked' : 'read yet') + ', so this is a random pick.');
       else if ((c.lean === 'oldest' || c.lean === 'newest') && deal.even && deal.pool > 1) n.push('They were all added on the same day, so this is a random pick.');
     }
     if (c.len && deal.noPages) n.push(plural(deal.noPages, 'book has', 'books have') + ' no page count, so ' + one(deal.noPages, 'it only comes', 'they only come') + ' up under Any length.');

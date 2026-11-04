@@ -346,6 +346,17 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     check(['b', 'c', 'n'].every(id => share[id] > 220), 'books by authors you gave one or two stars come up as often as one by an author you haven’t read ' + JSON.stringify(share));
     eq(S.dealNext(meh, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks.map(p => p.why), [[], [], []], 'and no reason says you read them');
     eq(S.nextOffers(meh).leans.map(l => l[0]), [''], 'and Favorite authors isn’t offered for them');
+    // The note says which: authors you've read but not liked, or not read at all; one book, or more.
+    const loved = (books, c) => S.nextNotes(S.dealNext(S.live(S.cleanDoc({ books })), S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false);
+    const austen = [{ id: 'e', t: 1, title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }, { id: 'p', t: 1, title: 'Persuasion', authors: ['Jane Austen'], status: 'read', rating: 1 },
+      { id: 'w', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction' }, { id: 'c', t: 1, title: 'Cape Cod', authors: ['Henry David Thoreau'], status: 'read', rating: 5 }];
+    eq(loved(austen, { kind: 'fiction', lean: 'loved' }), ['From 1 unread book that matches.', 'It isn’t by an author you’ve liked, so this is a random pick.'], 'one book, by an author you read and didn’t like');
+    eq(loved(austen.concat({ id: 'n', t: 1, title: 'Northanger Abbey', authors: ['Jane Austen'], kind: 'fiction' }), { kind: 'fiction', lean: 'loved' }),
+      ['From 2 unread books that match.', 'None of them are by authors you’ve liked, so this is a random pick.'], 'two, by authors read and not liked');
+    eq(loved([{ id: 'i', t: 1, title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction' }, austen[3]], { kind: 'fiction', lean: 'loved' }),
+      ['From 1 unread book that matches.', 'It isn’t by an author you’ve read yet, so this is a random pick.'], 'one, by an author not read yet');
+    eq(loved([{ id: 'i', t: 1, title: 'Ivanhoe', authors: ['Walter Scott'] }, { id: 'm', t: 1, title: 'Middlemarch', authors: ['George Eliot'] }, austen[3]], { lean: 'loved' }),
+      ['From 2 unread books on hand.', 'None of them are by authors you’ve read yet, so this is a random pick.'], 'two, by authors not read yet');
   }
   const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
   check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
