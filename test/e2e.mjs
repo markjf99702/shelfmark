@@ -1363,6 +1363,39 @@ step('Pick again says it\'s going round again on every repeat, and a tap on anot
   } finally { await ctx.close(); }
 });
 
+step('when nothing matches, a button puts the choice in the way back to Any, and Clear these choices brings a pick', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [['Middlemarch', 880, 'reflective'], ['Walden', 352, 'reflective'], ['Persuasion', 249, 'emotional'], ['Ivanhoe', 520, 'adventurous'], ['Emma', 474, 'funny']]
+      .map(([title, pages, mood], i) => ({ id: 'e' + i, t: 1000, title, authors: ['Ann Lee'], kind: 'fiction', moods: [mood], pages, room: 'Den' })));
+    await page.click('#nextBtn');
+    await page.click('#nxCrit [data-mood="reflective"]');
+    await page.click('#nxCrit [data-len="short"]'); // the one short book isn't reflective
+    assert.equal(await page.textContent('.nx-none h3'), 'Nothing matches all of these');
+    assert.deepEqual(await page.$$eval('#nxOut [data-ease]', els => els.map(e => e.textContent)), ['Any length · 2 books', 'Any mood · 1 book']);
+    await page.click('#nxOut [data-ease="len"]');
+    assert.match(await page.textContent('.nx-pick .nx-t'), /^(Middlemarch|Walden)$/);
+    assert.equal(await page.getAttribute('#nxCrit [data-len=""]', 'aria-pressed'), 'true', 'Length isn\'t back at Any');
+    assert.equal(await page.getAttribute('#nxCrit [data-mood="reflective"]', 'aria-pressed'), 'true', 'the mood didn\'t stay');
+    // Clear these choices from the keyboard: a pick, and the keyboard on the first choice.
+    await page.click('#nxCrit [data-len="short"]');
+    await page.focus('#nxClear');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 5 unread books on hand.');
+    assert.equal(await page.evaluate(() => !!document.activeElement.closest('#nxCrit')), true, 'the keyboard didn\'t go to the first choice');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('shelfmark.prefs')).next.len), '');
+    // One choice, saved before, that only a five-star read has: it says so, and how to bring it.
+    await page.click('#nxx');
+    await page.evaluate(() => localStorage.setItem('shelfmark.prefs', JSON.stringify({ next: { moods: ['funny'] } })));
+    await seed(page, [MIDDLEMARCH, { ...PIRANESI, status: 'read', rating: 5, moods: ['funny'] }]);
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('.nx-none h3'), 'Nothing matches that');
+    assert.match(await page.textContent('.nx-none p'), /1 of your 4- and 5-star reads matches: tick Include rereads under More choices\.$/);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
   try {

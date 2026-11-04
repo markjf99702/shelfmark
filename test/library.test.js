@@ -727,7 +727,7 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
       eq(say({ moods: ['funny'] }), 'From 1 unread book that matches. 1 book without reading details is left out. 2 of your 4- and 5-star reads match too: tick Include rereads under More choices.',
         'books you’d reread that match are counted, with how to include them');
       eq(say({ moods: ['funny'], reread: true }), 'From 3 books that match. 1 book without reading details is left out.', 'and aren’t once they’re in');
-      eq(say({ moods: ['lighthearted'] }), '1 book without reading details is left out. 1 of your 4- and 5-star reads matches: tick Include rereads under More choices. Try fewer of them.', 'one, when nothing else matches');
+      eq(say({ moods: ['lighthearted'] }), '1 book without reading details is left out. 1 of your 4- and 5-star reads matches: tick Include rereads under More choices.', 'one, when nothing else matches');
       const lent = S.live(S.cleanDoc({ books: [{ id: 'm', t: 1, title: 'Middlemarch' }, { id: 'p', t: 1, title: 'Persuasion', status: 'read', rating: 5, loan: { to: 'Sam' } }] }));
       eq([S.nextOffers(lent).reread, S.nextOffers(fav).reread], [false, true], 'Include rereads isn’t offered when the only favorite is lent out');
     }
@@ -758,9 +758,19 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     eq(notes({ genre: 'food', browse: true }), 'From 4 unread books that match. 3 books with no genre yet are left out.', 'and aren’t once they’re included');
     eq(notes({ len: 'short' }), 'From 3 unread books that match. 3 books have no page count, so they only come up under Any length.', 'a length chosen says how many books have no page count, though some match');
     eq(notes({ kind: 'fiction', short: true }), 'From 1 unread book that matches. 5 books not yet marked fiction, nonfiction or poetry, or with no chapter length yet, are left out.', 'two details missing are both named');
-    eq(notes({ kind: 'poetry' }), '2 books without reading details are left out. Try fewer of them.', 'when the choices themselves rule out every book that has the details, it says to try fewer');
+    eq(notes({ kind: 'poetry' }), '2 books without reading details are left out.', 'one choice that rules out every book with the details doesn’t say to try fewer: Clear these choices says what to do');
     eq(notes({ pace: 'fast' }, honest.filter(b => ['f5', 'u1', 'u2'].includes(b.id))), '3 books with no pace yet are left out.', 'but not when only missing details leave nothing');
-    eq(notes({ len: 'long', room: 'Nowhere' }), 'Try fewer of them.', 'nothing left out for want of details: just try fewer');
+    eq(notes({ len: 'long', room: 'Nowhere' }), '', 'nor do two, when putting one back to Any brings a pick');
+    eq(S.dealNext(honest, S.cleanNext({ len: 'long', room: 'Nowhere' }), rng(1), {}, now).easings, [{ k: 'room', n: 1 }], 'and that one is named, with how many it brings');
+    eq(notes({ kind: 'poetry', genre: 'history' }), '2 books without reading details are left out. Try fewer choices.', 'two that no one change helps say to try fewer');
+    {
+      // Short and lighthearted fiction: nothing. Any mood brings 3, Any length 2, Any kind 1: the two that bring the most.
+      const shelf = S.live(S.cleanDoc({ books: [['A', 'fiction', 'lighthearted', 400], ['B', 'fiction', 'lighthearted', 500], ['C', 'fiction', 'dark', 100], ['D', 'nonfiction', 'lighthearted', 100],
+        ['E', 'fiction', 'dark', 120], ['F', 'fiction', 'dark', 150]].map(([title, kind, mood, pages]) => ({ id: title, t: 1, title, kind, moods: [mood], pages })) }));
+      const c = S.cleanNext({ kind: 'fiction', moods: ['lighthearted'], len: 'short' }), deal = S.dealNext(shelf, c, rng(1), {}, now);
+      eq([deal.pool, deal.easings], [0, [{ k: 'moods', n: 3 }, { k: 'len', n: 2 }]], 'when nothing matches, the choices to put back to Any are those that bring the most books, the most first');
+      eq(S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now).easings, [], 'and there are none when something matches');
+    }
     eq(S.nextNotes(S.dealNext(honest, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), true), ['From 8 unread books on hand.', 'Going round again: you’ve seen all 8.'], 'a repeat round says so');
   }
 

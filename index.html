@@ -360,6 +360,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-ask .note{margin:0}
 .nx-none h3{margin:0 0 6px;font:500 20px var(--serif)}
 .nx-none p{margin:0 0 10px;color:var(--ink2)}
+.nx-ease{margin-bottom:10px}
 @keyframes deal{from{opacity:0;transform:translateY(6px)}}
 
 /* footer */
@@ -1159,13 +1160,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       ruled: hand.length - could.length, hand: hand.length,
       browseMatch: c.browse || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { browse: true }), kin).length - pool.length,
       rereadMatch: c.reread || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { reread: true }), kin).length - pool.length,
+      easings: pool.length ? [] : easings(all, c, kin),
       browsed: c.browse ? 0 : nextBooks(all, Object.assign({}, c, { browse: true }), function (b) { return b.way === 'browse'; }, kin).length,
       picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span, kin) }; })
     };
   }
 
-  // The notes under a pick (or under "Nothing matches all of these"), saying what the pick came from and what was left
-  // out, and why. again: every match has been shown, so this is a round of repeats.
+  // The choices that narrow the pick, each one's Any, and the button that puts it back to Any when nothing matches.
+  var EASE = [['kind', { kind: '' }, 'Any kind'], ['moods', { moods: [] }, 'Any mood'], ['len', { len: '' }, 'Any length'], ['short', { short: false }, 'Any chapters'],
+    ['pace', { pace: '' }, 'Any pace'], ['genre', { genre: '' }, 'Any genre'], ['tag', { tag: '' }, 'Any tag'], ['room', { room: '' }, 'Any room']];
+  function chosen(c) { return EASE.filter(function (e) { return e[0] === 'moods' ? c.moods.length : c[e[0]]; }); }
+  // When nothing matches: the choices that, put back to Any on their own, would bring a pick, the one bringing the most
+  // books first, two at most. [{k: 'len', n: 14}, …]
+  function easings(all, c, kin) {
+    kin = kin || kinOf(all);
+    return chosen(c).map(function (e) { return { k: e[0], n: nextPool(all, Object.assign({}, c, e[1]), kin).length }; })
+      .filter(function (e) { return e.n > 0; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 2);
+  }
+
+  // The notes under a pick (or under "Nothing matches that"), saying what the pick came from and what was left out,
+  // and why. again: every match has been shown, so this is a round of repeats.
   var LACKS = { moods: 'moods', genre: 'genre', pace: 'pace', short: 'chapter length' };
   function nextNotes(deal, c, again) {
     var n = [], some = deal.picks.length, one = function (k, a, b) { return k === 1 ? a : b; };
@@ -1183,7 +1197,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     if (deal.browseMatch) n.push(plural(deal.browseMatch, 'book') + ' you browse ' + one(deal.browseMatch, 'matches', 'match') + (some ? ' too' : '') + ': tick Include books you browse under More choices.');
     if (deal.rereadMatch) n.push(deal.rereadMatch + ' of your 4- and 5-star reads ' + one(deal.rereadMatch, 'matches', 'match') + (some ? ' too' : '') + ': tick Include rereads under More choices.');
-    if (!some && deal.ruled) n.push('Try fewer of them.');
+    // With nothing to match and no one choice that brings a pick when put back to Any (see easings), only fewer will.
+    if (!some && deal.ruled && chosen(c).length > 1 && !(deal.easings || []).length) n.push('Try fewer choices.');
     return n;
   }
 
@@ -2167,11 +2182,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool <= p.length;
       $('nxAgain').title = p.length && deal.pool <= p.length ? 'These are all the books that match' : '';
       if (!p.length) {
-        var any = deal.hand, favs = !c.reread && $('nxRe');
+        // Nothing matches: a button for each choice that brings a pick when put back to Any on its own (easings), with
+        // how many books it brings, and one to clear them all.
+        var any = deal.hand, favs = !c.reread && $('nxRe'), labels = {}, said = nextNotes(deal, c, round > 0).join(' ');
+        EASE.forEach(function (e) { labels[e[0]] = e[2]; });
         o.innerHTML = '<div class="nx-none">' + (any
-          ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
+          ? '<h3>' + (chosen(c).length > 1 ? 'Nothing matches all of these' : 'Nothing matches that') + '</h3>' + (said ? '<p>' + esc(said) + '</p>' : '') +
+            (deal.easings.length ? '<div class="row nx-ease">' + deal.easings.map(function (e) { return '<button class="btn sm" type="button" data-ease="' + e.k + '">' + labels[e.k] + ' · ' + plural(e.n, 'book') + '</button>'; }).join('') + '</div>' : '') +
+            '<button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
-        if ($('nxClear')) $('nxClear').addEventListener('click', function () { Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' }); changed(); });
         return;
       }
       var t = p[top], b = t.b, dl = detailLine(b);
@@ -2219,6 +2238,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('nxOut').addEventListener('click', function (e) {
       if (e.target.closest('#nxBackup')) { backup(); return; }
+      // A choice put back to Any, or every one (Clear these choices). From the keyboard, the keyboard goes on to the pick
+      // that comes up, or after Clear these choices to the first choice.
+      var x = e.target.closest('[data-ease],#nxClear');
+      if (x) {
+        if (x.id === 'nxClear') Object.assign(c, ANY_DETAILS, { moods: [], len: '', tag: '', room: '', genre: '' });
+        else if (x.dataset.ease === 'moods') c.moods = [];
+        else c[x.dataset.ease] = x.dataset.ease === 'short' ? false : '';
+        changed();
+        var to = x.id === 'nxClear' ? null : $('nxOut').querySelector('.nx-t');
+        if (!e.detail) try { (to || $('nxCrit').querySelector('button,input,select,summary')).focus(); } catch (y) { }
+        return;
+      }
       // The one tapped becomes the pick, and the keyboard and screen readers go to its title (the button tapped is gone).
       var a = e.target.closest('.nx-alt'); if (!a) return; top = +a.dataset.i; drawOut();
       var t = $('nxOut').querySelector('.nx-t'); if (t) try { t.focus(); } catch (x) { }
