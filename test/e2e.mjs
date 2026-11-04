@@ -573,6 +573,64 @@ step('the review screen ticks the next volume of a set, and says when a book her
   } finally { await ctx.close(); }
 });
 
+step('a book on the review screen that\'s here on another shelf can be moved here instead of added again, with Undo', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, room: 'Hall', shelf: 'Console table' }, { ...MIDDLEMARCH, room: 'Den', shelf: 'Top' }]);
+    const link = linkTo({ name: 'Desk shelf', room: 'Study', shelf: 'Desk', books: [
+      { title: 'Piranesi', authors: ['Susanna Clarke'] }, { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] });
+    const li = n => page.locator('#rv > li').nth(n);
+    const places = async () => { const l = (await stored(page)).library.books; return ['b03', 'b04'].map(id => [l[id].room, l[id].shelf].join(' › ')); };
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.textContent('#rv-add'), 'Add 1 book');
+    assert.equal(await li(0).locator('.rv-have').textContent(), 'Already in your library — Hall › Console table. Tick it to add another copy. Move it here');
+    await li(0).locator('.rv-mv').click();
+    assert.equal(await li(0).locator('.rv-mv').getAttribute('aria-pressed'), 'true');
+    assert.equal(await li(0).locator('.rv-have').textContent(), 'Moves here from Hall › Console table. Move it here');
+    assert.equal(await li(0).evaluate(e => e.classList.contains('off')), false, 'a book moving here reads as left out');
+    assert.deepEqual(await tapBoxes(page, '.rv-mv'), [], 'Move it here');
+    await li(1).locator('.rv-mv').click();
+    assert.equal(await page.textContent('#rv-add'), 'Add 1 book, move 2');
+    // Ticked, it's another copy instead; Move it here again unticks it.
+    await li(1).locator('.rv-tick input').check();
+    assert.deepEqual([await li(1).locator('.rv-mv').getAttribute('aria-pressed'), await page.textContent('#rv-add')], ['false', 'Add 2 books, move 1']);
+    await li(1).locator('.rv-mv').click();
+    assert.deepEqual([await li(1).locator('.rv-tick input').isChecked(), await page.textContent('#rv-add')], [false, 'Add 1 book, move 2']);
+    // Shelved where a book already is, it isn't offered for that one.
+    await page.fill('#rv-room', 'Den'); await page.fill('#rv-shelf', 'Top');
+    await until(async () => await li(1).locator('.rv-mv').count() === 0, 'Move it here to go from the book already there');
+    assert.equal(await page.textContent('#rv-add'), 'Add 1 book, move 1');
+    await page.fill('#rv-room', 'Study'); await page.fill('#rv-shelf', 'Desk');
+    await until(async () => await li(1).locator('.rv-mv').count() === 1, 'Move it here to come back');
+    await li(1).locator('.rv-mv').click();
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added 1 book, moved 2 — newest first');
+    assert.deepEqual(await places(), ['Study › Desk', 'Study › Desk']);
+    assert.equal((await storedBook(page, 'b03')).notes, 'Sam says start here', 'moving it changed more than its place');
+    assert.equal((await titles(page)).length, 3);
+    await page.click('#toastBtn');
+    assert.equal(await page.textContent('#toastTx'), 'Took it back out, and moved 2 books back');
+    assert.deepEqual(await places(), ['Hall › Console table', 'Den › Top']);
+    // Only moving: the list stays as it was, and the toast says where they went.
+    await wait(450);
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    await li(2).locator('.rv-tick input').uncheck();
+    await li(0).locator('.rv-mv').click();
+    assert.equal(await page.textContent('#rv-add'), 'Move 1 book');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Moved 1 book to Study › Desk');
+    assert.deepEqual(await places(), ['Study › Desk', 'Den › Top']);
+    // Here already, it isn't offered again.
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    assert.equal(await li(0).locator('.rv-mv').count(), 0);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a batch of more than 3,000 books says how many didn\'t fit and what to do', async () => {
   const ctx = await context();
   try {

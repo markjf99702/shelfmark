@@ -391,6 +391,9 @@ details.more .fs{padding:2px 12px 12px}
 .rv-flag{font-size:13px;color:var(--accent)}
 .rv-dup{font-size:13px;color:var(--ink2)}
 .rv-dup b{font-weight:600}
+/* Move it here, under the note on a book already here: a choice pressed in or out */
+.rv-mv{display:block;width:max-content;margin:6px 0 2px;padding:5px 11px;font-size:13px;line-height:18px}
+.rv-mv[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
 .pastebox{margin-top:14px}
 .pastebox textarea{font:16px/1.4 var(--mono);min-height:90px}
 .opt{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
@@ -571,6 +574,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .tbtn::after{content:"";position:absolute;inset:-6px 0}
   .nextbtn{position:relative}
   .nextbtn::after{content:"";position:absolute;inset:-8px 0}
+  .rv-mv{position:relative}
+  .rv-mv::after{content:"";position:absolute;inset:-8px 0}
   .sharerow .btn{position:relative}
   .sharerow .btn::after{content:"";position:absolute;inset:-8px 0}
   .now-acts .btn{position:relative}
@@ -1607,13 +1612,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // of Drive and the other devices too, if it got there meanwhile. seen: the batch whose adding is undone, which is
   // forgotten too, so opening its link again doesn't say it was added. was: {id: book} for books on the wishlist that
   // adding made books in the house, which go back as they were.
-  function takeBack(ids, seen, was) {
-    var n = 0;
+  function takeBack(ids, seen, was, moved) {
+    var n = 0, m = 0;
     ids.forEach(function (id) { var old = DOC.books[id]; if (old && !old.del) { DOC.books[id] = stamp({ id: id, del: 1 }, old); n++; } });
     Object.keys(was || {}).forEach(function (id) { var cur = DOC.books[id]; if (cur && !cur.del) { DOC.books[id] = cleanBook(stamp(Object.assign({}, was[id]), cur)); n++; } });
+    Object.keys(moved || {}).forEach(function (id) { var cur = DOC.books[id]; if (cur && !cur.del) { DOC.books[id] = cleanBook(stamp(Object.assign({}, cur, moved[id]), cur)); m++; } });
     if (seen) delete DOC.seen[seen];
-    if (!n && !seen) return;
-    persist(); render(); if (n) toast(n > 1 ? 'Took them back out' : 'Took it back out');
+    if (!n && !m && !seen) return;
+    persist(); render();
+    if (n || m) toast(n ? (n > 1 ? 'Took them back out' : 'Took it back out') + (m ? ', and moved ' + plural(m, 'book') + ' back' : '') : 'Moved ' + (m > 1 ? 'them' : 'it') + ' back');
   }
   // What Add a book starts with. The title is the search that found nothing (Add “…”), or its ISBN when it is one; the
   // status is Reading, Read or Set aside while that chip is chosen, and from the Wishlist chip it's a book wanted (with no
@@ -2493,7 +2500,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var twin = null;
       lookupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
       indexKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
-      return { b: b, dup: null, wish: null, near: null, twin: twin, on: true, mine: false, ticked: false };
+      return { b: b, dup: null, wish: null, near: null, twin: twin, on: true, mv: false, mine: false, ticked: false };
     });
     // A batch of books wanted (a shop's table, a list to buy) goes on the wishlist, with no place in the house.
     var wishes = rows.every(function (r) { return r.b.wanted; }), mixed = !wishes && rows.some(function (r) { return r.b.wanted; });
@@ -2513,8 +2520,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       (only || rows).forEach(function (r) {
         r.dup = findDup(ix, r.b); r.wish = r.dup ? null : findDup(wx, r.b); r.near = r.dup || r.wish ? null : nearDup(ix, r.b);
         if (only ? !r.ticked : !r.mine) r.on = !r.dup && !(r.wish && r.b.wanted);
+        if (!away(r)) r.mv = false;
       });
     }
+    // Where a book goes (Shelve them in, or its own place), and whether the copy already here is somewhere else, so it can
+    // be moved here instead of a second copy added: a shelf photographed again after it was rearranged. Here is a room at
+    // least; a book wanted has no place.
+    function goes(r) { return shelve(Object.assign({}, r.b), bulk, batch); }
+    function away(r) { var t = !r.b.wanted && r.dup && goes(r); return !!(t && t.room && (placeKey(t.room) !== placeKey(r.dup.room) || placeKey(t.shelf) !== placeKey(r.dup.shelf))); }
     function head() {
       var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
       return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
@@ -2545,7 +2558,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
       if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
       if (!d) return '';
-      return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (r.b.wanted ? 'it to your wishlist anyway.' : otherEdition(d, r.b) ? 'this one too.' : 'another copy.');
+      var mv = away(r) ? ' <button class="btn sm rv-mv" type="button" aria-pressed="' + r.mv + '">Move it here</button>' : '';
+      if (r.mv) return '<b>Moves here</b> from ' + (at || 'no shelf') + '.' + mv;
+      return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (r.b.wanted ? 'it to your wishlist anyway.' : otherEdition(d, r.b) ? 'this one too.' : 'another copy.') + mv;
     }
     check();
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">' + (wishes ? 'Add to your wishlist' : 'Add books from Claude') + '</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
@@ -2557,7 +2572,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         var b = r.b, mt = meta(r), st = stLine(r);
         // The tick box says which book it adds, and its notes describe it: what to check, a book already here, a second copy.
         var notes = [b.check ? 'rv-c-' + i : '', 'rv-n-' + i, r.twin != null ? 'rv-t-' + i : ''].filter(Boolean).join(' ');
-        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="' + esc(addWhat(b.title)) + '" aria-describedby="' + notes + '"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
+        return '<li data-i="' + i + '"' + (r.on || r.mv ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="' + esc(addWhat(b.title)) + '" aria-describedby="' + notes + '"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
           '<span class="rv-ti" data-v="' + esc(b.title) + '"><textarea class="rt" data-f="title" rows="1" maxlength="300" enterkeyhint="done" aria-label="Title" autocomplete="off">' + esc(b.title) + '</textarea></span>' +
           '<input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocapitalize="words" autocorrect="off" autocomplete="off">' +
           '<span class="rv-st"' + (st ? '>' + st : ' hidden>') + '</span>' +
@@ -2576,16 +2591,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     var added = false;
     // "Add 5 books", "Add 3 to your wishlist", or for a batch of both "Add 3 books, 2 to your wishlist".
+    function moving() { var seen = Object.create(null); return rows.filter(function (r) { var ok = r.mv && away(r) && !seen[r.dup.id]; if (ok) seen[r.dup.id] = 1; return ok; }); }
     function count() {
-      var on = rows.filter(function (r) { return r.on; }), n = on.length, w = on.filter(function (r) { return r.b.wanted; }).length, k = n - w;
-      $('rv-add').textContent = !n ? 'Add' : !k ? 'Add ' + num(w) + ' to your wishlist' : 'Add ' + num(k) + (k === 1 ? ' book' : ' books') + (w ? ', ' + num(w) + ' to your wishlist' : ''); $('rv-add').disabled = !n;
-      $('rv-n').textContent = n === rows.length ? '' : num(rows.length - n) + ' left out';
+      var on = rows.filter(function (r) { return r.on; }), n = on.length, w = on.filter(function (r) { return r.b.wanted; }).length, k = n - w, m = rows.filter(function (r) { return r.mv && away(r); }).length;
+      $('rv-add').textContent = !n ? (m ? 'Move ' + num(m) + (m === 1 ? ' book' : ' books') : 'Add') : (!k ? 'Add ' + num(w) + ' to your wishlist' : 'Add ' + num(k) + (k === 1 ? ' book' : ' books') + (w ? ', ' + num(w) + ' to your wishlist' : '')) + (m ? ', move ' + num(m) : '');
+      $('rv-add').disabled = !n && !m;
+      $('rv-n').textContent = n + m === rows.length ? '' : num(rows.length - n - m) + ' left out';
     }
     // A row's tick and its note on a book already here, drawn again.
     function drawHave(li) {
       var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
-      li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
-      h.innerHTML = have(r); h.hidden = !r.dup && !r.near && !r.wish;
+      li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on && !r.mv);
+      if (h.drawn !== have(r)) { h.drawn = h.innerHTML = have(r); } h.hidden = !r.dup && !r.near && !r.wish;
     }
     sheetRefresh = function (changed) {
       if (changed) { check(); panel.querySelectorAll('#rv > li').forEach(drawHave); count(); }
@@ -2593,7 +2610,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     };
     $('rv').addEventListener('change', function (e) {
       var li = e.target.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
-      if (e.target.type === 'checkbox') { r.on = e.target.checked; r.mine = r.ticked = true; li.classList.toggle('off', !r.on); count(); }
+      if (e.target.type === 'checkbox') { r.on = e.target.checked; if (r.on) r.mv = false; r.mine = r.ticked = true; drawHave(li); count(); }
+    });
+    // Move it here, again to leave the book where it is. From the keyboard, the keyboard stays on the button.
+    $('rv').addEventListener('click', function (e) {
+      var x = e.target.closest('.rv-mv'), li = x && x.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
+      r.mv = !r.mv; if (r.mv) r.on = false; r.mine = r.ticked = true; drawHave(li); count();
+      refocus(li.querySelector('.rv-mv'));
     });
     var edited = Object.create(null), editT = 0;
     function recheck() {
@@ -2624,7 +2647,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60);
         clearTimeout(placeT);
         placeT = setTimeout(function () {
-          if (panel.isConnected) panel.querySelectorAll('#rv > li').forEach(function (li) { var m = li.querySelector('.rv-meta'), t = meta(rows[+li.dataset.i]); if (m.textContent !== t) { m.textContent = t; m.hidden = !t; } });
+          if (!panel.isConnected) return;
+          panel.querySelectorAll('#rv > li').forEach(function (li) { var r = rows[+li.dataset.i], m = li.querySelector('.rv-meta'), t = meta(r); if (m.textContent !== t) { m.textContent = t; m.hidden = !t; } if (!away(r)) r.mv = false; if (r.dup) drawHave(li); });
+          count();
         }, 120);
       });
     });
@@ -2646,16 +2671,27 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (wish) was[wish.id] = wish; else ids.push(b.id);
         DOC.books[b.id] = b; if (b.wanted) w++; else { n++; countPlace(ix, b); } if (b.check) checks++;
       });
-      if (!n && !w) return;
+      // A book here moved instead: it goes where this one would have, and keeps everything else.
+      var moved = {}, m = 0, tos = [];
+      moving().forEach(function (r) {
+        var d = DOC.books[r.dup.id], t = goes(r); if (!d || d.del || d.wanted) return;
+        moved[d.id] = { room: d.room || '', shelf: d.shelf || '' };
+        DOC.books[d.id] = cleanBook(stamp(placed(Object.assign({}, d, { room: t.room, shelf: t.shelf }), ix), d)); m++; tos.push(where(DOC.books[d.id]));
+      });
+      var to = tos.every(function (x) { return x === tos[0]; }) ? tos[0] : '';
+      if (!n && !w && !m) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); added = true; closeSheet();
-      UI.q = ''; UI.status = n ? '' : 'wanted'; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
-      window.scrollTo(0, 0);
-      // Undo takes them all back out (and puts books back on the wishlist), and forgets the link was used if this was its
-      // first time.
+      if (n || w) { UI.q = ''; UI.status = n ? '' : 'wanted'; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; }
+      render();
+      if (n || w) window.scrollTo(0, 0);
+      // Undo takes them all back out (and puts books back on the wishlist, and the books moved back where they were), and
+      // forgets the link was used if this was its first time.
+      var first = ids[0] || Object.keys(was)[0] || Object.keys(moved)[0];
       if (!saved) toast(STORE_TOAST[STORE]);
-      else toast('Added ' + (n ? plural(n, 'book') + (w ? ' and ' + w + ' to your wishlist' : '') + ' — newest first' : w + ' to your wishlist') + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
-        function () { takeBack(ids, seen, was); return $('importBtn'); }, !e.detail, function () { return rowOf(ids[0] || Object.keys(was)[0]); });
+      else toast((n || w ? 'Added ' + (n ? plural(n, 'book') + (w ? ' and ' + w + ' to your wishlist' : '') : w + ' to your wishlist') + (m ? ', moved ' + m : '') + (n ? ' — newest first' : '')
+        : 'Moved ' + plural(m, 'book') + (to ? ' to ' + clip(to) : '')) + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
+        function () { takeBack(ids, seen, was, moved); return $('importBtn'); }, !e.detail, function () { return rowOf(first); });
     });
     count();
     return panel;
