@@ -2398,11 +2398,11 @@ step('a link opened on a device behind Drive checks its books against Drive, and
       { id: idOf('Ivanhoe'), title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction', genres: ['historical-fiction'] },
     ]));
     await b.waitForSelector('#dtgo');
-    assert.equal(await b.textContent('.lede'), 'Reading details · 3 books · 1 not in your library');
+    assert.equal(await b.textContent('.lede'), '3 books · 1 not in your library', 'the lede says “Reading details” again, under the sheet\'s title');
     assert.equal(await b.textContent('#behind'), 'Checking Drive for books added on your other devices…');
     assert.equal(await b.textContent('#dt-n'), 'Add the 1 book not in your library first, then open this link again. It fills in only what’s missing.');
     await b.check('#dtRe');
-    await until(async () => (await b.textContent('.lede')) === 'Reading details · 3 books', 'the sheet to match the books again once the sync lands', 15000);
+    await until(async () => (await b.textContent('.lede')) === '3 books', 'the sheet to match the books again once the sync lands', 15000);
     assert.equal(await b.locator('#behind').count(), 0);
     assert.equal(await b.isChecked('#dtRe'), true, 'Replace was unticked');
     assert.equal(await b.textContent('#dtgo'), 'Add details to 3 books');
@@ -2431,7 +2431,7 @@ step('a details link fills in reading details, and a book\'s card shows and chan
       { id: 'b06', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics', 'romance'], pace: 'slow' },
     ]));
     await page.waitForSelector('#dtgo');
-    assert.equal(await page.textContent('.lede'), 'Reading details · 5 books · 1 not in your library');
+    assert.equal(await page.textContent('.lede'), '5 books · 1 not in your library');
     assert.equal(await page.textContent('#dtgo'), 'Add details to 4 books');
     assert.match(await page.textContent('.rv.dt'), /Fiction · Fantasy · Mysterious, reflective · Medium pace · Short chapters · 272 pages/);
     assert.deepEqual(await page.$$eval('.rv.dt .rv-by', els => els.map(e => e.textContent)), ['Susanna Clarke', 'George Eliot · Den', 'Kurt Vonnegut, Jr.', 'George Eliot · Study › Desk'], 'two Middlemarch rows don\'t say which copy each is');

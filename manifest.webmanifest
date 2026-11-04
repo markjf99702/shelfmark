@@ -1,7 +1,7 @@
 {
   "name": "Shelfmark",
   "short_name": "Shelfmark",
-  "description": "Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and your own Google Drive.",
+  "description": "Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and, if you turn on sync, your own Google Drive.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

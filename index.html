@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="carry.js"></script>
-<meta name="description" content="Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and your own Google Drive.">
+<meta name="description" content="Shelfmark keeps track of your home library: where every book is, what you've read, and who borrowed what. Your catalog stays in your browser and, if you turn on sync, your own Google Drive.">
 <meta name="theme-color" content="#F5EFE3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15120E" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -2203,7 +2203,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function changes() { return Object.keys(detailChanges(DOC, rows, replace)).length; }
     function head() {
       var seenAt = got(DOC.seen, det.id);
-      return '<p class="lede">' + (det.name ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
+      // The script names a details file "Reading details" unless told otherwise, which the sheet's title says already.
+      return '<p class="lede">' + (det.name && det.name !== 'Reading details' ? '<b>' + esc(det.name) + '</b> · ' : '') + plural(rows.length, 'book') + (lost ? ' · ' + lost + ' not in your library' : '') +
         (det.more ? '. <b>' + det.more + ' more didn’t fit.</b> Ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
         (seenAt ? '<p class="flag"><span>You added these ' + esc(since(seenAt)) + '.</span></p>' : '');
     }
