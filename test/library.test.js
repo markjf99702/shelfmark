@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, STATUSES, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -1162,6 +1162,56 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');
+
+  // ---------- the format reference ----------
+  // What Claude reads to write a batch or reading details by hand (the skill's references/shelfmark-format.md) names the
+  // words Shelfmark knows and the limits it keeps, row by row, as cleanBook, cleanBatch and cleanDetails keep them.
+  {
+    const where = 'skill/shelfmark-cataloger/references/shelfmark-format.md', ref = fs.readFileSync(path.join(__dirname, '..', where), 'utf8');
+    const rows = ref.split('\n').filter(l => l.startsWith('| `'));
+    // A table row's words after its first cell, by that cell ('`room`, `shelf`' is in both tables: which says which).
+    const row = (first, which = 0) => { const l = rows.filter(x => x.split('|')[1].trim() === first)[which]; check(!!l, where + ' has a row for ' + first); return l ? l.split('|').slice(2).join('|') : ''; };
+    for (const [field, list] of [['`status`', S.STATUSES], ['`format`', S.FORMATS], ['`condition`', S.CONDITIONS], ['`kind`', S.KINDS], ['`way`', S.WAYS],
+      ['`pace`', S.PACES], ['`chapters`', S.CHAPTERS], ['`moods`', S.MOODS], ['`genres`', S.GENRES]]) {
+      const said = (row(field).match(/`[^`]+`/g) || []).map(x => x.slice(1, -1)), keys = list.map(x => x[0]);
+      const add = keys.filter(k => !said.includes(k)), drop = [...new Set(said.filter(k => !keys.includes(k)))];
+      check(!add.length && !drop.length, where + ', the ' + field + ' row: ' + [add.length ? 'add ' + add.join(', ') : '', drop.length ? 'take out ' + drop.join(', ') + ', which Shelfmark doesn’t know' : ''].filter(Boolean).join('; '));
+    }
+    // What Shelfmark keeps of text, lists and numbers past every limit.
+    const a = n => 'a'.repeat(n), many = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+    const b = S.cleanBook({ id: 'a', title: a(5000), sub: a(5000), authors: many(50, i => 'Author ' + i + a(5000)), publisher: a(5000), edition: a(5000), room: a(5000), shelf: a(5000),
+      loan: { to: a(5000) }, tags: many(50, i => i + a(5000)), notes: a(9000), blurb: a(5000), genres: S.GENRES.map(x => x[0]), moods: S.MOODS.map(x => x[0]), year: 99999, pages: 999999, rating: 99 });
+    const batch = S.cleanBatch({ name: a(500), books: many(S.BATCH_MAX + 5, i => ({ title: 'Book ' + i, unsure: a(5000) })) });
+    const det = S.cleanDetails({ details: { name: a(500), books: many(S.BATCH_MAX + 5, i => ({ id: 'x' + i, title: 'Book ' + i, blurb: a(5000) })) } });
+    const longest = xs => Math.max(...xs.map(x => x.length));
+    const num = s => +s.replace(/,/g, '');
+    // [row, which, what the row says (a pattern for each number), what Shelfmark keeps]
+    for (const [field, which, says, keeps] of [
+      ['`name`', 0, [/Up to ([\d,]+) characters/], [batch.name.length]],
+      ['`books[]`', 0, [/Up to ([\d,]+)/, /takes the first ([\d,]+)/], [batch.books.length, batch.books.length]],
+      ['`title`', 0, [/Up to ([\d,]+) characters/], [b.title.length]],
+      ['`sub`', 0, [/up to ([\d,]+) characters/], [b.sub.length]],
+      ['`authors`', 0, [/up to ([\d,]+), each/, /each up to ([\d,]+) characters/], [b.authors.length, longest(b.authors)]],
+      ['`publisher`, `year`, `pages`', 0, [/publisher up to ([\d,]+) characters/, /year 0–([\d,]+)/, /pages 0–([\d,]+)/], [b.publisher.length, b.year, b.pages]],
+      ['`edition`', 0, [/up to ([\d,]+) characters/], [b.edition.length]],
+      ['`room`, `shelf`', 1, [/up to ([\d,]+) characters each/, /up to ([\d,]+) characters each/], [b.room.length, b.shelf.length]],
+      ['`rating`', 0, [/1–(\d+)/], [b.rating]],
+      ['`loan`', 0, [/borrower up to ([\d,]+) characters/], [b.loan.to.length]],
+      ['`tags`', 0, [/up to ([\d,]+), each/, /each up to ([\d,]+) characters/], [b.tags.length, longest(b.tags)]],
+      ['`notes`', 0, [/up to ([\d,]+) characters/], [b.notes.length]],
+      ['`unsure`', 0, [/up to ([\d,]+) characters/], [batch.books[0].check.length]],
+      ['`genres`', 0, [/Up to ([\d,]+)/], [b.genres.length]],
+      ['`moods`', 0, [/Up to ([\d,]+)/], [b.moods.length]],
+      ['`blurb`', 0, [/Up to ([\d,]+) characters/, /Up to ([\d,]+) characters/], [b.blurb.length, det.books[0].blurb.length]],
+    ]) {
+      const text = row(field, which), said = says.map(re => { const m = re.exec(text); return m ? num(m[1]) : null; });
+      check(JSON.stringify(said) === JSON.stringify(keeps), where + ', the ' + field + ' row says ' + said.join(' and ') + ' where Shelfmark keeps ' + keeps.join(' and '));
+    }
+    // The reading details' entries are counted in their paragraph, not a table.
+    const entries = /Up to ([\d,]+) entries/.exec(ref);
+    check(!!entries && num(entries[1]) === det.books.length && det.more === 5, where + ', the reading details paragraph says up to ' + (entries && entries[1]) + ' entries where Shelfmark takes ' + det.books.length);
+    check(batch.more === 5 && det.name.length === batch.name.length, 'a batch too big says how many more it had, and details names are kept like batch names');
+  }
 
   // ---------- spreadsheet ----------
   const csv = S.toCsv(S.cleanDoc({ books: [
