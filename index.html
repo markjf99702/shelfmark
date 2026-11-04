@@ -181,6 +181,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .cv{--cloth:#7A2E26;position:relative;flex:none;width:46px;height:68px;border-radius:2px 5px 5px 2px;background:linear-gradient(90deg,rgba(0,0,0,.22) 0 3px,rgba(255,255,255,.08) 3px 5px,transparent 5px),var(--cloth);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),0 2px 4px -1px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#F4E9D2}
 .cv::after{content:"";position:absolute;left:9px;right:6px;top:10px;height:1px;background:rgba(244,233,210,.45);box-shadow:0 3px 0 rgba(244,233,210,.25)}
 .cv-t{font:500 17px/1 var(--serif);letter-spacing:.02em;padding-left:3px}
+.cv-t.wide{font-size:12px;letter-spacing:0} /* a number of three or four figures ("1984") */
 .cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .25s}
 .cv img.on{opacity:1}
 .cv.lg{width:92px;height:136px;border-radius:3px 7px 7px 3px}
@@ -374,6 +375,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-alt .cv{width:34px;height:50px}
 .nx-alt .cv::after{top:8px;left:7px;right:5px}
 .nx-alt .cv-t{font-size:13px}
+.nx-alt .cv-t.wide{font-size:9.5px}
 .nx-alt .bk-t{font-size:16px}
 .nx-w{font-size:12.5px;color:var(--ink3);overflow-wrap:anywhere}
 .nx-out>.note{margin-top:16px}
@@ -875,6 +877,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     t = str(t, 300); var i = t.indexOf(':');
     if (i >= 3) t = t.slice(0, i).trim();
     return clip(t);
+  }
+  // The letters on a small cloth cover: the first letters of the title's first two words that start with a letter,
+  // after a leading article and leaving out small words after the first ("The Adventures of Sherlock Holmes": AS), or
+  // the number of up to four figures that starts it ("1984").
+  var SMALL_WORDS = ['of', 'and', 'the', 'a', 'an', 'in', 'on', 'to', 'for', 'from', 'with', 'at', 'by', 'or'];
+  function monogram(t) {
+    var words = String(t || '').replace(/^(the|a|an)\s+/i, '').split(/\s+/).map(function (w) { return w.replace(/^[^\p{L}\p{N}]+/u, ''); }).filter(Boolean);
+    var n = words.length ? /^(\p{N}{1,4})[^\p{L}\p{N}]*$/u.exec(words[0]) : null;
+    if (n) return n[1];
+    var lettered = words.filter(function (w, i) { return /^\p{L}/u.test(w) && !(i && SMALL_WORDS.indexOf(w.toLowerCase()) >= 0); });
+    return (lettered.length ? lettered : words).slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join('');
   }
   // Text cut at a word near 40 characters, for a toast: a title, or a place ("Living room › Right bookcase, top…").
   function clip(t) {
@@ -1416,10 +1429,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // ---------- rendering ----------
   function cover(b, size, noQueue) {
     var c = CLOTH[hash(fold(b.title)) % CLOTH.length], id = PREF.lookups ? coverId(b, noQueue) : 0;
-    var words = String(b.title).replace(/^(the|a|an)\s+/i, '').split(/\s+/).map(function (w) { return w.replace(/^[^\p{L}\p{N}]+/u, ''); }).filter(Boolean);
-    var tx = size === 'lg' ? esc(b.title) : esc(words.slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join(''));
+    var tx = size === 'lg' ? b.title : monogram(b.title);
     var img = id ? '<img src="https://covers.openlibrary.org/b/id/' + id + '-' + (size === 'lg' ? 'L' : 'M') + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add(\'on\')" onerror="this.remove()">' : '';
-    return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t">' + tx + '</span>' + img + '</span>';
+    return '<span class="cv' + (size ? ' ' + size : '') + '" style="--cloth:' + c + '" aria-hidden="true"><span class="cv-t' + (size !== 'lg' && tx.length > 2 ? ' wide' : '') + '">' + esc(tx) + '</span>' + img + '</span>';
   }
   function stars(n) { return n ? '<span class="bdg stars" aria-label="' + n + ' of 5 stars">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>' : ''; }
   // noPlace: the row is under its shelf's heading (sorted by shelf), so it leaves out the room and shelf.

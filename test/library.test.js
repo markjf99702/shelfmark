@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -250,6 +250,13 @@ eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life o
 eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
 eq(['Den › Tall bookcase', 'Living room › Right bookcase, cow figurine shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
   ['Den › Tall bookcase', 'Living room › Right bookcase, cow…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
+
+// ---------- covers ----------
+eq(['The Adventures of Sherlock Holmes', 'The Count of Monte Cristo', 'The Mill on the Floss', 'A Wizard of Earthsea', 'Of Mice and Men', 'In Cold Blood', 'War and Peace',
+  'Pride & Prejudice', '“Surely You’re Joking, Mr. Feynman!”', 'Middlemarch', 'Cien años de soledad', '吾輩は猫である'].map(S.monogram),
+  ['AS', 'CM', 'MF', 'WE', 'OM', 'IC', 'WP', 'PP', 'SY', 'M', 'CA', '吾'], 'a small cover takes the first letters of the first two words, leaving out small words after the first');
+eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 'Catch-22', '12345 Stories', '11/22/63', '!!!'].map(S.monogram),
+  ['1984', '2001', '100', 'F', 'C', 'S', '1', ''], 'a number of up to four figures that starts a title stands alone, and a number later on isn\'t a letter');
 
 // ---------- what to read next ----------
 {
