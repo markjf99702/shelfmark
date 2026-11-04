@@ -2095,7 +2095,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           '<p class="note">Merging keeps the most recent version of each book. Books removed in the file after you last changed them are removed here too. Nothing else changes.</p></div>' +
           '<div class="ft"><span class="grow"></span><button class="btn primary" type="button" id="lbgo">Merge into my library</button></div>'));
     $('lbx').addEventListener('click', closeSheet);
-    if (!nothing) $('lbgo').addEventListener('click', function () { var before = live(DOC).length; DOC = mergeDocs(DOC, doc); var saved = persist(); closeSheet(); render(); toast(saved ? 'Merged — ' + plural(live(DOC).length, 'book') + ' now (' + (live(DOC).length - before >= 0 ? '+' : '') + (live(DOC).length - before) + ')' : STORE_TOAST[STORE]); });
+    // The toast says what merging did: "Merged: 1 book added, 2 updated, 1 removed".
+    if (!nothing) $('lbgo').addEventListener('click', function () {
+      var was = DOC.books, n = { added: 0, updated: 0, removed: 0 };
+      DOC = mergeDocs(DOC, doc);
+      Object.keys(DOC.books).forEach(function (id) {
+        var x = DOC.books[id], w = was[id];
+        if (!x.del) { if (!w || w.del) n.added++; else if (JSON.stringify(x) !== JSON.stringify(w)) n.updated++; } else if (w && !w.del) n.removed++;
+      });
+      var did = ['added', 'updated', 'removed'].filter(function (k) { return n[k]; }).map(function (k, i) { return (i ? n[k] : plural(n[k], 'book')) + ' ' + k; });
+      var saved = persist(); closeSheet(); render();
+      toast(!saved ? STORE_TOAST[STORE] : did.length ? 'Merged: ' + did.join(', ') : 'Your library already had everything in this file');
+    });
   }
 
   // The reading details on a book, in a line: "Nonfiction · History · Informative, reflective · Slow · Short chapters".

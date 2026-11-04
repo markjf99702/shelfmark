@@ -1033,6 +1033,14 @@ step('a backup opens on another device, and the library sheet says what merging 
     assert.deepEqual(await other.$$eval('#sheet button', bs => bs.map(x => x.textContent)), ['Not now', 'Merge into my library'], 'two buttons that close it, or the wrong ones');
     await other.click('#lbgo');
     assert.deepEqual(await stored(other), JSON.parse(backup));
+    assert.equal(await other.textContent('#toastTx'), 'Merged: 2 books added');
+    // A file that only changes books says how many it changed, not how many books there are now.
+    await wait(450);
+    const soon = Date.now() + 1000;
+    await openFile(other, JSON.stringify({ shelfmark: 1, library: { books: { b03: { ...PIRANESI, t: soon, status: 'read' }, b04: { ...MIDDLEMARCH, t: soon, room: 'Study' } }, seen: {} } }));
+    assert.deepEqual(await what(other), ['2 are already here, both with newer changes in the file']);
+    await other.click('#lbgo');
+    assert.equal(await other.textContent('#toastTx'), 'Merged: 2 books updated');
     // Opened again, there's nothing to merge, and it says so.
     await wait(450);
     await openFile(other, backup);
@@ -1054,6 +1062,7 @@ step('a backup opens on another device, and the library sheet says what merging 
     assert.deepEqual(await what(other), ['1 isn’t on this device yet, so merging adds it', '1 was removed here since, and stays removed', '1 of your books was removed in the file, so merging removes it here too']);
     await other.click('#lbgo');
     assert.deepEqual((await titles(other)).sort(), ['Cat’s Cradle']);
+    assert.equal(await other.textContent('#toastTx'), 'Merged: 1 book added, 1 removed');
     assert.deepEqual([...page.problems, ...other.problems], []);
   } finally { await a.close(); await b.close(); }
 });
