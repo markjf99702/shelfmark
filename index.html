@@ -1710,7 +1710,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b);
       });
-      // "Sunroom › 1  14 books": the count, in words and in plain type, can't be read as part of a shelf's name.
+      // "Porch › 1  14 books": the count, in words and in plain type, can't be read as part of a shelf's name.
       groups.forEach(function (g) {
         html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + '<span class="n"><span class="sr">,</span>&nbsp;' + plural(g.bs.length, 'book').replace(' ', '&nbsp;') + '</span></h3>' +
           '<div class="shelf-bks">' + g.bs.map(function (b) { return row(b, true); }).join('') + '</div></section>';

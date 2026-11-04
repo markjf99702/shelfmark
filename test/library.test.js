@@ -248,15 +248,15 @@ eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life o
   ['Middlemarch', 'Piranesi', 'The Interesting Narrative of the Life of…', 'Dr. No', 'A: Life', 'Ab: the rest', 'Supercalifragilisticexpialidocious-Antid…', 'Gilead'],
   'a toast quotes a title up to its colon, cut at a word near 40 characters');
 eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
-eq(['Den › Tall bookcase', 'Living room › Right bookcase, cow figurine shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
-  ['Den › Tall bookcase', 'Living room › Right bookcase, cow…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
+eq(['Den › Tall bookcase', 'Study › Window bookcase, brass owl bookend shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
+  ['Den › Tall bookcase', 'Study › Window bookcase, brass owl…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
 
 // ---------- covers ----------
 eq(['The Adventures of Sherlock Holmes', 'The Count of Monte Cristo', 'The Mill on the Floss', 'A Wizard of Earthsea', 'Of Mice and Men', 'In Cold Blood', 'War and Peace',
   'Pride & Prejudice', '“Surely You’re Joking, Mr. Feynman!”', 'Middlemarch', 'Cien años de soledad', '吾輩は猫である'].map(S.monogram),
   ['AS', 'CM', 'MF', 'WE', 'OM', 'IC', 'WP', 'PP', 'SY', 'M', 'CA', '吾'], 'a small cover takes the first letters of the first two words, leaving out small words after the first');
-eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 'Catch-22', '12345 Stories', '11/22/63', '!!!'].map(S.monogram),
-  ['1984', '2001', '100', 'F', 'C', 'S', '1', ''], 'a number of up to four figures that starts a title stands alone, and a number later on isn\'t a letter');
+eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 'Hangar-22', '12345 Stories', '11/22/63', '!!!'].map(S.monogram),
+  ['1984', '2001', '100', 'F', 'H', 'S', '1', ''], 'a number of up to four figures that starts a title stands alone, and a number later on isn\'t a letter');
 
 // ---------- what to read next ----------
 {
@@ -419,7 +419,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       'and so do a volume in the subtitle and a #3');
     eq(S.nextPool(lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Bo Chen'] }]), S.cleanNext({})).length, 2, 'a set by another author is another set');
     // Ordinary titles aren't volumes: a number word inside a title, or "Part" and "Book" as words.
-    const plain = ['The Book of One Thousand Nights', 'Part of the Furniture', 'Book Two of the Gods, Revised', 'Twelve Angry Men', 'The Fourth Part', 'Catch-22', 'Book 2 Remembered', 'The Notebook, Volume of Poems',
+    const plain = ['The Book of One Thousand Nights', 'Part of the Furniture', 'Book Two of the Gods, Revised', 'Twelve Angry Men', 'The Fourth Part', 'Hangar-22', 'Book 2 Remembered', 'The Notebook, Volume of Poems',
       'Seven Pillars of Wisdom', 'Agent #7 Returns', 'One Hundred Years: Part of a Life'];
     eq(S.nextPool(lib(plain.map(title => ({ title, authors: ['Ann Lee'] })).concat({ title: 'Anything, Book 1', authors: ['Ann Lee'] })), S.cleanNext({})).length, plain.length + 1, 'ordinary titles aren’t taken for later volumes');
     // Digits can follow the word straight on; a numeral or a number word needs a space.

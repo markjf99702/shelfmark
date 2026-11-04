@@ -859,7 +859,7 @@ step('by shelf, a row doesn\'t repeat the room and shelf over it, and the headin
   const ctx = await context();
   try {
     const page = await open(ctx);
-    await seed(page, [{ ...PIRANESI, room: 'Sunroom', shelf: '1', status: 'read', rating: 4 }, { ...MIDDLEMARCH, room: 'Sunroom', shelf: '1', check: 'glare' },
+    await seed(page, [{ ...PIRANESI, room: 'Porch', shelf: '1', status: 'read', rating: 4 }, { ...MIDDLEMARCH, room: 'Porch', shelf: '1', check: 'glare' },
       { ...CRADLE, room: 'Bedroom', loan: { to: 'Sam' } }]);
     await page.selectOption('#sortSel', 'shelf');
     assert.equal(await page.locator('#list .loc').count(), 0, 'rows under a shelf heading say its place again');
@@ -869,7 +869,7 @@ step('by shelf, a row doesn\'t repeat the room and shelf over it, and the headin
     const counts = await page.$$eval('#list .grp .n', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
     for (const c of counts) assert.match(c, /\d+ books?$/);
     assert.deepEqual(counts.map(c => c.replace(/^, /, '')), ['1 book', '2 books']);
-    // The count reads as a count, not as part of the shelf's name ("Sunroom › 1 2"): not in capitals, and not in the name's type.
+    // The count reads as a count, not as part of the shelf's name ("Porch › 1 2"): not in capitals, and not in the name's type.
     const [name, n] = await page.$eval('#list .grp >> nth=1', h => [getComputedStyle(h), getComputedStyle(h.querySelector('.n'))].map(c => [c.textTransform, c.fontFamily]));
     assert.notDeepEqual(n, name, 'the count looks like the shelf\'s name');
     assert.equal(n[0], 'none');
@@ -2733,10 +2733,10 @@ step('Start reading says where the book is, its place cut short on a small phone
   const ctx = await context({ ...PHONE, viewport: { width: 320, height: 640 } });
   try {
     const page = await open(ctx);
-    await seed(page, [{ ...MIDDLEMARCH, room: 'Living room', shelf: 'Right bookcase, cow figurine shelf' }]);
+    await seed(page, [{ ...MIDDLEMARCH, room: 'Study', shelf: 'Window bookcase, brass owl bookend shelf' }]);
     await page.click('#nextBtn');
     await page.click('#nxGo');
-    assert.equal(await page.textContent('#toastTx'), 'Marked \u201cMiddlemarch\u201d as reading. It\u2019s on Living room \u203a Right bookcase, cow\u2026');
+    assert.equal(await page.textContent('#toastTx'), 'Marked \u201cMiddlemarch\u201d as reading. It\u2019s on Study \u203a Window bookcase, brass owl\u2026');
     assert.ok((await page.locator('#toast').boundingBox()).height < 90, 'the toast runs to four lines or more');
     await page.click('#toastBtn');
     await seed(page, [{ ...MIDDLEMARCH, room: '' }]);
