@@ -377,7 +377,13 @@ details.more .fs{padding:2px 12px 12px}
 /* over a sheet, the toast sits just above the sheet's footer, clear of its heading and buttons (--above is how far the
    footer's top is from the bottom, set as the toast shows) */
 body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px)))}
-.toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:12px 10px;margin:-12px -10px;text-decoration:underline}
+.toast button{flex:none;white-space:nowrap;background:none;border:0;color:var(--accent-soft);font-weight:700;padding:12px 10px;margin:-12px -10px;text-decoration:underline}
+/* the words wrap, and the button keeps its words on one line: beside them, or on a line of its own at the right when
+   it would be wider than the words beside it (What to read next on the narrowest phones; see toast()) */
+#toastTx{flex:1 1 auto;min-width:0}
+.toast.stack{flex-wrap:wrap}
+.toast.stack #toastTx{flex-basis:100%}
+.toast.stack button{margin-left:auto}
 
 @media (max-width:720px){
   html{scroll-padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
@@ -1629,6 +1635,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     t.style.setProperty('--above', ft ? Math.max(0, Math.round($('sheet').getBoundingClientRect().bottom - ft.getBoundingClientRect().top)) + 'px' : '');
     clearTimeout(toastClr);
     $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
+    t.classList.remove('stack'); if (act && b.offsetWidth > $('toastTx').offsetWidth) t.classList.add('stack');
     toastBack = back || null;
     b.onclick = act ? function () { var had = t.contains(document.activeElement); toastBack = null; hideToast(); var to = fn(); if (had) refocus(to); } : null;
     t.classList.add('show'); toastMs = act || m.length > 60 ? 6000 : 3000;
