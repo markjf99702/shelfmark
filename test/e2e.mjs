@@ -481,11 +481,21 @@ step('a link cut short says so, and a hand-written link with a % opens', async (
   try {
     const link = linkTo({ name: 'Den', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] });
     const data = link.split('#s1z')[1];
-    let n = data.length - 6; while (n % 4 !== 1) n--; // the length atob refuses outright
-    const page = await open(ctx, base + '#s1z' + data.slice(0, n));
-    await until(() => page.evaluate(() => document.getElementById('toast').classList.contains('show')), 'a message');
-    assert.match(await page.textContent('#toastTx'), /doesn’t look like books from Claude/);
-    assert.equal(await sheetOpen(page), false);
+    const whole = 'This link from Claude didn’t come through whole, so nothing was added. Copy Claude’s whole message and paste it here, or open the file Claude gave you.';
+    // Cut to a length atob refuses outright, cut where it decodes but doesn't inflate, and with a character changed:
+    // each says so, and opens Import with the keyboard in the paste box, ready for Claude's whole message.
+    let n = data.length - 6; while (n % 4 !== 1) n--;
+    const page = await open(ctx);
+    for (const bad of [data.slice(0, n), data.slice(0, n - 1), data.slice(0, 30) + (data[30] === 'A' ? 'B' : 'A') + data.slice(31)]) {
+      await page.goto(base + '#s1z' + bad);
+      await until(() => page.evaluate(() => document.getElementById('toast').classList.contains('show')), 'a message');
+      assert.equal(await page.textContent('#toastTx'), whole);
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'impaste', 'Import isn\'t open with the paste box ready');
+      assert.equal(await page.evaluate(() => location.hash), '');
+      await page.click('#imx');
+      await page.evaluate(() => { document.getElementById('toast').classList.remove('show'); });
+    }
+    assert.deepEqual(await stored(page), null, 'something was saved');
     await page.goto(base + '#batch={"books":[{"title":"100% Fun"}]}');
     await page.waitForSelector('#rv-add');
     assert.equal(await page.inputValue('#rv input[data-f="title"]'), '100% Fun');
@@ -2883,7 +2893,7 @@ step('a link opened on a device behind Drive checks its books against Drive, and
     await b.waitForSelector('#rv-add');
     await cb.unroute(media);
     assert.equal(await b.textContent('.lede'), 'Den shelf · 3 books · 2 you already have', 'the phone checked the link against its old copy');
-    assert.match(await b.textContent('#rv-head'), /You added from this link (just now|\d+ min ago)\. Books you already have are unticked\./);
+    assert.match(await b.textContent('#rv-head'), /You added these books (just now|\d+ min ago)\. Books you already have are unticked\./);
     assert.deepEqual(await b.$$eval('#rv .rv-tick input', els => els.map(e => e.checked)), [false, false, true]);
     assert.equal(await b.textContent('#rv-add'), 'Add 1 book', 'the phone would add a second Walden and Moby-Dick');
     assert.equal(await b.locator('#behind').count(), 0, 'a phone in step with Drive says it may not be');

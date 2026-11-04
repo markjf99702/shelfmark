@@ -948,6 +948,22 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     eq(got, 'Cien años de soledad', 'a pasted link opens ' + what);
   }
   eq((await S.parseIncoming(JSON.stringify({ books: [{ title: 'T', notes: 'from https://x/#s1zAAAA' }] }))).batch.books[0].notes, 'from https://x/#s1zAAAA', 'JSON that mentions a link is still read as JSON');
+  // Quoted in a reply, a "> " at the start of each line, the link is put back together without them.
+  {
+    const third = Math.floor(link.length / 3), q = '> Here are your books:\n> ' + link.slice(0, third) + '\n> ' + link.slice(third, 2 * third) + '\n>' + link.slice(2 * third) + '\n>\n> > Thanks!';
+    let got = null; try { got = (await S.parseIncoming(q)).batch.books[0].title; } catch (e) { got = 'refused'; }
+    eq(got, 'Cien años de soledad', 'a link quoted in a reply, "> " before each line, opens');
+  }
+  // A link that didn't come through whole says so, with what to do; a link that came through but holds no books doesn't.
+  {
+    const whole = 'This link from Claude didn’t come through whole, so nothing was added. Copy Claude’s whole message and paste it here, or open the file Claude gave you.';
+    const why = async t => { try { await S.parseIncoming(t); return 'opened'; } catch (e) { return e.say ? e.message : 'refused'; } };
+    const changed = z.slice(0, 20) + (z[20] === 'A' ? 'B' : 'A') + z.slice(21);
+    eq([await why(link.slice(0, link.length - 9)), await why('Link: ' + link.slice(0, half) + '\n'), await why('#s1z' + changed), await why('#s1j' + j.slice(0, j.length - 5)), await why('#s1j' + j.slice(0, 7) + j.slice(8))],
+      [whole, whole, whole, whole, whole], 'a link cut short, or with a character changed or lost, says it didn’t come through whole');
+    const none = zlib.deflateRawSync(Buffer.from(JSON.stringify({ shelfmark: 1, batch: { books: [] } }))).toString('base64url');
+    eq(await why('#s1z' + none), 'refused', 'a whole link with no books in it is refused like other bad input');
+  }
   // Claude's whole reply pasted, as a phone copies a message: the JSON in a code block, with words around it.
   const said = async t => { try { const r = await S.parseIncoming(t); return r.kind === 'details' ? 'details: ' + r.details.books.map(b => b.title).join(', ') : r.batch.books.map(b => b.title).join(', '); } catch (e) { return 'refused'; } };
   const det = JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'b1', title: 'Walden', kind: 'nonfiction' }] } }, null, 1);

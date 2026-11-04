@@ -2150,8 +2150,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   // Text from a link, a file or the paste box → {kind: 'batch' | 'library' | 'details', …}. A pasted Shelfmark link can be
   // anywhere in the text: after "Link:", inside a markdown link, with a full stop after it, or broken over lines
-  // by a mail app, whose pieces are joined back (the longest join that reads wins). Pasted JSON can come with Claude’s
-  // words around it, as a phone copies a whole reply: inside a ```json code block, or after "Here you go:".
+  // by a mail app, whose pieces are joined back (the longest join that reads wins), or quoted in a reply, with "> " at
+  // the start of each line. One that doesn't read however it's joined didn't come through whole (cut short, or a
+  // character lost in copying), and says so (e.say). Pasted JSON can come with Claude’s words around it, as a phone
+  // copies a whole reply: inside a ```json code block, or after "Here you go:".
   function parseIncoming(t) {
     function read(o) {
       if (o && o.library) return { kind: 'library', doc: cleanDoc(o) };
@@ -2164,12 +2166,21 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var c = t.charAt(0), json, m;
     if (c === '{' || c === '[') try { json = JSON.parse(t); } catch (e) { }
     if (json === undefined) {
+      t = t.replace(/^[ \t]*(?:>[ \t]?)+/gm, '');
       m = /#s1[zj][A-Za-z0-9_-]+(?:[ \t]*\r?\n\s*[A-Za-z0-9_-]+)*/.exec(t);
       if (m) {
-        var pieces = m[0].slice(1).split(/\s+/).slice(0, 200);
+        // A join that reads as books but has none (an empty batch) is said as it is; one that doesn’t read at all, as
+        // a link that didn’t come through whole, unless the browser can’t open links at all.
+        var pieces = m[0].slice(1).split(/\s+/).slice(0, 200), said = null, old = null;
         var join = function (n) {
-          return linkText('#' + pieces.slice(0, n).join('')).then(function (x) { return read(JSON.parse(x)); })
-            .catch(function (e) { if (n > 1) return join(n - 1); throw e; });
+          return linkText('#' + pieces.slice(0, n).join('')).then(function (x) { var o = JSON.parse(x); try { return read(o); } catch (e) { said = said || e; throw e; } })
+            .catch(function (e) {
+              if (e && /browser/.test(e.message)) old = e;
+              if (n > 1) return join(n - 1);
+              if (old || said) throw old || said;
+              var w = new Error('This link from Claude didn’t come through whole, so nothing was added. Copy Claude’s whole message and paste it here, or open the file Claude gave you.');
+              w.say = w.whole = true; throw w;
+            });
         };
         return join(pieces.length);
       }
@@ -2188,9 +2199,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     return Promise.resolve().then(function () { return read(json); });
   }
-  function takeIncoming(p) {
+  // fromLink: it came in the address, from a link tapped. One that didn't come through whole opens Import as well, with
+  // the paste box ready for Claude's whole message.
+  function takeIncoming(p, fromLink) {
     return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch); })
-      .catch(function (e) { toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file'); });
+      .catch(function (e) {
+        if (fromLink && e && e.whole) importSheet(true);
+        toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file');
+      });
   }
   // With sync on, a link's sheet waits for a sync first (the one already under way as the page opens, or one started
   // now), so it checks the books against the library as it is in Drive, not an old copy on this device. It opens when
@@ -2199,12 +2215,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function checkLink() {
     var h = location.hash; if (!/^#(s1[zj]|batch=)/.test(h)) return;
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
-    var p = linkText(h).then(function (t) { if (!t) throw new Error('empty'); return parseIncoming(t); });
+    var p = /^#s1/.test(h) ? parseIncoming(h) : linkText(h).then(function (t) { if (!t) throw new Error('empty'); return parseIncoming(t); });
     var s = D.on && hasToken() ? syncing ? syncP : sync() : null;
-    if (!s) { takeIncoming(p); return; }
+    if (!s) { takeIncoming(p, true); return; }
     linkWait = s;
     s.then(function () { if (linkWait === s) { linkWait = null; if (sheetRefresh) sheetRefresh(false); } });
-    takeIncoming(Promise.all([p, Promise.race([s, new Promise(function (ok) { setTimeout(ok, 4000); })])]).then(function (x) { return x[0]; }));
+    takeIncoming(Promise.all([p, Promise.race([s, new Promise(function (ok) { setTimeout(ok, 4000); })])]).then(function (x) { return x[0]; }), true);
   }
   // A device behind Drive checks a link's books against an old copy: books added on another device look new, and
   // their reading details are left out. That's a device signed out (Google's hour is up, the usual case on a phone
@@ -2241,7 +2257,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
       return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
         (batch.more ? '. <b>' + num(batch.more) + ' more didn’t fit.</b> Shelfmark takes ' + num(BATCH_MAX) + ' at a time — ask Claude to put the rest in another file.' : '') + '</p>' + driveFlag() +
-        (seenAt ? '<p class="flag"><span>You added from this link ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
+        (seenAt ? '<p class="flag"><span>You added these books ' + esc(since(seenAt)) + '. Books you already have are unticked.</span></p>' : '');
     }
     function have(r) {
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
@@ -2424,11 +2440,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     count();
   }
 
-  function importSheet() {
+  // paste: the paste box takes the keyboard as it opens, for a link that didn't come through whole.
+  function importSheet(paste) {
     openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="imx">Close</button></div><div class="bd">' +
       '<ol class="steps" style="margin:0 0 14px;max-width:none"><li><span><b>Photograph your books</b> and send the photos to Claude with the Shelfmark skill: a shelf of spines, a stack of covers, or the barcodes on the back for exact editions.</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch). Tap it, and you’ll see the list here to check before anything is added.</span></li></ol>' +
       '<div class="row"><button class="btn primary" type="button" id="imfile">Open a file…</button><span class="note" style="margin:0">A file from Claude, or a Shelfmark backup (.json)</span></div>' +
-      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, or the JSON text" spellcheck="false"></textarea></label>' +
+      '<label class="fl pastebox"><span>Or paste what Claude gave you</span><textarea id="impaste" placeholder="A Shelfmark link, or the JSON text" spellcheck="false"' + (paste ? ' autofocus' : '') + '></textarea></label>' +
       '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="imgo">Read it</button></div>' +
       '<p class="note" style="margin-top:14px">Moving from Goodreads or LibraryThing? Send Claude your export, with the Shelfmark skill, and open what it gives you here. Reading details from Claude open here too.</p></div>');
     $('imx').addEventListener('click', closeSheet);
