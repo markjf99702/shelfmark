@@ -756,6 +756,36 @@ step('a toast\'s Undo goes with the toast, and from the keyboard Undo takes the 
   } finally { await ctx.close(); }
 });
 
+step('a tap on a toast\'s words doesn\'t keep it on a phone, and a mouse over it does', async () => {
+  for (const opts of [PHONE, DESK]) {
+    const ctx = await context(opts);
+    try {
+      const page = await open(ctx);
+      await seed(page, [PIRANESI, MIDDLEMARCH, CRADLE]);
+      const shown = () => page.evaluate(() => document.getElementById('toast').classList.contains('show'));
+      await page.click('#list .bk[data-id="b04"]');
+      await page.click('#f-del');
+      assert.match(await page.textContent('#toastTx'), /Removed “Middlemarch”/);
+      const ms = 6000; // a toast with a button shows for 6 seconds
+      if (opts.hasTouch) {
+        // A thumb on the words, to read them or by mistake: a phone sends a mouseenter for it, and no mouseleave after.
+        const box = await page.locator('#toastTx').boundingBox();
+        await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+        await wait(ms + 1000);
+        assert.equal(await shown(), false, 'a tap on the toast kept it on screen');
+        assert.equal(await page.isHidden('#toastBtn'), true, 'the toast\'s Undo stayed live');
+      } else {
+        await page.hover('#toastTx');
+        await wait(ms + 1000);
+        assert.equal(await shown(), true, 'the toast went with the mouse on it');
+        await page.mouse.move(5, 5);
+        await until(async () => !(await shown()), 'the toast to go once the mouse left it', ms + 2000);
+      }
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a redraw keeps the keyboard where it was: on a chip pressed, and on a book while another tab changes the library', async () => {
   const ctx = await context(DESK);
   try {

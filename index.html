@@ -1618,7 +1618,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.drawn = html; el.innerHTML = html;
     var f = id && ($(id) || $('sheetTitle')); if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
   }
-  // A toast says what was just done, for a few seconds (a long one needs time to read), and stays while the pointer or the
+  // A toast says what was just done, for a few seconds (a long one needs time to read), and stays while a mouse or the
   // keyboard is on it. Its button (Undo) goes with it: hidden, out of the keyboard's reach and doing nothing, and its
   // words go a moment after it has faded. kb: what it's about was done from the keyboard, so the keyboard goes to the
   // button; back() says where the keyboard goes when the toast goes with it there, and the button's fn() where it goes
@@ -1650,8 +1650,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var t = $('toast');
     t.addEventListener('focusin', function () { toastHold.focus = true; holdToast(); });
     t.addEventListener('focusout', function (e) { toastHold.focus = t.contains(e.relatedTarget); holdToast(); });
-    t.addEventListener('mouseenter', function () { toastHold.hover = true; holdToast(); });
-    t.addEventListener('mouseleave', function () { toastHold.hover = false; holdToast(); });
+    // Only a mouse holds it. A tap on a touch screen sends a mouseenter too, and no mouseleave until something else is
+    // tapped, which would keep the toast and its Undo there for good.
+    t.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { toastHold.hover = true; holdToast(); } });
+    t.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { toastHold.hover = false; holdToast(); } });
   })();
   function download(name, text, type) {
     var url = URL.createObjectURL(new Blob([text], { type: type })), a = document.createElement('a');
