@@ -821,16 +821,36 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       t: b.t,
       title: fold(b.title).replace(/^(the|a|an)\s+/, ''),
       author: a ? fold(surname(a) + ' ' + a) : '￿',
-      hay: fold([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to,
+      hay: searchText([b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, b.room, b.shelf, (b.tags || []).join(' '), b.notes, b.edition, b.loan && b.loan.to,
         label(b.format, FORMATS), label(b.condition, CONDITIONS), b.signed ? 'signed' : '', b.first ? 'first edition' : '', b.check,
         label(b.kind, KINDS), labels(b.genres, GENRES).join(' '), labels(b.moods, MOODS).join(' '), b.pace ? label(b.pace, PACES) + ' pace' : '',
-        b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', label(b.way, WAYS), b.blurb].join(' \u0001 '))
+        b.chapters ? label(b.chapters, CHAPTERS) + ' chapters' : '', label(b.way, WAYS), b.blurb].join(' '))
     };
     return c;
   }
+  // Text as search reads it: folded, without apostrophes (so "Pilgrim's", "Pilgrim’s" and "Pilgrims" read alike), and
+  // with everything that isn't a letter or a digit a space ("Moby-Dick" is two words), one in front of each word.
+  function searchText(s) { return ' ' + fold(s).replace(/['’‘ʼ]/g, '').replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim(); }
   // The words of a search. One that's an ISBN as printed on the book ("978-0-261-10221-7", or its ISBN-10) becomes
-  // the 13 digits Shelfmark keeps, so it finds the book.
-  function searchWords(s) { return fold(s).split(/\s+/).filter(Boolean).map(function (w) { return /^[\dx-]+$/.test(w) && isbn13(w) || w; }); }
+  // the 13 digits Shelfmark keeps, so it finds the book; the rest are read as the book's text is.
+  function searchWords(s) {
+    var out = [];
+    fold(s).split(/\s+/).forEach(function (w) {
+      var i = /^[\dx-]+$/.test(w) && isbn13(w);
+      if (i) out.push(i); else out.push.apply(out, searchText(w).split(' ').filter(Boolean));
+    });
+    return out;
+  }
+  // Writing with no spaces between words (Chinese, Japanese, Thai…), and Korean, whose words take endings.
+  var UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+  // Whether a book has every word of a search. A word has to start a word of the book's, so "fiction" doesn't find a
+  // nonfiction book and "king" doesn't find "cooking"; a number (part of an ISBN, a year) or a word in a script written
+  // without spaces can be anywhere.
+  function searchHit(b, words) {
+    var h = keys(b).hay;
+    for (var i = 0; i < words.length; i++) if (h.indexOf(/^\d+$/.test(words[i]) || UNSPACED.test(words[i]) ? words[i] : ' ' + words[i]) < 0) return false;
+    return true;
+  }
   function authorOrder(x, y) { return COLL.compare(keys(x).author, keys(y).author) || COLL.compare(keys(x).title, keys(y).title); }
   function titleOrder(x, y) { return COLL.compare(keys(x).title, keys(y).title) || authorOrder(x, y); }
   function shelfOrder(x, y) { return COLL.compare(x.room || '￿', y.room || '￿') || COLL.compare(x.shelf || '￿', y.shelf || '￿') || authorOrder(x, y); }
@@ -1161,8 +1181,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       else if (UI.status && (b.status || 'unread') !== UI.status) return false;
       if (UI.room && (UI.room === NOROOM ? !!b.room : b.room !== UI.room)) return false;
       if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return false;
-      if (q.length) { var h = keys(b).hay; for (var i = 0; i < q.length; i++) if (h.indexOf(q[i]) < 0) return false; }
-      return true;
+      return !q.length || searchHit(b, q);
     });
   }
   // A row of chips that scrolls sideways fades at an edge with more past it (see .fade-l, .fade-r).

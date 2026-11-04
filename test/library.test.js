@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, dupKeys, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -119,9 +119,32 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
 eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');
 eq(S.searchWords('0261102214'), ['9780261102217'], 'and so does its ISBN-10');
 eq(S.searchWords('Hobbit 1937 9780261'), ['hobbit', '1937', '9780261'], 'other words and numbers are left as they are');
+eq([S.searchWords('Pilgrim’s Progress'), S.searchWords("pilgrim's"), S.searchWords('Moby-Dick'), S.searchWords('978-0-261'), S.searchWords('  ')],
+  [['pilgrims', 'progress'], ['pilgrims'], ['moby', 'dick'], ['978', '0', '261'], []], 'apostrophes go, and a hyphen or a stop splits a word, but not an ISBN');
+{
+  // Each word searched starts a word of the book's (a number can be anywhere: part of an ISBN, a year), and an
+  // apostrophe reads the same typed straight, curly (as an iPhone types it) or not at all.
+  const finds = (b, q) => S.searchHit(b, S.searchWords(q));
+  const pilgrim = S.cleanBook({ id: 'w1', t: 1, title: 'The Pilgrim\'s Progress', authors: ['John Bunyan'], kind: 'fiction' });
+  const hobbit = S.cleanBook({ id: 'w2', t: 1, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '0-261-10221-4', year: 1937, kind: 'fiction' });
+  const walden = S.cleanBook({ id: 'w3', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', blurb: 'Two years of cooking beans and thinking, in a cabin by a pond.' });
+  eq([finds(walden, 'fiction'), finds(hobbit, 'fiction'), finds(walden, 'nonfiction')], [false, true, true], '"fiction" doesn’t find a nonfiction book');
+  eq([finds(walden, 'king'), finds(walden, 'cook'), finds(walden, 'ond')], [false, true, false], 'a word inside another one isn’t found ("king" in "cooking")');
+  eq([finds(hobbit, 'tolk'), finds(hobbit, 'TOLKIEN hob'), finds(hobbit, 'r r tolkien')], [true, true, true], 'the start of a word finds it');
+  eq(['0261', '9780261102217', '978-0-261-10221-7', '1937', '937'].map(q => finds(hobbit, q)), [true, true, true, true, true], 'a number is found anywhere: an ISBN’s digits, a year');
+  eq(['pilgrim’s', 'pilgrims', 'pilgrim\'s progress', 'PILGRIM‘S', 'pilgrimʼs progress', 'bunyan’s'].map(q => finds(pilgrim, q)), [true, true, true, true, true, false],
+    'an apostrophe typed straight, curly or not at all finds "The Pilgrim\'s Progress"');
+  eq([finds(S.cleanBook({ id: 'w4', t: 1, title: 'Moby-Dick', authors: ['Herman Melville'] }), 'dick'), finds(S.cleanBook({ id: 'w4', t: 1, title: 'Moby-Dick', authors: ['Herman Melville'] }), 'moby-dick')], [true, true], 'a hyphenated title is two words');
+  // Chinese and Japanese put no spaces between words, and Korean adds endings to them: a word in those is found anywhere.
+  const neko = S.cleanBook({ id: 'w5', t: 1, title: '吾輩は猫である', authors: ['夏目漱石'] }), hong = S.cleanBook({ id: 'w6', t: 1, title: '홍길동전', authors: ['허균'] });
+  eq([finds(neko, '猫'), finds(neko, 'である'), finds(neko, '漱石'), finds(hong, '길동'), finds(neko, '犬')], [true, true, true, true, false], 'a Chinese, Japanese or Korean title is found by a piece from its middle');
+  // A vowel sign belongs to its letter: "दान" isn't the start of a word in "गोदान".
+  const godaan = S.cleanBook({ id: 'w7', t: 1, title: 'गोदान', authors: ['प्रेमचंद'] });
+  eq([finds(godaan, 'गोदान'), finds(godaan, 'गोदा'), finds(godaan, 'दान'), finds(godaan, 'प्रेम')], [true, true, false, true], 'and letters with their vowel signs are one word');
+}
 {
   // Search looks in every field a person might type for, the edition's details and the reading details included.
-  const finds = (b, q) => S.searchWords(q).every(w => S.keys(b).hay.includes(w));
+  const finds = (b, q) => S.searchHit(b, S.searchWords(q));
   const kept = S.cleanBook({ id: 's1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], format: 'hardcover', condition: 'very-good', signed: true, first: true, check: 'glare over the author', pace: 'slow', chapters: 'short', way: 'dip' });
   const plain = S.cleanBook({ id: 's2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] });
   eq(['signed', 'first edition', 'hardcover', 'very good', 'glare', 'slow pace', 'short chapters', 'dip'].map(q => finds(kept, q)), Array(8).fill(true), 'search finds a signed first edition, its format, condition, Check note, pace, chapters and how it reads');
