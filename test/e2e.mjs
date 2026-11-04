@@ -1148,6 +1148,70 @@ step('erasing with changes that haven\'t reached Drive says so before they\'re l
   } finally { await ctx.close(); }
 });
 
+step('Disconnect keeps the library and the sign-in, sends what waits to Drive first, and says when it can\'t', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN, KARAMAZOV]);
+    // A device that has never had Drive says nothing about Drive when it's erased, though books were changed here.
+    await page.click('#list .bk[data-id="w1"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    await wait(450);
+    await page.click('#setBtn');
+    assert.equal(await page.textContent('#stEraseNote'), 'Erasing removes your library from this browser only. Download a backup first if you want to keep it.');
+    await page.click('#stx');
+    await wait(450);
+    await connectDrive(page);
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the first sync');
+    await until(() => page.evaluate(() => JSON.parse(localStorage.getItem('junkdrawer.google') || '{}').email === 'mark@gmail.com'), 'the account\'s email');
+    const inDrive = id => { const f = g.files().find(f => f.name === 'Shelfmark library.json'); return f && JSON.parse(f.body).library.books[id]; };
+    // A change still waiting when Disconnect is tapped goes to Drive first.
+    await page.click('#list .bk[data-id="k1"]');
+    await page.click('#f-status button[data-v="reading"]');
+    await page.click('#bkx2');
+    await wait(450);
+    await page.click('#setBtn');
+    await page.click('#dvOff');
+    await until(() => page.evaluate(() => /Drive disconnected/.test(document.getElementById('toastTx').textContent)), 'Disconnect to finish', 10000);
+    assert.equal(await page.textContent('#toastTx'), 'Drive disconnected on this device. Your library is still here and in Drive.');
+    assert.equal(inDrive('k1').status, 'reading', 'the change didn\'t reach Drive before Disconnect');
+    assert.equal((await titles(page)).length, 2, 'the books went with Drive');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('junkdrawer.google')).email), 'mark@gmail.com', 'the sign-in went with Drive');
+    assert.equal(await page.isVisible('#dvGo'), true);
+    // Connected again, with Google's hour up and a change made: Disconnect says it hasn't reached Drive, and Erase warns.
+    await page.click('#dvGo');
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the sync after connecting again');
+    await page.click('#stx');
+    await page.evaluate(() => {
+      for (const k of ['junkdrawer.google', 'shelfmark.drive']) localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)), exp: Date.now() - 1000 }));
+    });
+    await page.reload();
+    await page.click('#list .bk[data-id="k1"]');
+    await page.click('#f-status button[data-v="read"]');
+    await page.click('#bkx2');
+    await wait(450);
+    await page.click('#setBtn');
+    await page.click('#dvOff');
+    assert.equal(await page.textContent('#toastTx'), 'Drive disconnected on this device. Your latest changes haven’t reached Drive: they stay here, and go to Drive when you connect again.');
+    assert.equal(inDrive('k1').status, 'reading');
+    assert.equal(await page.textContent('#stEraseNote'), 'Erasing removes your library and your Google sign-in from this browser only. Your latest changes here haven’t reached Drive yet. Connect Google Drive first, or they’ll be lost.');
+    await page.click('#stErase');
+    assert.equal(await page.textContent('#stErase'), 'Tap again to erase, changes not in Drive included');
+    assert.deepEqual(await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('shelfmark.drive')); return [d.on, d.pending, d.unsent]; }), [false, true, true]);
+    // Connecting again takes the change to Drive, and Erase stops warning.
+    await page.click('#stx');
+    await wait(450);
+    await page.click('#setBtn');
+    await page.click('#dvGo');
+    await until(() => inDrive('k1').status === 'read', 'the change to reach Drive on connecting again', 10000);
+    await until(() => page.evaluate(() => /Drive is disconnected here/.test(document.getElementById('stEraseNote').textContent)), 'Erase to stop warning');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a browser that won\'t let Shelfmark save says so, rather than saying the books were added', async () => {
   const ctx = await context();
   // As when the browser blocks site data: every save of Shelfmark's throws.

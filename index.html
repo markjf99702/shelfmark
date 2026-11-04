@@ -2634,7 +2634,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The library lives in one JSON file, "Shelfmark library.json", in a Shelfmark folder in the
   // person's Drive. With the drive.file scope Shelfmark can see only files it made, nothing else.
   // Each sync reads the file, merges it with this device's copy, and writes it back if anything changed.
-  function freshDrive() { return { on: false, fileId: '', version: '', token: '', exp: 0, last: 0, err: '', pending: false, clientId: D && D.clientId || '' }; }
+  // pending: changes made here since the last sync (an edit sets it whether or not Drive is on). unsent: Drive was
+  // disconnected here with some of them not yet in Drive, so Erase still says they'd be lost.
+  function freshDrive() { return { on: false, fileId: '', version: '', token: '', exp: 0, last: 0, err: '', pending: false, unsent: false, clientId: D && D.clientId || '' }; }
   var D = null; D = freshDrive();
   try { Object.assign(D, JSON.parse(localStorage.getItem(LSD) || '{}')); } catch (e) { }
   // Until October 2026 a failure to load Google's script was saved here and then showed for good.
@@ -2793,7 +2795,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         D.version = f.version;
       });
     }).then(function () {
-      if (editSeq === seq) D.pending = false;
+      if (editSeq === seq) D.pending = D.unsent = false;
       D.last = Date.now(); D.err = ''; offline = false; saveDrive(); syncing = false; renderSync(); renderDrive();
       if (bare) render();
       if (first && brought > 0) toast('Brought in ' + plural(brought, 'book') + ' from your Google Drive');
@@ -2847,9 +2849,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         '<div class="row"><button class="btn primary" type="button" id="dvSync">Sync now</button><button class="btn quiet" type="button" id="dvOff">Disconnect this device</button></div>';
     }
     s.innerHTML = html;
-    // Changes not yet in Drive would be lost for good (D.pending: Google's hour is up, say, or a sync failed).
+    // Changes not yet in Drive would be lost for good (Google's hour is up, say, a sync failed, or Drive was
+    // disconnected before they got there).
     if ($('stEraseNote')) $('stEraseNote').textContent = 'Erasing removes your library' + (D.on || signedIn() ? ' and your Google sign-in' : '') + ' from this browser only' +
-      (D.on && D.pending ? '. Your latest changes here haven’t reached Drive yet. Tap Sync now first, or they’ll be lost.' : D.on ? ', so Drive is disconnected here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
+      (unsent() ? '. Your latest changes here haven’t reached Drive yet. ' + (D.on ? 'Tap Sync now' : 'Connect Google Drive') + ' first, or they’ll be lost.' : D.on ? ', so Drive is disconnected here. The copy in your Drive stays.' : '. Download a backup first if you want to keep it.');
     eraseLabel();
     if ($('dvCidGo')) $('dvCidGo').addEventListener('click', function () {
       var v = str($('dvCid').value, 200);
@@ -2858,17 +2861,28 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     if ($('dvGo')) $('dvGo').addEventListener('click', askToken);
     if ($('dvSync')) $('dvSync').addEventListener('click', syncNow);
+    // Disconnect: changes not yet in Drive go there first while Google's sign-in is good. Otherwise they stay here,
+    // marked unsent, and go to Drive when it's connected again. No revoke: that cancels Google's permission for every app
+    // on the junkdrawer.works client, not just this one.
     if ($('dvOff')) $('dvOff').addEventListener('click', function () {
-      // No revoke: that cancels Google's permission for every app on the junkdrawer.works client, not just this one.
-      var cid = D.clientId; D = freshDrive(); D.clientId = cid; saveDrive(); renderSync(); renderDrive(); render();
-      toast('Drive disconnected on this device. Your library is still here and in Drive.');
+      if (leaving) return;
+      function off() {
+        var cid = D.clientId, left = D.pending; leaving = false; clearTimeout(syncT);
+        D = freshDrive(); D.clientId = cid; D.pending = D.unsent = left; saveDrive(); renderSync(); renderDrive(); render();
+        toast(left ? 'Drive disconnected on this device. Your latest changes haven’t reached Drive: they stay here, and go to Drive when you connect again.' : 'Drive disconnected on this device. Your library is still here and in Drive.');
+      }
+      if (D.pending && hasToken()) { leaving = true; sync().then(off); } else off();
     });
     if (keep) refocus($(keep) || $('sheetTitle'));
   }
+  // Changes made here that haven't reached Drive: with Drive on, or left from before it was disconnected. (A device that
+  // has never had Drive keeps nothing there to reach.) leaving: Disconnect is waiting for its last sync.
+  function unsent() { return !!D.pending && (D.on || !!D.unsent); }
+  var leaving = false;
   // Erase this device's copy, once tapped: what a second tap erases.
   function eraseLabel() {
     var b = $('stErase'); if (!b || !b.dataset.sure) return;
-    b.textContent = D.on && D.pending ? 'Tap again to erase, changes not in Drive included' : 'Tap again to erase ' + plural(live(DOC).length, 'book');
+    b.textContent = unsent() ? 'Tap again to erase, changes not in Drive included' : 'Tap again to erase ' + plural(live(DOC).length, 'book');
   }
   function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
 
