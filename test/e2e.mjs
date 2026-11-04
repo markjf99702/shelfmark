@@ -730,6 +730,37 @@ step('on a phone Import says Import beside the sync button\'s dot, and nothing s
   }
 });
 
+step('with a mouse at 200% zoom the chips and moods wrap, and the keyboard keeps the book it\'s on clear of the top bar and the + button', async () => {
+  // A 1280 by 800 screen at 200% zoom is 640 by 400 CSS pixels: the phone's layout, with a mouse and no touch.
+  const ctx = await context({ viewport: { width: 640, height: 400 } });
+  try {
+    const page = await open(ctx);
+    const MOODS = ['adventurous', 'challenging', 'dark', 'emotional', 'funny', 'hopeful', 'informative', 'inspiring', 'lighthearted', 'mysterious', 'reflective', 'relaxing', 'sad', 'tense'];
+    await seed(page, Array.from({ length: 30 }, (_, i) => ({ id: 'z' + i, t: 1000 + i, title: 'Book ' + String(i + 1).padStart(2, '0'), authors: ['Ann Lee'], kind: 'fiction', moods: [MOODS[i % 14]],
+      status: i === 0 ? 'reading' : i === 1 ? 'read' : '', loan: i === 2 ? { to: 'Sam' } : null, check: i === 3 ? 'glare' : '' })));
+    assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), 'Your library', 'the page has no main heading');
+    const fit = sel => page.$$eval(sel, els => els.filter(e => e.getBoundingClientRect().right > innerWidth + 0.5).map(e => e.textContent));
+    assert.deepEqual(await fit('#chips .chip'), [], 'chips are cut off at the side, out of a mouse\'s reach');
+    assert.deepEqual(await page.$eval('#chips', e => [e.classList.contains('fade-l'), e.classList.contains('fade-r')]), [false, false]);
+    // Up the list with Shift+Tab, and down it with Tab: the book with the keyboard is never under the top bar or the + button.
+    const where = () => page.evaluate(() => { const a = document.activeElement.getBoundingClientRect(); return [a.top, a.bottom, document.querySelector('.top').getBoundingClientRect().bottom, document.getElementById('addBtn').getBoundingClientRect().top]; });
+    await page.focus('#list .bk[data-id="z20"]');
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press('Shift+Tab');
+      const [top, , bar] = await where();
+      assert.ok(top >= bar - 0.5, 'Shift+Tab left a book under the top bar: its top at ' + top + ', the bar\'s bottom at ' + bar);
+    }
+    for (let i = 0; i < 16; i++) {
+      await page.keyboard.press('Tab');
+      const [, bottom, , plus] = await where();
+      assert.ok(bottom <= plus + 0.5, 'Tab left a book under the + button: its bottom at ' + bottom + ', the button\'s top at ' + plus);
+    }
+    await page.click('#nextBtn');
+    assert.deepEqual(await fit('#nxCrit [data-mood]'), [], 'moods are cut off at the side of What to read next');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

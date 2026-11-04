@@ -72,7 +72,8 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%}
+/* the keyboard's focus is scrolled clear of the sticky top bar (and, on a phone, of the + button below) */
+html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 64px)}
 body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.45 var(--sans);min-height:100vh}
 body.locked{overflow:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -122,6 +123,8 @@ a{color:var(--accent)}
 .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:2px}
 .chips::-webkit-scrollbar{display:none}
+/* With a mouse (a laptop zoomed in, say) a row that scrolls sideways can't be reached past its edge, so it wraps. */
+@media (pointer:fine){.chips{flex-wrap:wrap;overflow:visible}}
 /* a row that scrolls sideways fades out at an edge with more chips past it, so it shows that it scrolls */
 .fade-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent)}
 .fade-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent)}
@@ -329,8 +332,8 @@ details.more .fs{padding:2px 12px 12px}
 .nx-blurb{font:italic 15px/1.4 var(--serif);color:var(--ink2);margin-top:4px}
 .nx-dl{font-size:13px;color:var(--ink);margin-top:2px}
 .nx-alt .nx-w{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-/* on a phone the moods are one row to swipe along, edge to edge */
-@media (max-width:640px){
+/* on a phone the moods are one row to swipe along, edge to edge (with a mouse they wrap) */
+@media (max-width:640px) and (pointer:coarse){
   .nx-f:has(.nx-moods){justify-items:stretch}
   .nx-moods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 24px 2px 16px;max-width:none}
   .nx-moods::-webkit-scrollbar{display:none}
@@ -373,6 +376,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
 .toast button{background:none;border:0;color:var(--accent-soft);font-weight:700;padding:12px 10px;margin:-12px -10px;text-decoration:underline}
 
 @media (max-width:720px){
+  html{scroll-padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   .top-in{gap:6px}
   .tbtn .t{display:none}
   .tbtn{padding:8px 10px}
@@ -438,6 +442,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   </div>
 </header>
 <main class="wrap">
+  <h1 class="sr">Your library</h1>
   <noscript><div class="empty"><h2>Shelfmark needs JavaScript to keep your catalog.</h2></div></noscript>
   <p class="flag store" id="storeNote" hidden><span></span></p>
   <div class="tools" id="tools" hidden>
