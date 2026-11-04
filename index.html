@@ -1895,11 +1895,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.classList.toggle('fade-l', el.scrollLeft > 1);
     el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
-  // The skill isn't on the page: a friend who comes from the drawer finds how to add it to Claude in the README.
   // For anyone without the skill: instructions for any Claude, whose reply is a plain list the paste box reads (listBooks).
   var ASK_CLAUDE = 'Please list every book you can see in these photos as a numbered list, one book a line: Title by Author. Go shelf by shelf, left to right. ' +
     'Copy titles and authors as they’re printed, and don’t guess: if you’re not sure of a book, add (check: what to check) at the end of its line. ' +
     'Leave out any you can’t read, and tell me where they are after the list.';
+  // The skill isn't on the page: a friend who comes from the drawer finds how to add it to Claude in the README.
   var SKILL_HOW = '<a class="how" href="https://github.com/markjf99702/shelfmark#adding-books-with-claude">How to add the skill</a>';
   var EMPTY_ART = '<svg viewBox="0 0 132 92" aria-hidden="true"><rect x="6" y="8" width="120" height="78" rx="8" fill="var(--sunk)" stroke="var(--line2)"/><rect x="16" y="18" width="100" height="58" rx="5" fill="var(--surface)" stroke="var(--line2)"/><rect x="48" y="30" width="36" height="16" rx="3" fill="var(--brass-soft)" stroke="var(--brass)"/><rect x="54" y="36" width="24" height="4" rx="2" fill="var(--brass)"/><circle cx="66" cy="60" r="5" fill="var(--brass-soft)" stroke="var(--brass)"/></svg>';
   // The list and the chips are drawn afresh, so the keyboard would lose its place when a chip is pressed, another tab
