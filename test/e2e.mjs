@@ -464,6 +464,60 @@ step('the review screen shows what the batch says of each book, and a long title
   } finally { await ctx.close(); }
 });
 
+step('the review screen\'s place lines follow Shelve them in, to where Add puts each book', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx, linkTo({ name: 'Hall console table', room: 'Hall', shelf: 'Console table', books: [
+      { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'], shelf: 'Top' },
+      { title: 'Emma', authors: ['Jane Austen'], room: 'Bedroom', shelf: 'Nightstand', isbn: '9780141439587' },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    const lines = () => page.$$eval('#rv .rv-meta', els => els.map(e => e.hidden ? '' : e.textContent));
+    // A book going where Shelve them in says has no line of its own.
+    assert.deepEqual(await lines(), ['', 'Hall › Top', '9780141439587 · Bedroom › Nightstand']);
+    await page.fill('#rv-room', 'Study');
+    await until(async () => (await lines())[1] === 'Study › Top', 'the place lines to follow the room');
+    assert.deepEqual(await lines(), ['', 'Study › Top', '9780141439587 · Study › Nightstand']);
+    await page.fill('#rv-shelf', '');
+    await until(async () => (await lines())[0] === '' && (await lines())[2] === '9780141439587 · Study › Nightstand', 'the place lines to follow the shelf');
+    await page.click('#rv-add');
+    const lib = await stored(page);
+    assert.deepEqual(Object.values(lib.library.books).map(b => b.title + ' @ ' + [b.room, b.shelf].filter(Boolean).join(' › ')).sort(),
+      ['Emma @ Study › Nightstand', 'Gilead @ Study › Top', 'Middlemarch @ Study'], 'Add put a book somewhere its line didn\'t say');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('a title or author changed on the review screen is checked against the library again, never unticking a book ticked by hand', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'bl', t: 1000, title: 'Beloved', authors: ['Toni Morrison'], room: 'Den', added: '2026-10-01' }, PIRANESI]);
+    await page.goto(linkTo({ name: 'Den', books: [
+      { title: 'Belovd', authors: ['Toni Morrison'] }, { title: 'Belovde', authors: ['Toni Morrison'] }, { title: 'Piranesi', authors: ['Susanna Clarke'] },
+    ] }));
+    await page.waitForSelector('#rv-add');
+    const rows = () => page.$$eval('#rv > li', els => els.map(li => [li.querySelector('.rv-tick input').checked, li.classList.contains('off'), li.querySelector('.rv-have').hidden ? '' : li.querySelector('.rv-have').textContent]));
+    assert.deepEqual((await rows()).map(r => r[0]), [true, true, false]);
+    // The second row is ticked by hand (off and on again) before its title is put right.
+    const tick = i => page.locator('#rv li').nth(i).locator('.rv-tick input');
+    await tick(1).uncheck(); await tick(1).check();
+    await page.locator('#rv li').nth(0).locator('[data-f="title"]').fill('Beloved');
+    await page.locator('#rv li').nth(1).locator('[data-f="title"]').fill('Beloved');
+    await page.locator('#rv li').nth(2).locator('[data-f="title"]').fill('Jazz');
+    await page.locator('#rv li').nth(2).locator('[data-f="authors"]').fill('Toni Morrison');
+    await until(async () => (await rows())[0][2] !== '', 'the edited row to be checked again');
+    assert.deepEqual(await rows(), [
+      [false, true, 'Already in your library — Den. Tick it to add another copy.'],
+      [true, false, 'Already in your library — Den. Tick it to add another copy.'],
+      [true, false, ''],
+    ]);
+    assert.equal(await page.textContent('#rv-add'), 'Add 2 books');
+    assert.equal(await page.textContent('.lede'), 'Den · 3 books · 2 you already have');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('I’ve read all of these marks Read the books added that the batch doesn\'t say are being read', async () => {
   const ctx = await context();
   try {

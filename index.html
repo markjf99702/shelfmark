@@ -2258,7 +2258,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var twin = null;
       lookupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
       indexKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
-      return { b: b, dup: null, near: null, twin: twin, on: true, mine: false };
+      return { b: b, dup: null, near: null, twin: twin, on: true, mine: false, ticked: false };
     });
     // Shelve them in starts out as the library spells the batch's room and shelf.
     var home = placeIndex(live(DOC)), room = place(batch.room, home.rooms);
@@ -2266,10 +2266,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var bulk = { room: batch.room, shelf: batch.shelf }, nc = rows.filter(function (r) { return r.b.check; }).length, readAll = false;
     // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
     function num(n) { return n.toLocaleString('en-US'); }
-    // Which books are here already: worked out as the sheet opens, and again when a sync or another tab changes the
-    // library while it's open. A row the person has ticked, unticked or edited (mine) keeps its tick. A book that may be
-    // another volume of a set already here (near) stays ticked, with a note.
-    function check() { var ix = dupIndex(DOC); rows.forEach(function (r) { r.dup = findDup(ix, r.b); r.near = r.dup ? null : nearDup(ix, r.b); if (!r.mine) r.on = !r.dup; }); }
+    // Which books are here already: worked out as the sheet opens, again when a sync or another tab changes the library
+    // while it's open, and for a row whose title or author is changed, a moment after the typing stops. On a sync, a row
+    // the person has ticked, unticked or edited (mine) keeps its tick; after an edit, one they haven't ticked or unticked
+    // follows what the edit found. A book that may be another volume of a set already here (near) stays ticked, with a note.
+    function check(only) {
+      var ix = dupIndex(DOC);
+      (only || rows).forEach(function (r) { r.dup = findDup(ix, r.b); r.near = r.dup ? null : nearDup(ix, r.b); if (only ? !r.ticked : !r.mine) r.on = !r.dup; });
+    }
     function head() {
       var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
       return '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + num(rows.length) + (rows.length === 1 ? ' book' : ' books') + (nd ? ' · ' + num(nd) + ' you already have' : '') + (nc ? ' · ' + num(nc) + ' to check' : '') +
@@ -2286,6 +2290,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (ed) m.push('<span class="rv-ed">' + esc(ed) + '</span>');
       return m.join('');
     }
+    // The row's ISBN, year, publisher and where it will go, as Shelve them in now says: its place is left out when that's
+    // the place Shelve them in names, which says it already.
+    function meta(r) {
+      var b = r.b, to = shelve(Object.assign({}, b), bulk, batch), at = where(to);
+      if (placeKey(to.room) === placeKey(bulk.room) && placeKey(to.shelf) === placeKey(bulk.shelf)) at = '';
+      return [b.isbn, b.year, b.publisher, at].filter(Boolean).join(' · ');
+    }
     function have(r) {
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
       if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
@@ -2299,14 +2310,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p>' +
       '<label class="opt"><input type="checkbox" id="rv-read"><span>I’ve read all of these</span></label></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
-        var b = r.b, meta = [b.isbn, b.year, b.publisher, where(b)].filter(Boolean).join(' · '), st = stLine(r);
+        var b = r.b, mt = meta(r), st = stLine(r);
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><label class="rv-tick"><input type="checkbox" aria-label="Add this book"' + (r.on ? ' checked' : '') + '></label><div class="rv-main">' +
           '<span class="rv-ti" data-v="' + esc(b.title) + '"><textarea class="rt" data-f="title" rows="1" maxlength="300" enterkeyhint="done" aria-label="Title" autocomplete="off">' + esc(b.title) + '</textarea></span>' +
           '<input data-f="authors" value="' + esc(byLine(b)) + '" placeholder="Author" aria-label="Author" autocapitalize="words" autocorrect="off" autocomplete="off">' +
           '<span class="rv-st"' + (st ? '>' + st : ' hidden>') + '</span>' +
           (detailParts(b).length ? '<span class="rv-det">' + detailHtml(b) + '</span>' : '') +
           (b.blurb ? '<span class="rv-blurb">' + esc(b.blurb) + '</span>' : '') +
-          (meta ? '<span class="rv-meta">' + esc(meta) + '</span>' : '') +
+          '<span class="rv-meta"' + (mt ? '>' + esc(mt) : ' hidden>') + '</span>' +
           (b.check ? '<span class="rv-flag">Check: ' + esc(b.check) + '</span>' : '') +
           '<span class="rv-dup rv-have"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
           (r.twin != null ? '<span class="rv-dup">Also in this list above — a second copy?</span>' : '') +
@@ -2323,22 +2334,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
       $('rv-n').textContent = n === rows.length ? '' : num(rows.length - n) + ' left out';
     }
+    // A row's tick and its note on a book already here, drawn again.
+    function drawHave(li) {
+      var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
+      li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
+      h.innerHTML = have(r); h.hidden = !r.dup && !r.near;
+    }
     sheetRefresh = function (changed) {
-      if (changed) {
-        check();
-        panel.querySelectorAll('#rv > li').forEach(function (li) {
-          var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
-          li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
-          h.innerHTML = have(r); h.hidden = !r.dup && !r.near;
-        });
-        count();
-      }
+      if (changed) { check(); panel.querySelectorAll('#rv > li').forEach(drawHave); count(); }
       redraw($('rv-head'), head());
     };
     $('rv').addEventListener('change', function (e) {
       var li = e.target.closest('li'); if (!li) return; var r = rows[+li.dataset.i];
-      if (e.target.type === 'checkbox') { r.on = e.target.checked; r.mine = true; li.classList.toggle('off', !r.on); count(); }
+      if (e.target.type === 'checkbox') { r.on = e.target.checked; r.mine = r.ticked = true; li.classList.toggle('off', !r.on); count(); }
     });
+    var edited = Object.create(null), editT = 0;
+    function recheck() {
+      if (!panel.isConnected) return;
+      var lis = Object.keys(edited).map(function (i) { return edited[i]; }); edited = Object.create(null);
+      check(lis.map(function (li) { return rows[+li.dataset.i]; })); lis.forEach(drawHave); count(); redraw($('rv-head'), head());
+    }
     // A title is one line, as on a book's card: Enter finishes it (not while a word is being put together), and a line
     // break pasted in becomes a space.
     $('rv').addEventListener('input', function (e) {
@@ -2348,13 +2363,24 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (/[\r\n]/.test(t.value)) t.value = t.value.replace(/[\r\n]+/g, ' ');
         t.parentNode.dataset.v = t.value; r.b.title = t.value;
       } else r.b.authors = list(t.value, 12, 120, true);
+      edited[li.dataset.i] = li; clearTimeout(editT); editT = setTimeout(recheck, 350);
     });
     $('rv').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing && e.target.dataset.f === 'title') { e.preventDefault(); e.target.blur(); } });
     $('rv-read').addEventListener('change', function () {
       readAll = this.checked;
       panel.querySelectorAll('#rv > li').forEach(function (li) { var st = li.querySelector('.rv-st'), h = stLine(rows[+li.dataset.i]); if (st.drawn !== h) { st.drawn = h; st.innerHTML = h; st.hidden = !h; } });
     });
-    ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
+    // Typing in Shelve them in moves each row's place line to where the book will go, a moment after the typing stops.
+    var placeT = 0;
+    ['rv-room', 'rv-shelf'].forEach(function (id) {
+      $(id).addEventListener('input', function () {
+        bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60);
+        clearTimeout(placeT);
+        placeT = setTimeout(function () {
+          if (panel.isConnected) panel.querySelectorAll('#rv > li').forEach(function (li) { var m = li.querySelector('.rv-meta'), t = meta(rows[+li.dataset.i]); if (m.textContent !== t) { m.textContent = t; m.hidden = !t; } });
+        }, 120);
+      });
+    });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function (e) {
       var now = Date.now(), on = today(), n = 0, ids = [], checks = 0, home = placeIndex(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
