@@ -2402,6 +2402,91 @@ step('Undo after Add a book takes it out of Drive too', async () => {
   } finally { await ctx.close(); }
 });
 
+step('Undo after adding books from a link takes them all back out, and the link opens as new again', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    const link = linkTo({ name: 'Hall', room: 'Hall', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }, { title: 'Emma', authors: ['Jane Austen'] }] });
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added 3 books — newest first');
+    assert.equal(await page.textContent('#toastBtn'), 'Undo');
+    const before = await stored(page);
+    assert.equal(Object.keys(before.library.seen).length, 1);
+    await page.click('#toastBtn');
+    assert.equal(await page.textContent('#toastTx'), 'Took them back out');
+    assert.deepEqual(await titles(page), ['Walden']);
+    const after = await stored(page), gone = Object.values(after.library.books).filter(b => b.id !== 'w1');
+    assert.deepEqual(gone.map(b => Object.keys(b).sort().join()), ['del,id,t', 'del,id,t', 'del,id,t'], 'the books taken back out aren\'t kept as removals');
+    assert.ok(gone.every(b => b.t > before.library.books[b.id].t), 'a removal isn\'t newer than the book');
+    assert.deepEqual(after.library.seen, {}, 'the link is still remembered as added');
+    // Opened again, it's a link not yet used: every book ticked, and nothing about having added them.
+    await page.goto(base);
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    assert.deepEqual(await page.$$eval('#rv .rv-tick input', els => els.map(e => e.checked)), [true, true, true]);
+    assert.equal(await page.textContent('#rv-head'), 'Hall · 3 books');
+    assert.equal(await page.textContent('#rv-add'), 'Add 3 books');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('Undo after adding books from a link takes them out of Drive too', async () => {
+  const g = fakeGoogle();
+  const ctx = await context();
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    await connectDrive(page);
+    await until(() => page.evaluate(() => document.getElementById('syncTx').textContent === 'Synced'), 'the first sync');
+    await page.goto(linkTo({ name: 'Hall', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] }));
+    await page.waitForSelector('#rv-add');
+    await page.click('#rv-add');
+    const ids = Object.values((await stored(page)).library.books).filter(b => b.id !== 'w1').map(b => b.id);
+    assert.equal(ids.length, 2);
+    await page.focus('#toastBtn'); // the toast stays while Undo has the keyboard, however long the sync takes
+    const inDrive = () => { const f = g.files().find(f => f.name === 'Shelfmark library.json'); return f ? ids.map(id => JSON.parse(f.body).library.books[id]) : []; };
+    await until(() => inDrive().length && inDrive().every(b => b && !b.del), 'the new books to reach Drive', 15000);
+    await page.click('#toastBtn');
+    await until(() => inDrive().every(b => b && b.del === 1), 'the removals to reach Drive', 15000);
+    assert.deepEqual(await titles(page), ['Walden']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('a link\'s books closed without adding say how to get them back: Not now, Back, or a tap beside them', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    const link = linkTo({ name: 'Hall', books: [{ title: 'Middlemarch', authors: ['George Eliot'] }] }), said = 'Nothing added. Tap the link in Claude again when you’re ready.';
+    const toast = () => page.evaluate(() => document.getElementById('toast').classList.contains('show') ? document.getElementById('toastTx').textContent : '');
+    for (const how of ['Not now', 'Back', 'beside']) {
+      await page.goto(link);
+      await page.waitForSelector('#rv-add');
+      assert.equal(await toast(), '', how + ': a toast before closing');
+      if (how === 'Not now') await page.click('#rvx');
+      else if (how === 'Back') await page.goBack();
+      else await page.touchscreen.tap(195, 20);
+      await until(async () => await toast() === said, 'the toast after ' + how);
+      assert.equal(await sheetOpen(page), false);
+      await page.evaluate(() => { document.getElementById('toast').classList.remove('show'); });
+    }
+    assert.deepEqual(Object.keys((await stored(page))?.library.books || {}), [], 'something was added');
+    // Pasted into Import, there's no link to tap again, so closing says nothing.
+    await page.click('#importBtn');
+    await page.fill('#impaste', link);
+    await page.click('#imgo');
+    await page.waitForSelector('#rv-add');
+    await page.click('#rvx');
+    await wait(400);
+    assert.equal(await toast(), '');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a quick second tap on Add to library doesn\'t open the book underneath', async () => {
   const ctx = await context();
   try {

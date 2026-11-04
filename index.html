@@ -1442,12 +1442,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function rowOf(id) { return id ? [].filter.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id === id; })[0] : null; }
   // Undo for books just added: each is taken out the way Remove takes one out ({id, t, del: 1}), so a sync takes it out
-  // of Drive and the other devices too, if it got there meanwhile.
-  function takeBack(ids) {
+  // of Drive and the other devices too, if it got there meanwhile. seen: the batch whose adding is undone, which is
+  // forgotten too, so opening its link again doesn't say it was added.
+  function takeBack(ids, seen) {
     var n = 0;
     ids.forEach(function (id) { var old = DOC.books[id]; if (old && !old.del) { DOC.books[id] = stamp({ id: id, del: 1 }, old); n++; } });
-    if (!n) return;
-    persist(); render(); toast(n > 1 ? 'Took them back out' : 'Took it back out');
+    if (seen) delete DOC.seen[seen];
+    if (!n && !seen) return;
+    persist(); render(); if (n) toast(n > 1 ? 'Took them back out' : 'Took it back out');
   }
   // What Add a book starts with. The title is the search that found nothing (Add “…”), or its ISBN when it is one; the
   // status is Reading or Read while that chip is chosen; the room is the one chosen in the room menu, or else the room
@@ -2202,7 +2204,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // fromLink: it came in the address, from a link tapped. One that didn't come through whole opens Import as well, with
   // the paste box ready for Claude's whole message.
   function takeIncoming(p, fromLink) {
-    return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch); })
+    return p.then(function (r) { if (r.kind === 'library') librarySheet(r.doc); else if (r.kind === 'details') detailsSheet(r.details); else reviewSheet(r.batch, fromLink); })
       .catch(function (e) {
         if (fromLink && e && e.whole) importSheet(true);
         toast(e && (e.say || /browser/.test(e.message)) ? e.message : 'That doesn’t look like books from Claude or a Shelfmark file');
@@ -2235,7 +2237,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#behindGo')) syncNow(); });
 
-  function reviewSheet(batch) {
+  // fromLink: it came from a link tapped, which has left the address; closed without adding, it says how to get it back.
+  function reviewSheet(batch, fromLink) {
     // A book the same as one above it in the list (findDup's rule) may be a second copy, or read twice.
     var inBatch = Object.create(null), rows = batch.books.map(function (b, i) {
       var twin = null;
@@ -2281,7 +2284,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft">' + storeFlag() + '<span class="note grow" id="rv-n"></span><button class="btn primary" type="button" id="rv-add">Add</button></div>' +
-      datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')));
+      datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')), function () {
+      // Not now, Back or a tap beside it. Another sheet taking its place says what it's for instead.
+      if (fromLink && !added) setTimeout(function () { if ($('sheet').hidden) toast('Nothing added. Tap the link in Claude again when you’re ready.'); }, 0);
+    });
+    var added = false;
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
       $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
@@ -2310,21 +2317,24 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     ['rv-room', 'rv-shelf'].forEach(function (id) { $(id).addEventListener('input', function () { bulk.room = str($('rv-room').value, 60); bulk.shelf = str($('rv-shelf').value, 60); }); });
     $('rvx').addEventListener('click', closeSheet);
-    $('rv-add').addEventListener('click', function () {
-      var now = Date.now(), added = today(), n = 0, first = null, checks = 0, home = placeIndex(live(DOC));
+    $('rv-add').addEventListener('click', function (e) {
+      var now = Date.now(), on = today(), n = 0, ids = [], checks = 0, home = placeIndex(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
         // goes where the library already spells its room and shelf, or where a book before it in the batch went.
-        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || added }), bulk, batch), home)); if (!b) return;
-        DOC.books[b.id] = b; n++; first = first || b; if (b.check) checks++; countPlace(home, b);
+        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }), bulk, batch), home)); if (!b) return;
+        DOC.books[b.id] = b; n++; ids.push(b.id); if (b.check) checks++; countPlace(home, b);
       });
       if (!n) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
-      DOC = cleanDoc(DOC); var saved = persist(); closeSheet();
+      DOC = cleanDoc(DOC); var saved = persist(); added = true; closeSheet();
       UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
-      toast(saved ? 'Added ' + plural(n, 'book') + ' — newest first' + (checks ? ' · ' + checks + ' to check' : '') : STORE_TOAST[STORE]);
+      // Undo takes them all back out, and forgets the link was used if this was its first time.
+      if (!saved) toast(STORE_TOAST[STORE]);
+      else toast('Added ' + plural(n, 'book') + ' — newest first' + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
+        function () { takeBack(ids, seen); return $('importBtn'); }, !e.detail, function () { return rowOf(ids[0]); });
     });
     count();
     return panel;
