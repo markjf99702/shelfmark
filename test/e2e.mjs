@@ -527,6 +527,30 @@ step('search finds a book by the ISBN printed on it', async () => {
   } finally { await ctx.close(); }
 });
 
+step('a search under a filter says the book is in the library, and Search all books finds it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, { id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], status: 'read', room: 'Den' }]);
+    await page.click('#chips .chip[data-s="unread"]');
+    await page.fill('#q', 'hobbit');
+    await until(async () => /Nothing here/.test(await page.textContent('#list')), 'the search');
+    assert.equal(await page.textContent('#list .empty p'), 'Nothing here matches “hobbit”, but 1 book in your whole library does.', 'the Unread chip hides the book, not the search');
+    await page.click('#list [data-act="all"]');
+    assert.deepEqual(await titles(page), ['The Hobbit']);
+    assert.equal(await page.inputValue('#q'), 'hobbit', 'the search is kept');
+    assert.equal(await page.getAttribute('#chips .chip[data-s=""]', 'aria-pressed'), 'true');
+    // A room chosen does the same; a search nothing in the library matches still says so.
+    await page.selectOption('#roomSel', 'Hall');
+    await until(async () => /Nothing here/.test(await page.textContent('#list')), 'the room');
+    await page.fill('#q', 'dragonflight');
+    await until(async () => /No book matches/.test(await page.textContent('#list')), 'the second search');
+    assert.equal(await page.textContent('#list .empty p'), 'No book matches “dragonflight”.');
+    assert.equal(await page.locator('#list [data-act="all"]').count(), 0);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

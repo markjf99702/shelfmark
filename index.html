@@ -1235,7 +1235,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var filtered = vis.length !== all.length;
     $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') + (counts.read ? ' · ' + counts.read + ' read' : '');
     if (!vis.length) {
-      L.innerHTML = '<div class="empty"><h2>Nothing matches</h2><p>' + (UI.q ? 'No book matches “' + esc(UI.q) + '”' : 'No books match these filters') + '.</p><div class="row"><button class="btn" type="button" data-act="clear">Show everything</button></div></div>';
+      // A search with a chip, room or tag chosen as well: when it's the filter that hides the book, say so.
+      var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag) ? all.filter(function (b) { return searchHit(b, words); }).length : 0;
+      L.innerHTML = '<div class="empty">' + (elsewhere
+        ? '<h2>Not with these filters</h2><p>Nothing here matches “' + esc(UI.q) + '”, but ' + plural(elsewhere, 'book') + ' in your whole library ' + (elsewhere === 1 ? 'does' : 'do') + '.</p>' +
+          '<div class="row"><button class="btn primary" type="button" data-act="all">Search all books</button><button class="btn" type="button" data-act="clear">Show everything</button></div>'
+        : '<h2>Nothing matches</h2><p>' + (UI.q ? 'No book matches “' + esc(UI.q) + '”' : 'No books match these filters') + '.</p><div class="row"><button class="btn" type="button" data-act="clear">Show everything</button></div>') + '</div>';
       return;
     }
     var html = '';
@@ -2230,6 +2235,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (a.dataset.act === 'add') $('addBtn').click();
     else if (a.dataset.act === 'import') importSheet();
     else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
+    // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
+    else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }
   });
   $('chips').addEventListener('click', function (e) { var c = e.target.closest('.chip'); if (!c) return; UI.status = c.dataset.s; render(); });
   $('chips').addEventListener('scroll', function () { fades(this); }, { passive: true });
