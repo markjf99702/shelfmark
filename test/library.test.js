@@ -92,6 +92,10 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     const ent = S.cleanDetails({ details: { books: [{ id: 'constructor', title: 'A', kind: 'fiction' }, { id: 'valueOf', title: 'Nothing here', kind: 'fiction' }] } });
     eq(S.matchDetails(doc, ent).map(r => r.bs.map(b => b.id)), [['bconstructor'], []], 'a details entry with such an id finds its book, and one not here finds nothing');
     eq(S.cleanBook({ id: 'a', title: 'T', tags: ['constructor', 'toString', '__proto__'] }).tags, ['constructor', 'toString', '__proto__'], 'tags like "constructor" are kept');
+    const added = v => S.cleanBook({ id: 'a', title: 'T', added: v }).added;
+    eq(['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29', '2024-02-29', '1999-12-31', ' 2026-01-01', '20260101', '0000-01-01', '2026-1-1', 2026].map(added),
+      [undefined, undefined, undefined, undefined, '2024-02-29', '1999-12-31', '2026-01-01', undefined, undefined, undefined, undefined], 'a day is kept only as YYYY-MM-DD and on the calendar: not 30 February or a 13th month');
+    eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: '2026-02-31', loan: { to: 'Sam', since: '2026-04-31' } }), { id: 'a', t: 0, title: 'T', status: 'read', loan: { to: 'Sam' } }, 'and so are the day it was finished and the day it was lent');
     const far = S.cleanBook({ id: 'a', t: 1e17, title: 'T' }), end = Date.UTC(9999, 11, 31);
     eq([far.t, new Date(far.t).getTime(), S.cleanBook({ id: 'a', t: 8.64e15, title: 'T' }).t], [end, end, end], 'a time past the last day a date can be (or at it, as an older Shelfmark kept one) comes in as the end of 9999');
     // A later change still wins over a book with such a time: a removal, or an edit that takes a field off, stamped from it.
@@ -1265,6 +1269,16 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const edgeOut = JSON.parse(fs.readFileSync(path.join(edgeDir, fs.readdirSync(edgeDir)[0]), 'utf8')).batch.books;
       const edgePage = edge.map(x => S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 }))).filter(Boolean).map(c => { delete c.id; delete c.t; return sorted(c); });
       eq(edgeOut.map(sorted), edgePage, 'the script cuts and splits text where the page does');
+      // And reads days where the page does: as YYYY-MM-DD, trimmed, and only a day that's on the calendar.
+      const days = ['2026-02-30', '2026-13-45', '20260101', ' 2026-01-01 ', '2024-02-29', '2025-02-29', '0000-01-01', '2026-01-01T10:00', '2026-W01-1', '٢٠٢٦-٠١-٠١'];
+      const dateIn = path.join(tmp, 'dates.json'), dateDir = fs.mkdtempSync(path.join(tmp, 'dates-'));
+      const dated = days.map((d, i) => ({ title: 'Day ' + i, added: d, status: 'read', finished: d, loan: { to: 'Sam', since: d } }));
+      fs.writeFileSync(dateIn, JSON.stringify({ books: dated }));
+      const dateSaid = execFileSync('python3', [py, dateIn, '--out', dateDir, '--no-link'], { encoding: 'utf8' });
+      const dateOut = JSON.parse(fs.readFileSync(path.join(dateDir, fs.readdirSync(dateDir)[0]), 'utf8')).batch.books;
+      eq(dateOut.map(b => [b.added, b.finished, b.loan.since]), dated.map(x => { const c = S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 })); return [c.added, c.finished, c.loan.since]; }), 'the script reads days as the page does');
+      eq(dateOut.map(b => b.added), [undefined, undefined, undefined, '2026-01-01', '2024-02-29', undefined, undefined, undefined, undefined, undefined], 'and keeps only days on the calendar, as YYYY-MM-DD');
+      eq((dateSaid.match(/^warning: “Day 0”: .*$/gm) || []), ['warning: “Day 0”: finished “2026-02-30” isn’t a day as YYYY-MM-DD; left off', 'warning: “Day 0”: lent since “2026-02-30” isn’t a day as YYYY-MM-DD; left off', 'warning: “Day 0”: added “2026-02-30” isn’t a day as YYYY-MM-DD; left off'], 'and says which days it left off');
       const oddDet = path.join(tmp, 'odd-details.json');
       fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', sub: ' Volume  II ', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
       const oddDetOut = JSON.parse(fs.readFileSync(/File: (\S+)/.exec(execFileSync('python3', [py, oddDet, '--details', '--out', oddDir, '--no-link'], { encoding: 'utf8' }))[1], 'utf8')).details.books;

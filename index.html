@@ -731,7 +731,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   // Signed, first edition: yes only for true, 1, or "true", "yes" or "1" in any case, so "false" and "no" are no.
   function yes(v) { return v === true || v === 1 || typeof v === 'string' && /^(true|yes|1)$/i.test(v.trim()); }
-  function day(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; }
+  // A day as YYYY-MM-DD, and one that's on the calendar: not 30 February, a 13th month or the year 0. The skill's script
+  // reads days the same way (its day()).
+  function day(v) {
+    var m = typeof v === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim()), d = new Date(0);
+    if (!m || +m[1] < 1) return '';
+    d.setUTCFullYear(+m[1], m[2] - 1, +m[3]);
+    return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === m[2] - 1 && d.getUTCDate() === +m[3] ? m[0] : '';
+  }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function pick(v, list) { v = str(v, 40).toLowerCase(); for (var i = 0; i < list.length; i++) if (list[i][0] === v || list[i][1].toLowerCase() === v) return list[i][0]; return ''; }
@@ -1123,7 +1130,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   function fmtDay(s) {
-    if (!day(s)) return '';
+    if (!(s = day(s))) return '';
     var p = s.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]), now = new Date();
     return d.toLocaleDateString(undefined, d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
   }
@@ -1138,7 +1145,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function since(ms) { return (Date.now() - ms < 86400e3 ? '' : 'on ') + ago(ms); }
   // How long a loan has been out, in whole months from the day it was lent to now: 0 under a month, or with no day.
   function loanMonths(since, now) {
-    if (!day(since)) return 0;
+    if (!(since = day(since))) return 0;
     var p = since.split('-').map(Number), d = now || new Date();
     return Math.max(0, (d.getFullYear() - p[0]) * 12 + d.getMonth() + 1 - p[1] - (d.getDate() < p[2] ? 1 : 0));
   }

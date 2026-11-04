@@ -258,11 +258,21 @@ def yes(v):
 
 
 def day(v):
-    v = s(v, 10)
+    """A day as YYYY-MM-DD, and one on the calendar (not 30 February), as Shelfmark's day() reads it. Newer Pythons'
+    fromisoformat also takes 20260101 and 2026-W01-1, which Shelfmark doesn't, so the form is checked first."""
+    v = s(v, ALL)
+    if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', v):
+        return ''
     try:
         return datetime.date.fromisoformat(v).isoformat()
     except ValueError:
         return ''
+
+
+def no_day(title, what, v, warn):
+    """Says when a day was given that Shelfmark can't keep, so a slip (30 February) can be put right."""
+    if s(v, ALL) and not day(v):
+        warn.append(f'“{title}”: {what} “{s(v, 40)}” isn’t a day as YYYY-MM-DD; left off')
 
 
 def word(v):
@@ -334,6 +344,7 @@ def clean(b, i, warn):
     out['rating'] = whole(b.get('rating'), 0, 5)
     # The day it was finished, kept for a book that's read, as Shelfmark keeps it. A day with no status says it was read.
     out['finished'] = day(b.get('finished'))
+    no_day(name, 'finished', b.get('finished'), warn)
     if out['finished'] and not s(b.get('status'), 40):
         out['status'] = 'read'
     if out['status'] != 'read':
@@ -345,6 +356,7 @@ def clean(b, i, warn):
         out['loan'] = {'to': s(loan.get('to'), 80)}
         if day(loan.get('since')):
             out['loan']['since'] = day(loan.get('since'))
+        no_day(name, 'lent since', loan.get('since'), warn)
     out['tags'] = items(b.get('tags'), 20, 40)
     every = items(b.get('tags'), ALL, 40)
     if len(every) > 20:
@@ -355,6 +367,7 @@ def clean(b, i, warn):
     out['signed'] = yes(b.get('signed'))
     out['first'] = yes(b.get('first')) or yes(b.get('first_edition'))
     out['added'] = day(b.get('added'))
+    no_day(name, 'added', b.get('added'), warn)
     out.update(reading(b, title, warn))
     flag = '; '.join(f for f in flags if f)[:300]
     if flag:
