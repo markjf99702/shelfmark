@@ -1624,6 +1624,17 @@ step('a phone keyboard\'s Search puts it away over the results, and Next goes th
     assert.deepEqual(await page.$eval('.rv [data-f="authors"]', e => [e.getAttribute('autocapitalize'), e.getAttribute('autocorrect')]), ['words', 'off']);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
+  // With a mouse and keyboard there's no keyboard on screen to put away: Enter searches, and the keyboard stays in the box.
+  const desk = await context(DESK);
+  try {
+    const page = await open(desk);
+    await seed(page, [WALDEN, KARAMAZOV]);
+    await page.fill('#q', 'walden');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'q', 'Enter took the keyboard out of the search box');
+    assert.deepEqual(await titles(page), ['Walden']);
+    assert.deepEqual(page.problems, []);
+  } finally { await desk.close(); }
 });
 
 step('a card\'s genres are buttons that take them off, and the keyboard stays where the person is as they go and come', async () => {

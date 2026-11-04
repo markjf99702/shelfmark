@@ -3053,8 +3053,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   window.addEventListener('resize', function () { fades($('chips')); fades(document.querySelector('#nxCrit .nx-moods')); growTitle(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fades($('chips')); });
   var qT; $('q').addEventListener('input', function () { clearTimeout(qT); var v = this.value; qT = setTimeout(function () { UI.q = v; render(); }, 90); });
-  // Enter (a phone keyboard's Search) searches at once and puts the keyboard away, so the books found show.
-  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { clearTimeout(qT); if (UI.q !== this.value) { UI.q = this.value; render(); } this.blur(); } });
+  // Enter (a phone keyboard's Search) searches at once and, on a touch screen, puts the keyboard away, so the books found
+  // show. With a mouse, the keyboard stays in the box rather than falling back to the top of the page.
+  $('q').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    clearTimeout(qT); if (UI.q !== this.value) { UI.q = this.value; render(); }
+    if (window.matchMedia && matchMedia('(pointer: coarse)').matches) this.blur();
+  });
   // On a phone the search box is too narrow for the whole placeholder, which stopped at "tags, b".
   var narrow = window.matchMedia ? matchMedia('(max-width:720px)') : null;
   function placeholder() { $('q').placeholder = narrow && narrow.matches ? 'Search your books' : 'Search titles, authors, shelves, tags, borrowers…'; }
