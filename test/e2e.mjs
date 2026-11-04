@@ -1501,6 +1501,19 @@ step('a long title shows whole in the card on a phone, and Enter there finishes 
   } finally { await ctx.close(); }
 });
 
+step('the big stand-in cover ends a long title with its … instead of showing more lines under it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'g1', t: 1000, title: 'The History of the Decline and Fall of the Roman Empire', authors: ['Edward Gibbon'] }]);
+    await page.click('#list .bk[data-id="g1"]');
+    // Where the title can show: below its top padding, down to the bottom of its box (a line in the bottom padding shows too).
+    const [h, lh] = await page.$eval('.cv.lg .cv-t', e => { const c = getComputedStyle(e); return [e.clientHeight - parseFloat(c.paddingTop), parseFloat(c.lineHeight)]; });
+    assert.ok(h <= 5 * lh + 1, 'the title has ' + h + 'px to show in on the cover, more than five lines of ' + lh);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book\'s ISBN reads like its other details', async () => {
   const ctx = await context();
   try {
