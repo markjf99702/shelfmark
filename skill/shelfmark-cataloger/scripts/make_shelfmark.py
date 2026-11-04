@@ -2,7 +2,7 @@
 """Turn a list of books into a Shelfmark batch: a link that opens it in Shelfmark, and a file.
 
     python3 make_shelfmark.py books.json [--out DIR] [--base URL] [--no-link]
-    python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--out DIR]
+    python3 make_shelfmark.py export.csv --import goodreads|librarything [--keep-unowned] [--keep-ebooks] [--out DIR]
     python3 make_shelfmark.py details.json --details [--out DIR] [--base URL] [--no-link]
 
 books.json (every field but "title" is optional; "authors" and "tags" may be a list or one string, which is split
@@ -31,7 +31,9 @@ longer list is written as numbered files of up to 3,000 each, to open one after 
 With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
 aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
 given --keep-unowned, which puts them on Shelfmark's wishlist. Books LibraryThing has only as Read but
-unowned stay out either way: read, but neither in the house nor wished for. It says how many.
+unowned stay out either way: read, but neither in the house nor wished for. E-books and audiobooks aren't on a
+shelf either, so they're left out too, unless it's given --keep-ebooks. It says how many. It keeps each book's
+format, the day it was added and the day it was read, and LibraryThing's loans.
 
 A batch with "wanted": true (books from a shop's table, or a list of books to buy) goes on the wishlist,
 as does a book with "wanted": true.
@@ -57,7 +59,8 @@ FORMATS = {
     'hardcover': 'hardcover', 'hardback': 'hardcover', 'hard cover': 'hardcover', 'hc': 'hardcover', 'cloth': 'hardcover', 'library binding': 'hardcover',
     'paperback': 'paperback', 'softcover': 'paperback', 'soft cover': 'paperback', 'trade paperback': 'paperback', 'pb': 'paperback', 'tpb': 'paperback',
     'mass-market': 'mass-market', 'mass market': 'mass-market', 'mass market paperback': 'mass-market', 'mass-market paperback': 'mass-market', 'pocket': 'mass-market',
-    'board': 'board', 'board book': 'board', 'leather': 'leather', 'leather-bound': 'leather', 'leatherbound': 'leather', 'other': 'other', 'spiral': 'other',
+    'board': 'board', 'board book': 'board', 'leather': 'leather', 'leather-bound': 'leather', 'leatherbound': 'leather', 'leather bound': 'leather', 'other': 'other', 'spiral': 'other',
+    'perfect paperback': 'paperback', 'spiral-bound': 'other', 'spiral bound': 'other', 'ring-bound': 'other',
 }
 CONDITIONS = {
     'fine': 'fine', 'as new': 'fine', 'like new': 'fine', 'new': 'fine', 'near fine': 'fine', 'mint': 'fine',
@@ -354,9 +357,10 @@ def clean(b, i, warn):
 
 # ---------- Goodreads and LibraryThing exports ----------
 # --import reads the export itself and does the mechanical part here rather than by hand: it leaves out books that
-# aren't in the house (on the to-read shelf with no copy owned, or only wished for), takes "(Series, #2)" off titles
-# so they match the same book read from a spine, keeps the day each was read (Date Read, as finished), turns <br/> into line breaks, keeps reading shelves out of tags and
-# turns LibraryThing's "Le Guin, Ursula K." round.
+# aren't in the house (on the to-read shelf with no copy owned, or only wished for, and e-books and audiobooks), takes
+# "(Series, #2)" off titles so they match the same book read from a spine, keeps the day each was read (Date Read, as
+# finished), its format, the day it was added and LibraryThing's loans, turns <br/> into line breaks, keeps reading
+# shelves out of tags and turns LibraryThing's "Le Guin, Ursula K." round.
 
 SUFFIX = re.compile(r'^(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$', re.I)
 GR_SHELVES = {'read', 'currently-reading', 'to-read'}  # Goodreads's own shelves, which say where a book is in the reading
@@ -441,8 +445,40 @@ def stars(v):
         return 0
 
 
-def from_goodreads(rows, keep):
-    books, left = [], 0
+# E-books and audiobooks, as Goodreads's Binding and LibraryThing's Media name them: not on a shelf in the house.
+DIGITAL = re.compile(r'(?i)kindle|e-?book|nook|kobo|audio|audible|mp3|digital|electronic')
+
+
+def binding(v):
+    """A binding as an export names it → Shelfmark's format, or '' for one it doesn't know ("Unknown Binding", "Paper
+    Book"). LibraryThing may give the whole path ("Book > Paper Book > Paperback"): the most specific piece wins."""
+    for piece in reversed(re.split(r'\s*[>,;/]\s*', v.strip().lower())):
+        if piece in FORMATS:
+            return FORMATS[piece]
+    return ''
+
+
+def digital(v, keep):
+    """For a book whose binding or media says it's an e-book or audiobook: None, to leave it out, or with --keep-ebooks
+    its format (other) and edition (the binding as given)."""
+    return {'format': 'other', 'edition': v} if keep else None
+
+
+def left_out(parts):
+    """The 'Left out:' line's words, and what to run again for each, from [(count, words, hint)]."""
+    parts = [p for p in parts if p[0]]
+    return ', and '.join(w for _, w, _ in parts), ' '.join(h for _, _, h in parts if h)
+
+
+EBOOK_HINT = 'To bring in the e-books and audiobooks, run again with --keep-ebooks.'
+
+
+def ebook_count(n):
+    return '1 e-book or audiobook' if n == 1 else f'{n:,} e-books and audiobooks'
+
+
+def from_goodreads(rows, keep, ebooks=False):
+    books, left, dig = [], 0, 0
     for r in rows:
         shelf = cell(r, 'exclusive shelf').lower()
         away = shelf == 'to-read' and not whole(cell(r, 'owned copies'), 0, 9999)  # not in the house
@@ -450,8 +486,15 @@ def from_goodreads(rows, keep):
             left += 1
             if not keep:
                 continue
+        bind, extra = cell(r, 'binding'), {}
+        if not away and DIGITAL.search(bind):  # a Kindle edition or an audiobook: not on a shelf
+            dig += 1
+            extra = digital(bind, ebooks)
+            if extra is None:
+                continue
         books.append({
             'wanted': away,
+            'format': binding(bind), 'added': when(cell(r, 'date added')), **extra,
             'title': series_off(cell(r, 'title')),
             'authors': [cell(r, 'author')] + split_names(cell(r, 'additional authors')),
             'isbn': ', '.join(x for x in (cell(r, 'isbn13'), cell(r, 'isbn')) if x),
@@ -463,7 +506,10 @@ def from_goodreads(rows, keep):
             'notes': lines(cell(r, 'my review'), cell(r, 'private notes')),
         })
     said = f'{left:,} on the to-read shelf with no copy owned' if left else ''
-    return books, {'wished': said if keep else '', 'left': '' if keep else said, 'hint': '' if keep or not left else 'To put them on the wishlist, run again with --keep-unowned.'}
+    out, hint = left_out([(0 if keep else left, said, 'To put them on the wishlist, run again with --keep-unowned.' if not dig or ebooks else
+                           f'To put the {left:,} on the to-read shelf on the wishlist, run again with --keep-unowned.'),
+                          (0 if ebooks else dig, ebook_count(dig) + ' (Kindle Edition, Audible Audio and the like)', EBOOK_HINT)])
+    return books, {'wished': said if keep else '', 'left': out, 'hint': hint}
 
 
 def publisher(v):
@@ -473,8 +519,16 @@ def publisher(v):
     return v.split(' : ')[-1].strip(' .,;')
 
 
-def from_librarything(rows, keep):
-    books, wished, read = [], 0, 0
+def lt_loan(r):
+    """LibraryThing's lending: who has the book and since when, unless it says the book came back. Its column names
+    aren't documented, so a few spellings are tried; a file without them has no loans."""
+    to = cell(r, 'lending patron', 'lent to', 'borrower')
+    back = when(cell(r, 'lending end', 'returned', 'date returned')) or re.search(r'(?i)return|back|avail', cell(r, 'lending status'))
+    return {'to': to, 'since': when(cell(r, 'lending start', 'lent on', 'date lent'))} if to and not back else None
+
+
+def from_librarything(rows, keep, ebooks=False):
+    books, wished, read, dig = [], 0, 0, 0
     for r in rows:
         held = [x.strip() for x in cell(r, 'collections').split(',') if x.strip()]
         low = {x.lower() for x in held}
@@ -486,24 +540,35 @@ def from_librarything(rows, keep):
             # A book only read, not owned (Read but unowned), isn't one to buy, so it stays out either way.
             if not (keep and wish):
                 continue
+        media, extra = cell(r, 'media'), {}
+        if not away and DIGITAL.search(media):  # an e-book or audiobook: not on a shelf
+            dig += 1
+            extra = digital(media, ebooks)
+            if extra is None:
+                continue
+        done = when(cell(r, 'date read', 'date finished', 'date ended', 'finished'))
         books.append({
             'wanted': wish,
+            'format': binding(media), 'added': when(cell(r, 'acquired', 'date acquired', 'entry date', 'date entered', 'date added')),
+            'loan': None if wish else lt_loan(r), **extra,
             'title': cell(r, 'title'),
             'authors': [cell(r, 'author (first, last)') or turned(cell(r, 'primary author', 'author (last, first)'))],
             'isbn': ', '.join(x for x in (cell(r, 'isbn'), cell(r, 'isbns')) if x),
             'publisher': publisher(cell(r, 'publication')), 'year': cell(r, 'date'), 'pages': cell(r, 'page count'),
             'rating': stars(cell(r, 'rating')),
-            'status': 'reading' if 'currently reading' in low else 'read' if when(cell(r, 'date read')) else '',
-            'finished': when(cell(r, 'date read')),
+            'status': 'reading' if 'currently reading' in low else 'read' if done else '',
+            'finished': done,
             'tags': [t for t in (x.strip() for x in cell(r, 'tags').split(',')) if t] + [x for x in held if x.lower() not in LT_SHELVES],
             'notes': lines(cell(r, 'review'), cell(r, 'comment', 'comments'), cell(r, 'private comment', 'private comments')),
         })
+    dig_out = (0 if ebooks else dig, ebook_count(dig) + ' (Ebook, Audiobook and the like)', EBOOK_HINT)
     if not keep:
-        return books, {'wished': '', 'left': f'{wished + read:,} in Wishlist or Read but unowned and not in Your library' if wished + read else '',
-                       'hint': '' if not wished else 'To put them on the wishlist, run again with --keep-unowned.' if not read else
-                       f'To put the {wished:,} in Wishlist on the wishlist, run again with --keep-unowned.'}
-    return books, {'wished': f'{wished:,} in Wishlist and not in Your library' if wished else '', 'hint': '',
-                   'left': f'{read:,} in Read but unowned and not in Your library (read, but neither in the house nor wished for)' if read else ''}
+        out, hint = left_out([(wished + read, f'{wished + read:,} in Wishlist or Read but unowned and not in Your library',
+                               '' if not wished else 'To put them on the wishlist, run again with --keep-unowned.' if not read else
+                               f'To put the {wished:,} in Wishlist on the wishlist, run again with --keep-unowned.'), dig_out])
+        return books, {'wished': '', 'left': out, 'hint': hint}
+    out, hint = left_out([(read, f'{read:,} in Read but unowned and not in Your library (read, but neither in the house nor wished for)', ''), dig_out])
+    return books, {'wished': f'{wished:,} in Wishlist and not in Your library' if wished else '', 'hint': hint, 'left': out}
 
 
 IMPORTS = {  # name, a column only that export has (any one of them), and how to read its rows
@@ -512,15 +577,15 @@ IMPORTS = {  # name, a column only that export has (any one of them), and how to
 }
 
 
-def from_export(path, kind, keep):
+def from_export(path, kind, keep, ebooks=False):
     """A Goodreads or LibraryThing export → the same {name, books} a list of books from photos is, plus what went on
-    the wishlist (wished), what was left out (left) and what --keep-unowned would do with it (hint)."""
+    the wishlist (wished), what was left out (left) and what --keep-unowned or --keep-ebooks would do with it (hint)."""
     name, marks, convert = IMPORTS[kind]
     header, rows = read_table(path)
     if 'title' not in header or not set(marks) & set(header):
         other = next((k for k, (_, m, _) in IMPORTS.items() if k != kind and set(m) & set(header) and 'title' in header), None)
         raise SystemExit(f'error: {path} isn’t a {name.split()[0]} export' + (f'; it looks like a {IMPORTS[other][0].split()[0]} one, so use --import {other}' if other else f' (it has no "Title" and "{marks[0].title()}" columns)'))
-    books, said = convert(rows, keep)
+    books, said = convert(rows, keep, ebooks)
     return {'name': name, 'books': books}, said
 
 
@@ -752,6 +817,7 @@ def main():
     ap.add_argument('--no-link', action='store_true')
     ap.add_argument('--import', dest='kind', choices=sorted(IMPORTS), help='read a Goodreads or LibraryThing export (CSV) instead')
     ap.add_argument('--keep-unowned', action='store_true', help='with --import, put books that aren’t in the house on the wishlist')
+    ap.add_argument('--keep-ebooks', action='store_true', help='with --import, bring in e-books and audiobooks too, which are left out otherwise')
     ap.add_argument('--details', action='store_true', help='make reading details for books already in the library, not a batch of new books')
     a = ap.parse_args()
     if a.details:
@@ -762,7 +828,7 @@ def main():
         return details_main(doc, a)
     said = {}
     if a.kind:
-        doc, said = from_export(a.books, a.kind, a.keep_unowned)
+        doc, said = from_export(a.books, a.kind, a.keep_unowned, a.keep_ebooks)
         if said['left'] and not doc['books']:
             raise SystemExit(f'error: every book was left out: {said["left"]}.' + (' ' + said['hint'] if said['hint'] else ''))
     else:

@@ -1320,21 +1320,27 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const GR = ['Book Id', 'Title', 'Author', 'Author l-f', 'Additional Authors', 'ISBN', 'ISBN13', 'My Rating', 'Average Rating', 'Publisher', 'Binding', 'Number of Pages', 'Year Published',
         'Original Publication Year', 'Date Read', 'Date Added', 'Bookshelves', 'Bookshelves with positions', 'Exclusive Shelf', 'My Review', 'Spoiler', 'Private Notes', 'Read Count', 'Owned Copies'];
       const LT = ['Book Id', 'Title', 'Sort Character', 'Primary Author', 'Primary Author Role', 'Secondary Author', 'Secondary Author Roles', 'Publication', 'Date', 'Review', 'Rating',
-        'Comment', 'Private Comment', 'Summary', 'Media', 'Physical Description', 'Page Count', 'Date Started', 'Date Read', 'Tags', 'Collections', 'ISBN', 'ISBNs'];
+        'Comment', 'Private Comment', 'Summary', 'Media', 'Physical Description', 'Page Count', 'Acquired', 'Date Started', 'Date Read', 'Tags', 'Collections', 'ISBN', 'ISBNs', 'Entry Date',
+        'Lending Patron', 'Lending Status', 'Lending Start', 'Lending End'];
       const row = (cols, o) => cols.map(h => o[h] == null ? '' : String(o[h]));
       const grIn = path.join(tmp, 'goodreads_library_export.csv'), ltIn = path.join(tmp, 'librarything_export.tsv');
       fs.writeFileSync(grIn, '﻿' + table([GR,
         row(GR, { Title: 'The Name of the Wind (The Kingkiller Chronicle, #1)', Author: 'Patrick Rothfuss', ISBN: '="075640407X"', ISBN13: '="9780756404079"', 'My Rating': 5, 'Exclusive Shelf': 'read', 'Date Read': '2023/04/15',
-          Bookshelves: 'fantasy, read', 'My Review': 'Wow.<br/><br/>Kvothe, "the" Arcane.\nSecond line', 'Private Notes': 'Lent to Sam once', 'Owned Copies': 1 }),
-        row(GR, { Title: 'Mort (Discworld, #4; Death, #1)', Author: 'Terry Pratchett', ISBN: '=""', ISBN13: '=""', 'My Rating': 0, 'Exclusive Shelf': 'currently-reading', Bookshelves: 'currently-reading, humor', 'Owned Copies': 0 }),
-        row(GR, { Title: 'Wishful Thinking (Some Series, #2)', Author: 'Ann Wish', ISBN: '=""', ISBN13: '=""', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read', 'Owned Copies': 0 }),
-        row(GR, { Title: 'Bought, Not Read Yet', Author: 'Bo Owner', 'Additional Authors': 'Kurt Vonnegut, Jr., Neil Gaiman', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read, classics', 'Owned Copies': 1 }),
+          Bookshelves: 'fantasy, read', 'My Review': 'Wow.<br/><br/>Kvothe, "the" Arcane.\nSecond line', 'Private Notes': 'Lent to Sam once', 'Owned Copies': 1, Binding: 'Hardcover', 'Date Added': '2019/06/02' }),
+        row(GR, { Title: 'Mort (Discworld, #4; Death, #1)', Author: 'Terry Pratchett', ISBN: '=""', ISBN13: '=""', 'My Rating': 0, 'Exclusive Shelf': 'currently-reading', Bookshelves: 'currently-reading, humor', 'Owned Copies': 0, Binding: 'Mass Market Paperback' }),
+        row(GR, { Title: 'Wishful Thinking (Some Series, #2)', Author: 'Ann Wish', ISBN: '=""', ISBN13: '=""', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read', 'Owned Copies': 0, Binding: 'Kindle Edition' }),
+        row(GR, { Title: 'Bought, Not Read Yet', Author: 'Bo Owner', 'Additional Authors': 'Kurt Vonnegut, Jr., Neil Gaiman', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read, classics', 'Owned Copies': 1, Binding: 'Unknown Binding' }),
+        row(GR, { Title: 'A Screen Read', Author: 'Ed Reader', 'Exclusive Shelf': 'read', Binding: 'Kindle Edition', 'Date Added': '2020-01-05' }),
+        row(GR, { Title: 'Heard on a Train', Author: 'Al Listener', 'Exclusive Shelf': 'read', Binding: 'Audible Audio' }),
         ['99', 'A Short Row'],
       ], ','));
       fs.writeFileSync(ltIn, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(table([LT,
         row(LT, { Title: 'The Hobbit', 'Primary Author': 'Tolkien, J. R. R.', Publication: 'Houghton Mifflin (2002), Paperback, 366 pages', Date: '1937', Rating: '4.5', Comment: 'Read aloud<br>twice', 'Date Read': '2024-12-01',
-          Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300' }),
-        row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading' }),
+          Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300', Media: 'Paperback', Acquired: '2015-03-01', 'Entry Date': '2018-07-07',
+          'Lending Patron': 'Sam', 'Lending Status': 'On loan', 'Lending Start': '2026-08-01' }),
+        row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading', Media: 'Hardcover', 'Entry Date': '2016-01-02',
+          'Lending Patron': 'Jo', 'Lending Start': '2025-12-01', 'Lending End': '2026-02-01' }),
+        row(LT, { Title: 'On My Tablet', 'Primary Author': 'Pixel, Ada', Collections: 'Your library', Media: 'Ebook' }),
         row(LT, { Title: 'Le Petit Prince', 'Primary Author': 'Saint-Exupéry, Antoine de', Collections: 'Wishlist' }),
         row(LT, { Title: 'Walden', 'Primary Author': 'Thoreau, Henry David', Collections: 'Read but unowned', 'Date Read': '2021-05-05' }),
       ], '\t'), 'utf16le')]));
@@ -1347,25 +1353,41 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const grOut = await imported(grIn, 'goodreads');
       const byTitle = Object.fromEntries(grOut.batch.books.map(b => [b.title, b]));
       eq(grOut.batch.books.map(b => b.title), ['The Name of the Wind', 'Mort', 'Bought, Not Read Yet', 'A Short Row'], 'a Goodreads import leaves out the to-read shelf with no copy owned, and takes the series off titles');
-      eq(byTitle['The Name of the Wind'], { title: 'The Name of the Wind', authors: ['Patrick Rothfuss'], isbn: '9780756404079', status: 'read', rating: 5, finished: '2023-04-15', tags: ['fantasy'],
-        notes: 'Wow.\n\nKvothe, "the" Arcane.\nSecond line\n\nLent to Sam once' }, 'its <br/> become line breaks, the review and private notes both kept, the read shelf is a status, not a tag, and its Date Read is the day it was finished');
+      eq(byTitle['The Name of the Wind'], { title: 'The Name of the Wind', authors: ['Patrick Rothfuss'], isbn: '9780756404079', format: 'hardcover', status: 'read', rating: 5, finished: '2023-04-15', tags: ['fantasy'],
+        notes: 'Wow.\n\nKvothe, "the" Arcane.\nSecond line\n\nLent to Sam once', added: '2019-06-02' }, 'its <br/> become line breaks, the review and private notes both kept, the read shelf is a status, not a tag, its Date Read is the day it was finished, its Binding its format and its Date Added the day it was added');
+      eq([byTitle.Mort.format, byTitle['Bought, Not Read Yet'].format, byTitle['Bought, Not Read Yet'].added], ['mass-market', undefined, undefined], 'a Goodreads binding Shelfmark doesn\'t know ("Unknown Binding") is no format, and no Date Added is no day');
+      check(!/warning: .*format/.test(grOut.said), 'and says nothing of it');
       eq([byTitle.Mort.status, byTitle.Mort.tags, byTitle.Mort.isbn, byTitle.Mort.check], ['reading', ['humor'], undefined, undefined], 'currently-reading is a status, and empty ="" cells are no ISBN');
       eq([byTitle['Bought, Not Read Yet'].status, byTitle['Bought, Not Read Yet'].tags, byTitle['Bought, Not Read Yet'].authors], [undefined, ['classics'], ['Bo Owner', 'Kurt Vonnegut, Jr.', 'Neil Gaiman']],
         'a to-read book with a copy owned comes in unread, its additional authors whole');
-      check(/Left out: 1 on the to-read shelf with no copy owned\. To put them on the wishlist, run again with --keep-unowned\./.test(grOut.said), 'the script says how many it left out, and how to add them');
+      check(/Left out: 1 on the to-read shelf with no copy owned, and 2 e-books and audiobooks \(Kindle Edition, Audible Audio and the like\)\. To put the 1 on the to-read shelf on the wishlist, run again with --keep-unowned\. To bring in the e-books and audiobooks, run again with --keep-ebooks\./.test(grOut.said),
+        'the script says how many it left out, the to-read shelf and the e-books and audiobooks, and how to add them: ' + grOut.said);
       const grAll = await imported(grIn, 'goodreads', '--keep-unowned');
-      eq([grAll.batch.books.length, grAll.batch.books[2].title, grAll.batch.books.map(b => !!b.wanted), /Left out/.test(grAll.said), /On the wishlist: 1 on the to-read shelf/.test(grAll.said)],
-        [5, 'Wishful Thinking', [false, false, true, false, false], false, true], 'with --keep-unowned they come in on the wishlist, and only they do');
+      eq([grAll.batch.books.length, grAll.batch.books[2].title, grAll.batch.books.map(b => !!b.wanted), /Left out: .*to-read/.test(grAll.said), /On the wishlist: 1 on the to-read shelf/.test(grAll.said)],
+        [5, 'Wishful Thinking', [false, false, true, false, false], false, true], 'with --keep-unowned they come in on the wishlist, and only they do (a Kindle book wanted is wanted)');
+      check(/Left out: 2 e-books and audiobooks \(Kindle Edition, Audible Audio and the like\)\. To bring in the e-books and audiobooks, run again with --keep-ebooks\.$/m.test(grAll.said), 'and the e-books and audiobooks are still left out: ' + grAll.said);
+      const grDig = await imported(grIn, 'goodreads', '--keep-ebooks');
+      eq(grDig.batch.books.filter(b => b.format === 'other').map(b => [b.title, b.edition, b.added]), [['A Screen Read', 'Kindle Edition', '2020-01-05'], ['Heard on a Train', 'Audible Audio', undefined]], 'with --keep-ebooks they come in, the binding as their edition');
+      check(/Left out: 1 on the to-read shelf with no copy owned\. To put them on the wishlist, run again with --keep-unowned\./.test(grDig.said), 'and only the to-read shelf is left out: ' + grDig.said);
       const ltOut = await imported(ltIn, 'librarything');
       eq(ltOut.batch.books, [
-        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, status: 'read', rating: 5, finished: '2024-12-01', tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice' },
-        { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', status: 'reading' },
-      ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist, keeps its own collections out of tags, and a Date Read makes a book read on that day');
-      check(/Left out: 2 in Wishlist or Read but unowned and not in Your library\. To put the 1 in Wishlist on the wishlist, run again with --keep-unowned\./.test(ltOut.said), 'and says what it left out, and what --keep-unowned would do: ' + ltOut.said);
+        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, format: 'paperback', status: 'read', rating: 5, finished: '2024-12-01', loan: { to: 'Sam', since: '2026-08-01' },
+          tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice', added: '2015-03-01' },
+        { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', format: 'hardcover', status: 'reading', added: '2016-01-02' },
+      ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist and e-books, keeps its own collections out of tags, a Date Read makes a book read on that day, Media is the format, Acquired (or else Entry Date) the day it was added, and a Lending Patron a loan unless it has come back');
+      check(/Left out: 2 in Wishlist or Read but unowned and not in Your library, and 1 e-book or audiobook \(Ebook, Audiobook and the like\)\. To put the 1 in Wishlist on the wishlist, run again with --keep-unowned\. To bring in the e-books and audiobooks, run again with --keep-ebooks\./.test(ltOut.said), 'and says what it left out, and what --keep-unowned and --keep-ebooks would do: ' + ltOut.said);
+      eq((await imported(ltIn, 'librarything', '--keep-ebooks')).batch.books.filter(b => b.format === 'other').map(b => [b.title, b.edition]), [['On My Tablet', 'Ebook']], 'with --keep-ebooks a LibraryThing e-book comes in');
+      // LibraryThing doesn't document its column names, so others it may use are read too.
+      const ltAlt = path.join(tmp, 'librarything_other.csv'), ALT = ['Title', 'Primary Author', 'Media', 'Date Finished', 'Date Acquired', 'Lent To', 'Lent On', 'Lending Status', 'Collections'];
+      fs.writeFileSync(ltAlt, table([ALT, row(ALT, { Title: 'Alias Book', 'Primary Author': 'Lane, Kim', Media: 'Book > Paper Book > Paperback', 'Date Finished': '2022-02-02', 'Date Acquired': '2020-01-01', 'Lent To': 'Kim', 'Lent On': '2026-07-07', Collections: 'Your library' }),
+        row(ALT, { Title: 'Back Again', 'Primary Author': 'Lee, Ann', Media: 'Paper Book', 'Lent To': 'Lee', 'Lending Status': 'Returned', Collections: 'Your library' })], ','));
+      eq((await imported(ltAlt, 'librarything')).batch.books, [
+        { title: 'Alias Book', authors: ['Kim Lane'], format: 'paperback', status: 'read', finished: '2022-02-02', loan: { to: 'Kim', since: '2026-07-07' }, added: '2020-01-01' },
+        { title: 'Back Again', authors: ['Ann Lee'] }], 'and other names for its columns: Date Finished, Date Acquired, Lent To and Lent On, a lending status that says it came back, and Media as a path');
       // A book read but never owned (Read but unowned) isn't one to buy: it stays out of the wishlist too.
       const ltAll = await imported(ltIn, 'librarything', '--keep-unowned');
       eq(ltAll.batch.books.map(b => [b.title, !!b.wanted]), [['The Hobbit', false], ['Slaughterhouse-Five', false], ['Le Petit Prince', true]], 'and with --keep-unowned, its Wishlist is the wishlist, and Read but unowned stays out');
-      check(/On the wishlist: 1 in Wishlist and not in Your library\./.test(ltAll.said) && /Left out: 1 in Read but unowned/.test(ltAll.said) && !/run again/.test(ltAll.said), 'and it says which went where: ' + ltAll.said);
+      check(/On the wishlist: 1 in Wishlist and not in Your library\./.test(ltAll.said) && /Left out: 1 in Read but unowned/.test(ltAll.said) && !/--keep-unowned/.test(ltAll.said), 'and it says which went where: ' + ltAll.said);
       // The point of it all: imported books are found as books already on the shelves.
       const shelves = S.dupIndex(S.cleanDoc({ books: [{ id: 'w', t: 1, title: 'The Name of the Wind', authors: ['Patrick Rothfuss'] }, { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] }] }));
       eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');
