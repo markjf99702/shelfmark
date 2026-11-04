@@ -1819,6 +1819,14 @@ step('the count opens Your library, and each of its lines shows those books in t
     await page.click('#bkx2');
     assert.equal(await page.locator('#chips .chip[data-facet]').count(), 0);
     assert.equal((await titles(page)).length, 5);
+    // Books added from Claude with a line's filter on are shown: the filter goes, as the chips and menus do.
+    await open_(); await pick('Fiction');
+    await wait(450);
+    await page.goto(linkTo({ name: 'Hall table', room: 'Hall', books: [{ title: 'Walden', authors: ['Henry David Thoreau'] }] }));
+    await page.waitForSelector('#rv-add');
+    await page.click('#rv-add');
+    assert.equal(await page.locator('#chips .chip[data-facet]').count(), 0, 'the summary\'s filter is still on after adding books');
+    assert.equal((await titles(page))[0], 'Walden', 'the book just added isn\'t in the list');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

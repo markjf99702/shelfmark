@@ -2760,7 +2760,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!n && !w && !m) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); added = true; closeSheet();
-      if (n || w) { UI.q = ''; UI.status = n ? '' : 'wanted'; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; }
+      if (n || w) { UI.q = ''; UI.status = n ? '' : 'wanted'; UI.room = ''; UI.tag = ''; UI.facet = ''; $('q').value = ''; UI.sort = 'added'; }
       render();
       if (n || w) window.scrollTo(0, 0);
       // Undo takes them all back out (and puts books back on the wishlist, and the books moved back where they were), and
