@@ -700,6 +700,36 @@ step('a redraw keeps the keyboard where it was: on a chip pressed, and on a book
   } finally { await ctx.close(); }
 });
 
+step('on a phone Import says Import beside the sync button\'s dot, and nothing scrolls sideways in any sync state', async () => {
+  // off: sync not turned on; ok: synced (a dot); tap: Google's hour is up (Sync); offline; err: Sync failed.
+  const STATES = { off: null, ok: {}, tap: { token: '', exp: 0 }, offline: {}, err: {} };
+  for (const width of [390, 360, 320]) {
+    const g = fakeGoogle(), ctx = await context({ ...PHONE, viewport: { width, height: 740 } });
+    let mode = 'ok';
+    await g.install(ctx);
+    await ctx.route('https://www.googleapis.com/**', r => mode === 'offline' ? r.abort('internetdisconnected')
+      : mode === 'err' && r.request().method() !== 'OPTIONS' ? r.fulfill({ status: 500, headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"error":{"message":"Backend Error"}}' }) : r.fallback());
+    try {
+      const page = await open(ctx);
+      await seed(page, [PIRANESI, MIDDLEMARCH]);
+      for (const [state, drive] of Object.entries(STATES)) {
+        mode = state;
+        await page.evaluate(d => { if (d) localStorage.setItem('shelfmark.drive', JSON.stringify({ on: true, token: 'tok-mark', exp: Date.now() + 3e6, ...d })); else localStorage.removeItem('shelfmark.drive'); }, drive);
+        await page.reload();
+        if (drive) await until(() => page.evaluate(s => document.getElementById('syncBtn').dataset.s === s, state), 'the sync button to show ' + state, 10000);
+        const word = await page.locator('#importBtn .t').isVisible();
+        assert.equal(word, state === 'off' || width >= 360 && state === 'ok', 'Import\'s word at ' + width + ' with sync ' + state);
+        // The brand and the buttons stay in the bar, none over another, and nothing scrolls sideways.
+        const boxes = await page.$$eval('.top-in > :not([hidden])', els => els.filter(e => getComputedStyle(e).position !== 'fixed').map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
+        for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i][0] >= boxes[i - 1][1], 'the top bar\'s buttons overlap at ' + width + ' with sync ' + state + ': ' + JSON.stringify(boxes));
+        assert.ok(boxes[boxes.length - 1][1] <= width, 'the top bar runs off the screen at ' + width + ' with sync ' + state);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page scrolls sideways at ' + width + ' with sync ' + state);
+      }
+      assert.deepEqual(page.problems.filter(p => !/500|Failed to load resource/.test(p)), []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {

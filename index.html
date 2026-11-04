@@ -388,7 +388,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .selects select{flex:1 1 0;min-width:0;max-width:none;padding-left:8px;padding-right:25px}
   #sortSel{flex:none}
 }
+/* On a phone the top bar's buttons are icons, but Import keeps its word whenever the sync button shows only its dot
+   (sync off, or Synced) and there's room: its arrow alone looks like Download, and it's the way to Claude's links and files. */
+@media (min-width:360px) and (max-width:720px){body:not(.syncword) #importBtn .t{display:inline}}
+@media (max-width:359px){.top-in:has(#syncBtn[hidden]) #importBtn .t{display:inline}} /* narrower, only with sync off */
 @media (max-width:359px){
+  /* "Sync failed" doesn't fit beside the name: the logo stands for it until syncing works again */
+  .top-in:has(.sync[data-s="err"]:not([hidden])) .brand b{display:none}
   /* narrower still, the sort menu goes on a row of its own */
   .selects{flex-wrap:wrap}
   #sortSel{flex:1 1 100%}
@@ -2269,11 +2275,12 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
   }
   function syncSoon() { if (!D.on || !hasToken()) { renderSync(); return; } clearTimeout(syncT); syncT = setTimeout(sync, 2500); }
-  function setSync(s) { syncState = s; var b = $('syncBtn'); b.dataset.s = s; }
+  // syncword: the sync button shows a word (Sync, Offline, Sync failed), so on a phone Import shows only its icon.
+  function setSync(s) { syncState = s; var b = $('syncBtn'); b.dataset.s = s; document.body.classList.toggle('syncword', !b.hidden && /^(tap|offline|err)$/.test(s)); }
   function renderSync() {
     if (sheetRefresh) sheetRefresh(false);
     var b = $('syncBtn'); b.hidden = !D.on || !clientId();
-    if (b.hidden) return;
+    if (b.hidden) { document.body.classList.remove('syncword'); return; }
     if (syncing) { setSync('busy'); $('syncTx').textContent = 'Syncing'; b.title = 'Syncing with Google Drive'; return; }
     if (!hasToken()) { setSync('tap'); $('syncTx').textContent = 'Sync'; b.title = 'Google needs you to sign in again to sync'; return; }
     if (offline) { setSync('offline'); $('syncTx').textContent = 'Offline'; b.title = 'Offline: your changes are kept here and go to Drive when you’re back'; return; }
