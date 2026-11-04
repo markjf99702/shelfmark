@@ -697,6 +697,37 @@ step('a book to check says To check, and the To check view says what to check', 
   }
 });
 
+step('settling the last book to check, or the last loan, says so, and the chip chosen instead is in view', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, check: 'glare on the spine' }, { ...MIDDLEMARCH, check: 'two volumes?' }, CRADLE,
+      { id: 'b06', t: 1000, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], status: 'reading' },
+      { id: 'b07', t: 1000, title: 'Emma', authors: ['Jane Austen'], status: 'read' },
+      { id: 'b08', t: 1000, title: 'Dracula', authors: ['Bram Stoker'], loan: { to: 'Sam', since: '2026-10-02' } }]);
+    const inView = sel => page.evaluate(q => { const c = document.getElementById('chips').getBoundingClientRect(), r = document.querySelector(q).getBoundingClientRect(); return r.left >= c.left - 0.5 && r.right <= c.right + 0.5; }, sel);
+    const settle = async (id, ok) => { await page.click(`#list .bk[data-id="${id}"]`); await page.click(ok); await page.click('#bkx2'); };
+    await page.click('#chips .chip[data-s="check"]');
+    assert.ok(await page.$eval('#chips', e => e.scrollLeft > 0), 'the chip row doesn\'t scroll here, so this checks nothing');
+    await settle('b03', '#f-ok');
+    assert.equal(await page.textContent('#toastTx'), 'Checked “Piranesi”. 1 left to check.');
+    await wait(450);
+    await settle('b04', '#f-ok');
+    assert.equal(await page.textContent('#toastTx'), 'Checked “Middlemarch”. That was the last one to check.');
+    assert.equal(await page.getAttribute('#chips .chip[data-s=""]', 'aria-pressed'), 'true');
+    assert.equal(await inView('#chips .chip[data-s=""]'), true, 'All is chosen, but scrolled out of sight');
+    // The last loan, given back with It's back: its toast says so too, and keeps its Undo.
+    await wait(450);
+    await page.click('#chips .chip[data-s="lent"]');
+    await settle('b08', '#f-back');
+    assert.equal(await page.textContent('#toastTx'), 'Back from Sam. That was the last book out.');
+    assert.equal(await inView('#chips .chip[data-s=""]'), true);
+    await page.click('#toastBtn');
+    assert.deepEqual((await storedBook(page, 'b08')).loan, { to: 'Sam', since: '2026-10-02' });
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a toast\'s Undo goes with the toast, and from the keyboard Undo takes the keyboard while it shows', async () => {
   const ctx = await context(DESK);
   try {

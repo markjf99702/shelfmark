@@ -1444,7 +1444,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // screen are laid out. When the same view is drawn again (a card saved, another tab, a sync), each row starts at the
   // height it had, and the first of the books on screen that's still there is put back where it was. A new search,
   // filter or sort is a new list, and stays where it's scrolled, as it always has.
-  var drawnView = null;
+  var drawnView = null, chipDrawn = '';
   function viewKey() { return [UI.q, UI.status, UI.room, UI.tag, UI.sort || PREF.sort].join('\u0001'); }
   function spot() {
     var bar = document.querySelector('.top').getBoundingClientRect().bottom, rows = document.querySelectorAll('#list .bk'), seen = [], tall = Object.create(null), edge = 0;
@@ -1500,7 +1500,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var sort = UI.sort || PREF.sort;
     $('sortSel').value = sort;
     $('tools').hidden = !all.length;
-    fades($('chips'));
+    // A chip newly chosen is brought into view where the row scrolls sideways (on a touch screen): when To check or Lent
+    // out empties, All is chosen instead, at the row's other end. A row swiped along and left is left where it is.
+    var chips = $('chips'), on = chips.querySelector('[aria-pressed="true"]');
+    if (on && !$('tools').hidden && UI.status !== chipDrawn) {
+      var x = on.offsetLeft - chips.offsetLeft;
+      if (x < chips.scrollLeft || x + on.offsetWidth > chips.scrollLeft + chips.clientWidth) chips.scrollLeft = Math.max(0, x - 16);
+    }
+    chipDrawn = UI.status;
+    fades(chips);
     $('nextBtn').hidden = !onHand(all, true, true).length;
 
     var L = $('list');
@@ -1689,6 +1697,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // Tags used on other books, to add with a tap; those this book has already aren't offered.
     var own = (b.tags || []).map(fold), tagList = distinct(function (x) { return x.tags; }).filter(function (t) { return own.indexOf(fold(t)) < 0; });
+    // What the list showed, and what the book had, as the card opened (see settled()); backTold is It's back's toast.
+    var view = UI.status, had = { check: !!b.check, loan: b.loan ? b.loan.to : '' }, backTold = null;
     var panel = openSheet(
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
       '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
@@ -1728,7 +1738,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="ft">' + (isNew ? storeFlag() + '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
         : '<button class="btn danger" type="button" id="f-del">Remove from library</button><span class="grow"></span><button class="btn primary" type="button" id="bkx2">Done</button>') + '</div>' +
       datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
-      function () { if (!isNew) flush(); });
+      function () { if (!isNew) { flush(); settled(); } });
 
     function v(id) { return $(id).value; }
     function read() {
@@ -1845,13 +1855,24 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var was = { to: v('f-lent').trim(), since: v('f-since') };
       $('f-lent').value = ''; $('f-since').value = ''; drawState(); later();
       if (isNew || !was.to) return;
-      toast('Back from ' + was.to, 'Undo', function () {
+      backTold = { m: 'Back from ' + was.to, fn: function () {
         if (panel.isConnected) { $('f-lent').value = was.to; $('f-since').value = was.since; drawState(); later(); return $('f-lent'); }
         var cur = DOC.books[b.id];
         if (cur && !cur.del && !cur.loan) putBook(Object.assign({}, cur, { loan: was }));
         return rowOf(b.id);
-      });
+      } };
+      toast(backTold.m, 'Undo', backTold.fn);
     });
+    // Closing the card on a book whose check was settled says so, and how many are left: the book leaves the To check
+    // view, and after the last one the list goes back to All. So does giving back the last book out from the Lent out
+    // view. One toast at a time: It's back's, with its Undo, comes first, and says it was the last.
+    function settled() {
+      var cur = DOC.books[b.id]; if (!cur || cur.del) return;
+      var back = backTold && $('toast').classList.contains('show') && $('toastTx').textContent === backTold.m ? backTold : null;
+      var out = live(DOC).filter(function (x) { return x.loan; }).length, checks = live(DOC).filter(function (x) { return x.check; }).length;
+      if (had.loan && !cur.loan && view === 'lent' && !out) toast('Back from ' + had.loan + '. That was the last book out.', back && 'Undo', back && back.fn);
+      else if (had.check && !cur.check && !back) toast('Checked “' + short(cur.title) + '”. ' + (checks ? checks + ' left to check.' : 'That was the last one to check.'));
+    }
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
       var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
