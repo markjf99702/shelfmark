@@ -846,11 +846,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // A title short enough to quote in a toast on a phone: the part before a colon (when that's three letters or more),
   // cut at a word near 40 characters.
   function short(t) {
-    t = str(t, 300); var i = t.indexOf(':'), w;
+    t = str(t, 300); var i = t.indexOf(':');
     if (i >= 3) t = t.slice(0, i).trim();
+    return clip(t);
+  }
+  // Text cut at a word near 40 characters, for a toast: a title, or a place ("Living room › Right bookcase, top…").
+  function clip(t) {
+    var w;
     if (t.length <= 40) return t;
     w = t.lastIndexOf(' ', 40);
-    return (w >= 20 ? t.slice(0, w) : cut(t, 40)).replace(/[\s,;:.\u2013\u2014-]+$/, '') + '…';
+    return (w >= 20 ? t.slice(0, w) : cut(t, 40)).replace(/[\s,;:.›\u2013\u2014-]+$/, '') + '…';
   }
 
   // ---------- spreadsheet export ----------
@@ -2301,7 +2306,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       // From the keyboard, Undo takes the keyboard; then it goes back to where the sheet was opened from (or, with
       // nothing left unread, to the book).
       var from = document.activeElement, back = function () { return from !== document.body && isShown(from) ? from : rowOf(b.id); };
-      toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return back(); }, !e.detail, back);
+      // It says where the book is, as the person goes to fetch it.
+      var at = clip(where(b));
+      toast('Marked “' + short(b.title) + '” as reading' + (at ? '. It’s on ' + at + (/…$/.test(at) ? '' : '.') : ''), 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return back(); }, !e.detail, back);
     });
     both();
     // A live region is read out only when it changes once it's on the page, so the first line is said again a moment on.

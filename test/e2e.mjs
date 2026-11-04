@@ -1593,6 +1593,24 @@ step('a toast from the last thing done doesn\'t cover the next sheet: Start read
   } finally { await ctx.close(); }
 });
 
+step('Start reading says where the book is, its place cut short on a small phone', async () => {
+  const ctx = await context({ ...PHONE, viewport: { width: 320, height: 640 } });
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...MIDDLEMARCH, room: 'Living room', shelf: 'Right bookcase, cow figurine shelf' }]);
+    await page.click('#nextBtn');
+    await page.click('#nxGo');
+    assert.equal(await page.textContent('#toastTx'), 'Marked \u201cMiddlemarch\u201d as reading. It\u2019s on Living room \u203a Right bookcase, cow\u2026');
+    assert.ok((await page.locator('#toast').boundingBox()).height < 90, 'the toast runs to four lines or more');
+    await page.click('#toastBtn');
+    await seed(page, [{ ...MIDDLEMARCH, room: '' }]);
+    await page.click('#nextBtn');
+    await page.click('#nxGo');
+    assert.equal(await page.textContent('#toastTx'), 'Marked \u201cMiddlemarch\u201d as reading', 'a book with no place says only that');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a toast quoting a long title stays two lines on a small phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 320, height: 640 } });
   try {

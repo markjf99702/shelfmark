@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -248,6 +248,8 @@ eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life o
   ['Middlemarch', 'Piranesi', 'The Interesting Narrative of the Life of…', 'Dr. No', 'A: Life', 'Ab: the rest', 'Supercalifragilisticexpialidocious-Antid…', 'Gilead'],
   'a toast quotes a title up to its colon, cut at a word near 40 characters');
 eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
+eq(['Den › Tall bookcase', 'Living room › Right bookcase, cow figurine shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
+  ['Den › Tall bookcase', 'Living room › Right bookcase, cow…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
 
 // ---------- what to read next ----------
 {
