@@ -1436,7 +1436,7 @@ step('Download a spreadsheet gives a .csv with a byte-order mark and a header ro
   const ctx = await context(DESK);
   try {
     const page = await open(ctx);
-    await seed(page, [PIRANESI, { ...MIDDLEMARCH, status: 'read', rating: 5, loan: { to: 'Sam', since: '2026-10-02' } }, { id: 'gone', t: 1000, del: 1 }]);
+    await seed(page, [PIRANESI, { ...MIDDLEMARCH, status: 'read', rating: 5, finished: '2026-09-30', loan: { to: 'Sam', since: '2026-10-02' } }, { id: 'gone', t: 1000, del: 1 }]);
     await page.click('#setBtn');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#stCsv')]);
     assert.match(dl.suggestedFilename(), /^shelfmark-\d{4}-\d\d-\d\d\.csv$/);
@@ -1444,7 +1444,7 @@ step('Download a spreadsheet gives a .csv with a byte-order mark and a header ro
     assert.equal(csv.charCodeAt(0), 0xFEFF, 'the spreadsheet doesn\'t start with a byte-order mark');
     assert.ok(lines[0].startsWith('\uFEFFtitle,subtitle,authors,'), 'the header row: ' + lines[0].slice(0, 40));
     assert.deepEqual(lines.slice(1).filter(Boolean).map(l => l.split(',')[0]), ['Piranesi', 'Middlemarch'], 'a row for each book, by author (Clarke, Eliot)');
-    assert.match(lines[2], /,Read,5,Sam,2026-10-02,/);
+    assert.match(lines[2], /,Read,5,2026-09-30,Sam,2026-10-02,/, 'the status, stars, the day it was finished and the loan');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
@@ -2402,6 +2402,43 @@ step('stars given to an unread book mark it Read, in a card and in Add a book, a
     await page.click('#f-rating button[data-v="3"]');
     await page.click('#f-add');
     assert.equal(Object.values((await stored(page)).library.books).find(b => b.title === 'Ivanhoe').status, 'read');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+const todayIn = page => page.evaluate(() => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); });
+step('Read on a card fills in today as the day it was finished, to change or empty, and another status drops it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [MIDDLEMARCH, PIRANESI]);
+    const today = await todayIn(page);
+    await page.click('#list .bk[data-id="b04"]');
+    assert.equal(await page.isVisible('#f-finished'), false, 'an unread book shows a Finished day');
+    await page.click('#f-status button[data-v="read"]');
+    assert.equal(await page.inputValue('#f-finished'), today, 'Read didn\'t fill in today');
+    await page.fill('#f-finished', '2025-01-05');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b04')).status, (await storedBook(page, 'b04')).finished], ['read', '2025-01-05']);
+    assert.match(await page.textContent('#list .bk[data-id="b04"] .bdg.read'), /^Read · Jan 5, 2025$/, 'the Read badge doesn\'t say when');
+    // Unread drops the day; Read again starts from today. Emptied, a book is read with no day.
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-status button[data-v="unread"]');
+    assert.equal(await page.isVisible('#f-finished'), false);
+    await page.click('#bkx');
+    assert.equal((await storedBook(page, 'b04')).finished, undefined, 'Unread kept the finished day');
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-status button[data-v="read"]');
+    assert.equal(await page.inputValue('#f-finished'), today);
+    await page.fill('#f-finished', '');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b04')).status, (await storedBook(page, 'b04')).finished], ['read', undefined]);
+    // Stars mark an unread book Read without a day: it may have been read years ago.
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-rating button[data-v="4"]');
+    assert.equal(await page.inputValue('#f-finished'), '', 'stars filled in a finished day');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b03')).status, (await storedBook(page, 'b03')).finished], ['read', undefined]);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

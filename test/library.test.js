@@ -113,6 +113,10 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     ['Martin Luther King, Jr.', 'Coretta Scott King', 'Ann Lee, PhD', 'Bo Chen, III'], 'and so do Sr., II, III, IV, PhD and MD, among several authors');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ['Kurt Vonnegut', 'Jr.'] }).authors, ['Kurt Vonnegut, Jr.'], 'a name split from its "Jr." before is put back together');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ', Jr., Sammy Davis Jr.' }).authors, ['Jr.', 'Sammy Davis Jr.'], 'a "Jr." with no name before it is left alone');
+  // The day a book was finished is kept while it's read, and only as a day.
+  eq(['read', 'reading', '', 'unread'].map(status => S.cleanBook({ id: 'a', title: 'T', status, finished: '2026-03-14' }).finished), ['2026-03-14', undefined, undefined, undefined],
+    'a finished day is kept for a book that’s read, and dropped for one being read again or unread');
+  eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: 'last March' }).finished, undefined, 'and a finished day that isn’t a day is dropped');
 }
 
 // ---------- searching ----------
@@ -179,6 +183,26 @@ function randomDoc(r, n) {
   eq(S.mergeDocs(S.cleanDoc({ seen: { c1: 50 } }), S.cleanDoc({ seen: { c1: 20, c2: 5 } })).seen, { c1: 20, c2: 5 }, 'batches seen: keep the first time each was added');
   const wrapped = S.cleanDoc(JSON.parse(S.canon(c)));
   eq(S.canon(wrapped), S.canon(c), 'a library survives a round trip through its file format');
+}
+
+// ---------- older copies of the page ----------
+// A Shelfmark left open in an old tab, or not yet updated on another device, reads the same library: as it was when
+// reading details came (aeff017) and before (149f288). It drops the fields it doesn't know without changing a book's
+// time, so there the book shows as it did before; synced back, the copy with the fields wins (newer()'s field count at
+// the same time) and they come back whole. This needs the repository's history; without it, it says so.
+const NEWER = [{ id: 'f', t: 5, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5, finished: '2026-03-14' }];
+for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'when reading details came']]) {
+  let old = '';
+  try { old = execFileSync('git', ['show', rev + ':index.html'], { cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1e8 }); } catch (e) { }
+  if (!old) { console.log('  (git has no ' + rev + ' here; skipped the check against Shelfmark as it was ' + when + ')'); continue; }
+  const O = new Function('window', old.slice(old.indexOf("'use strict';"), old.indexOf('// ---------- state ----------')) + '\nreturn { cleanDoc, mergeDocs, canon, live };')(globalThis);
+  const lib = S.cleanDoc({ books: NEWER });
+  const there = O.cleanDoc(JSON.parse(S.canon(lib)));
+  eq(O.live(there).map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]), NEWER.map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]),
+    'Shelfmark as it was ' + when + ' opens a library with finished days, each book as it was, at the same time');
+  // It writes its copy back to Drive, with what it knows; here the two are merged, either way round.
+  const back = S.cleanDoc(JSON.parse(O.canon(O.mergeDocs(there, O.cleanDoc(JSON.parse(S.canon(lib)))))));
+  eq([S.mergeDocs(lib, back), S.mergeDocs(back, lib)], [lib, lib], 'and its copy, synced back, leaves them whole');
 }
 
 // ---------- duplicates ----------
@@ -1020,6 +1044,12 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
       eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
+      // A finished day: kept for a book that's read, a day with no status says it was read, and a book being read again drops it.
+      const finIn = path.join(tmp, 'fin.json'), finDir = fs.mkdtempSync(path.join(tmp, 'fin-'));
+      fs.writeFileSync(finIn, JSON.stringify({ books: [{ title: 'Emma', status: 'read', finished: '2026-03-14' }, { title: 'Persuasion', finished: '2026-04-01' }, { title: 'Sanditon', status: 'reading', finished: '2025-01-01' }] }));
+      execFileSync('python3', [py, finIn, '--out', finDir, '--no-link'], { encoding: 'utf8' });
+      const fins = (await S.parseIncoming(fs.readFileSync(path.join(finDir, fs.readdirSync(finDir)[0]), 'utf8'))).batch.books.map(b => [b.status, b.finished]);
+      eq(fins, [['read', '2026-03-14'], ['read', '2026-04-01'], ['reading', undefined]], 'the script keeps the day a book was finished, as Shelfmark does');
       // Text longer than Shelfmark keeps, and authors or tags past its limits, are cut or dropped with a warning, so the
       // end of a long review isn't lost unseen.
       const longIn = path.join(tmp, 'long.json'), longDir = fs.mkdtempSync(path.join(tmp, 'long-'));
@@ -1232,7 +1262,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   // ---------- spreadsheet ----------
   const csv = S.toCsv(S.cleanDoc({ books: [
     { id: 'a', t: 1, title: 'Zed, "the" book', authors: ['Amy Zane'], tags: ['x', 'y'], notes: 'line one\nline two', loan: { to: 'Sam', since: '2026-02-03' } },
-    { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true },
+    { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true, finished: '2026-03-14' },
     { id: 'c', t: 1, del: 1 }
   ] }));
   const lines = csv.replace(/^﻿/, '').split('\r\n');
@@ -1240,6 +1270,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   check(lines[1].startsWith('"\'=HYPERLINK(""x"")"'), 'cells that would run as formulas are defused, and books sort by author');
   check(csv.includes('"Zed, ""the"" book"') && csv.includes('"line one\nline two"'), 'commas, quotes and line breaks are quoted');
   check(!csv.includes(',c,'), 'removed books are left out');
+  { const head = lines[0].split(','), cells = lines[1].split(','); eq([cells[head.indexOf('status')], cells[head.indexOf('finished')]], ['Read', '2026-03-14'], 'a read book’s finished day has a column of its own'); }
   eq(S.csvCell('-5'), '-5', 'plain negative numbers are left alone');
   // OWASP's CSV Injection page (community.owasp.org/attacks/CSV_Injection) lists = + - @, tab, carriage return and line
   // feed, and their full-width forms, as the starts of a cell to defuse.

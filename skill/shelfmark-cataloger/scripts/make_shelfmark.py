@@ -14,7 +14,7 @@ on commas and semicolons, and authors on " & " too, as Shelfmark splits them):
   "books": [
     {"title": "Middlemarch", "authors": ["George Eliot"], "isbn": "978-0-14-143954-9",
      "publisher": "Penguin Classics", "year": 2003, "format": "paperback",
-     "shelf": "Tall bookcase, top", "status": "read", "rating": 4, "tags": ["classics"],
+     "shelf": "Tall bookcase, top", "status": "read", "rating": 4, "finished": "2026-03-14", "tags": ["classics"],
      "notes": "", "edition": "", "signed": false, "first": false, "condition": "good",
      "loan": {"to": "Sam", "since": "2026-09-01"},
      "unsure": "spine cut off at the top"}       # anything you're not sure of, in a few words
@@ -310,6 +310,12 @@ def clean(b, i, warn):
     out['room'] = s(b.get('room'), 60)
     out['shelf'] = s(b.get('shelf'), 60)
     out['rating'] = whole(b.get('rating'), 0, 5)
+    # The day it was finished, kept for a book that's read, as Shelfmark keeps it. A day with no status says it was read.
+    out['finished'] = day(b.get('finished'))
+    if out['finished'] and not s(b.get('status'), 40):
+        out['status'] = 'read'
+    if out['status'] != 'read':
+        out['finished'] = ''
     loan = b.get('loan') if isinstance(b.get('loan'), dict) else {'to': b.get('lent_to') or b.get('lentTo')} if b.get('lent_to') or b.get('lentTo') else None
     if loan and s(loan.get('to'), 80):
         out['loan'] = {'to': s(loan.get('to'), 80)}

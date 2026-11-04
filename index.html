@@ -292,6 +292,9 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .seg button:last-child{border-radius:0 999px 999px 0}
 .seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 0 4px var(--surface)}
 .stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+/* the day a book was finished, beside its stars as Since is beside Lent to */
+.stat-row .fin{display:flex;align-items:center;gap:8px}
+.stat-row .fin input{width:auto}
 .stars{display:inline-flex;gap:0}
 /* each star answers a tap about 39px square; the negative margins keep them where they were. A star not given is an
    outline as clear as small grey text (WCAG 2.2 SC 1.4.11 asks 3:1 of a control's look), one given is filled in brass. */
@@ -704,7 +707,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var b = {
       id: id || uid(), t: t, title: title, sub: str(o.sub, 300), authors: list(o.authors || o.author, 12, 120, true),
       isbn: isbn, publisher: str(o.publisher, 120), year: int(o.year, 0, 2200, 'year'), format: pick(o.format, FORMATS), pages: int(o.pages, 0, 50000, 'most'),
-      room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5),
+      room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5), finished: day(o.finished),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
       edition: str(o.edition, 120), signed: yes(o.signed), first: yes(o.first), condition: pick(o.condition, CONDITIONS),
       added: day(o.added), check: str(o.check, 300),
@@ -712,6 +715,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       chapters: pick(o.chapters, CHAPTERS), way: pick(o.way, WAYS), blurb: str(o.blurb, 300)
     };
     if (b.status === 'unread') b.status = '';
+    // The day a book was finished is kept while it's read: marked Reading again, it's being read again.
+    if (b.status !== 'read') b.finished = '';
     Object.keys(b).forEach(function (k) { var v = b[k]; if (k !== 't' && (v === '' || v === 0 || v === false || v === null || Array.isArray(v) && !v.length)) delete b[k]; });
     return b;
   }
@@ -975,7 +980,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   // ---------- spreadsheet export ----------
-  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
+  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'finished', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
     'kind', 'genres', 'moods', 'pace', 'chapters', 'how_read', 'blurb'];
   // A cell a spreadsheet could run as a formula gets a ' in front. OWASP's CSV Injection page lists the starts to defuse:
   // = + - @, tab, carriage return and line feed, and the full-width ＝ ＋ － ＠. A plain number ("-5") is left alone.
@@ -986,7 +991,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function toCsv(d) {
     var rows = live(d).sort(authorOrder).map(function (b) {
-      return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(b.status || 'unread', STATUSES), b.rating,
+      return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(b.status || 'unread', STATUSES), b.rating, b.finished,
         b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check,
         label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), labels(b.moods, MOODS).join(', '), label(b.pace, PACES), label(b.chapters, CHAPTERS), label(b.way, WAYS), b.blurb].map(csvCell).join(',');
     });
@@ -1562,7 +1567,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var m = [];
     if (where(b) && !noPlace) m.push('<span class="loc">' + esc(where(b)) + '</span>');
     if (b.status === 'reading') m.push('<span class="bdg reading">Reading</span>');
-    else if (b.status === 'read') m.push('<span class="bdg read">Read</span>');
+    else if (b.status === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
     if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
     // In the To check view, what to check takes the badge's place, so most can be settled at the shelf.
     var why = UI.status === 'check' && b.check;
@@ -1871,7 +1876,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">☆</button>'; }).join('') + '</div></div>' +
+      '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">☆</button>'; }).join('') + '</div>' +
+      '<label class="fl fin" id="f-finrow"><span>Finished</span><input id="f-finished" type="date" value="' + esc(b.finished || '') + '"></label></div>' +
       '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
       '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="next" autocomplete="off"></label></div>' +
       '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
@@ -1911,7 +1917,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return Object.assign({}, b, {
         title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
         format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
-        room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, loan: to ? { to: to, since: v('f-since') } : null,
+        room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, finished: st.status === 'read' ? v('f-finished') : '', loan: to ? { to: to, since: v('f-since') } : null,
         tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check,
         kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods.slice(), genres: st.genres.slice(), blurb: $('f-blurb').value
       });
@@ -1945,7 +1951,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
     // hasn't touched since the card opened or last saved. What they're typing stays, and wins when it's saved.
     var FIELDS = ['title', 'sub', 'authors', 'isbn', 'publisher', 'year', 'pages', 'format', 'condition', 'edition', 'signed', 'first',
-      'room', 'shelf', 'status', 'rating', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
+      'room', 'shelf', 'status', 'rating', 'finished', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
     function put(k, x) {
       if (k === 'status') st.status = x || 'unread';
       else if (k === 'rating') st.rating = x || 0;
@@ -1990,7 +1996,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
       panel.querySelectorAll('#f-rating button').forEach(function (x) { var on = +x.dataset.v <= st.rating; x.classList.toggle('on', on); x.textContent = on ? '★' : '☆'; x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
-      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); drawCount();
+      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); $('f-finrow').hidden = st.status !== 'read'; drawCount();
       ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
       panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });
       // A genre chosen is a button that takes it off (it isn't a choice pressed in or out, as a mood is).
@@ -2023,7 +2029,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       later();
     });
     panel.addEventListener('change', later);
-    panel.querySelectorAll('#f-status button').forEach(function (x) { x.addEventListener('click', function () { st.status = x.dataset.v; drawState(); later(); }); });
+    // Read fills in the day it was finished, today, the way a loan's Since does: it can be changed, or emptied for a book
+    // read long ago. Stars given to an unread book mark it Read without a day (see below): it may have been read years ago.
+    panel.querySelectorAll('#f-status button').forEach(function (x) {
+      x.addEventListener('click', function () {
+        if (x.dataset.v === 'read' && st.status !== 'read' && !v('f-finished')) $('f-finished').value = today();
+        st.status = x.dataset.v; drawState(); later();
+      });
+    });
     // Stars given to an unread book mark it Read (a rating is for a book read). Taking them off leaves the status alone.
     panel.querySelectorAll('#f-rating button').forEach(function (x) {
       x.addEventListener('click', function () {
@@ -2286,7 +2299,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // ticked, for a book it doesn't say either), stars and a loan, and then a signed copy, a first edition and the format.
     function stLine(r) {
       var b = r.b, st = b.status || (readAll ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
-      if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read</span>');
+      if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
       if (b.rating) m.push(stars(b.rating));
       if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
       if (ed) m.push('<span class="rv-ed">' + esc(ed) + '</span>');
