@@ -1761,7 +1761,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     panel.addEventListener('change', later);
     panel.querySelectorAll('#f-status button').forEach(function (x) { x.addEventListener('click', function () { st.status = x.dataset.v; drawState(); later(); }); });
-    panel.querySelectorAll('#f-rating button').forEach(function (x) { x.addEventListener('click', function () { st.rating = st.rating === +x.dataset.v ? 0 : +x.dataset.v; drawState(); later(); }); });
+    // Stars given to an unread book mark it Read (a rating is for a book read). Taking them off leaves the status alone.
+    panel.querySelectorAll('#f-rating button').forEach(function (x) {
+      x.addEventListener('click', function () {
+        st.rating = st.rating === +x.dataset.v ? 0 : +x.dataset.v;
+        if (st.rating && (!st.status || st.status === 'unread')) st.status = 'read';
+        drawState(); later();
+      });
+    });
     $('f-ok').addEventListener('click', function () { st.check = ''; drawState(); later(); });
     // Reading details: tapping the chosen one again clears it. Up to four moods and four genres.
     ['kind', 'way', 'pace', 'chapters'].forEach(function (k) {

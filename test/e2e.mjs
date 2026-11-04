@@ -1441,6 +1441,34 @@ step('junk in the saved covers and settings doesn\'t stop covers or sorting', as
   } finally { await ctx.close(); }
 });
 
+step('stars given to an unread book mark it Read, in a card and in Add a book, and taking them off leaves it Read', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [MIDDLEMARCH, { ...PIRANESI, status: 'reading' }]);
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-rating button[data-v="4"]');
+    assert.equal(await page.getAttribute('#f-status button[data-v="read"]', 'aria-pressed'), 'true', 'Read isn\'t pressed');
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b04')).status, (await storedBook(page, 'b04')).rating], ['read', 4]);
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-rating button[data-v="4"]'); // off again
+    await page.click('#bkx');
+    assert.deepEqual([(await storedBook(page, 'b04')).status, (await storedBook(page, 'b04')).rating], ['read', undefined]);
+    // A book being read stays Reading: stars there are a rating so far.
+    await page.click('#list .bk[data-id="b03"]');
+    await page.click('#f-rating button[data-v="5"]');
+    await page.click('#bkx');
+    assert.equal((await storedBook(page, 'b03')).status, 'reading');
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Ivanhoe');
+    await page.click('#f-rating button[data-v="3"]');
+    await page.click('#f-add');
+    assert.equal(Object.values((await stored(page)).library.books).find(b => b.title === 'Ivanhoe').status, 'read');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a quick second tap on Add to library doesn\'t open the book underneath', async () => {
   const ctx = await context();
   try {
