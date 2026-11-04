@@ -2696,7 +2696,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (useShared()) { D.on = true; D.err = ''; saveDrive(); sync(); renderSync(); renderDrive(); return; }
     if (!tokenClient) { var failed = gisErr; loadGis(); toast(failed || 'Google sign-in is still loading — try again in a moment'); return; }
     var g = readShared(), hint = g && g.email;
-    tokenClient.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: D.on ? '' : 'consent' });
+    // Back for the hour: straight to the account kept with the sign-in. The first time on a device (or after Erase), Google
+    // asks which account, and asks for permission only if that account hasn't given it yet (Google Identity Services,
+    // TokenClientConfig.prompt; the house Drive rule 4). 'consent' would ask for permission every time.
+    tokenClient.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: D.on ? '' : 'select_account' });
   }
   // The account's email, kept with the sign-in, so signing back in each hour skips Google's account chooser.
   function rememberEmail() {

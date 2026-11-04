@@ -69,7 +69,7 @@ Drive keeps earlier versions of the library file for 30 days, and only the last 
 
 ### One-time setup
 
-Sync needs an OAuth client ID from a Google Cloud project, tied to the address Shelfmark is served from. It takes about ten minutes:
+Sync needs an OAuth client ID from a Google Cloud project, tied to the address Shelfmark is served from. The copy at shelfmark.junkdrawer.works uses the shared junkdrawer.works client, whose consent screen links to [junkdrawer.works/privacy.html](https://junkdrawer.works/privacy.html); steps 3 and 5 are for anyone making their own. It takes about ten minutes:
 
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a project, for example "Shelfmark".
 2. In **APIs & Services › Library**, find **Google Drive API** and enable it.
@@ -87,7 +87,7 @@ Sync needs an OAuth client ID from a Google Cloud project, tied to the address S
    Save. Google won't publish the app without these, even though the form doesn't mark them required.
 6. In **Audience**, choose **Publish app**. `drive.file` is a non-sensitive scope, so publishing needs no review. Or skip publishing: an app left in **Testing** works for the Google accounts you add under **Test users**, but Google may ask them to approve it again from time to time.
 7. In **Clients**, create a client of type **Web application**. Under **Authorized JavaScript origins**, add the address Shelfmark is served from (for the junkdrawer.works copy, `https://shelfmark.junkdrawer.works`, plus `https://junkdrawer.works`, where it used to live), then create it and copy the **Client ID**. It ends in `.apps.googleusercontent.com`. A client ID isn't a secret; it only works from the origins you listed.
-8. Put the ID in `GOOGLE_CLIENT_ID` near the top of the script in `index.html`. Until then, you can paste it into **Settings › Sync with Google Drive** on each device.
+8. Replace the ID in `GOOGLE_CLIENT_ID` near the top of the script in `index.html` with yours. (Settings offers a box to paste one only when `GOOGLE_CLIENT_ID` is empty.)
 
 Then open **Settings › Connect Google Drive** on each device you use. The copy at shelfmark.junkdrawer.works already has its client ID.
 

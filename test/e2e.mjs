@@ -1114,6 +1114,8 @@ step('erasing this device\'s copy signs Google out here too, so Connect asks Goo
     await page.click('#setBtn');
     await page.click('#dvGo');
     await until(() => page.evaluate(n => (window.__prompts || []).length > n, asked), 'Connect to ask Google', 5000);
+    // The first time on a device, Google asks which account, not for permission all over again.
+    assert.deepEqual(await page.evaluate(() => window.__prompts.map(p => p.prompt)), ['select_account', 'select_account']);
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });
