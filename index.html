@@ -1238,17 +1238,24 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return pool.map(function () { return 1; });
   }
   function monthOf(d) { var p = d.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
+  // When a book was finished, to follow its title: " in March" this year, " in March 2025" before, or nothing without a day.
+  function finishedIn(b, now) {
+    var d = finished(b), p = d.split('-'); if (!d) return '';
+    return ' in ' + (+p[0] === new Date(now).getFullYear() ? new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long' }) : monthOf(d));
+  }
   // Plain reasons for a suggestion, the one that fits the lean first. span is what dealNext knows of the pool's dates:
   // first, the earliest; oldest, the one book added before all the others, if there is one; same, when they all share
   // one date (a library catalogued in one go), and then when a book was added tells it from none of the others. A volume
   // of a set says first that it's next, after the one read (kin, from kinOf).
   function nextWhy(b, c, fans, now, span, kin) {
     var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0], next = kin ? after(b, kin) : '';
-    if (b.status === 'read') fan = 'A reread: you gave it ' + plural(b.rating, 'star');
+    // With the day a book was finished, it says when: "You finished “Housekeeping” in March and gave it 5 stars".
+    if (b.status === 'read') fan = 'A reread: you ' + (finished(b) ? 'finished it' + finishedIn(b, now) + ' and ' : '') + 'gave it ' + plural(b.rating, 'star');
     else if (f && (c.lean === 'loved' || fondness(f) >= 3)) {
       var who = surname(f.name) || f.name;
-      if (f.best && f.best.rating >= 4) fan = (f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who + ' and gave ' : 'You gave ') + '“' + f.best.title + '” ' + plural(f.best.rating, 'star');
-      else fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who : 'You’ve read “' + f.one.title + '”, also by ' + who;
+      if (f.best && f.best.rating >= 4) fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who + ' and gave “' + f.best.title + '” ' + plural(f.best.rating, 'star')
+        : finished(f.best) ? 'You finished “' + f.best.title + '”' + finishedIn(f.best, now) + ' and gave it ' + plural(f.best.rating, 'star') : 'You gave “' + f.best.title + '” ' + plural(f.best.rating, 'star');
+      else fan = f.n > 1 ? 'You’ve read ' + f.n + ' by ' + who : finished(f.one) ? 'You finished “' + f.one.title + '”, also by ' + who + ',' + finishedIn(f.one, now) : 'You’ve read “' + f.one.title + '”, also by ' + who;
     }
     if (b.added && !span.same) {
       // Whole calendar days between the day it was added and today, wherever in the day "now" falls.

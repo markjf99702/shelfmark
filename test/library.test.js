@@ -348,6 +348,17 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   check(/^Waiting longest of these: in your library since .*2019$/.test(why('oldest', 'old')[0]), 'the longest-waiting book says so, with the month it was added');
   eq(why('', 'new'), ['New arrival: added 5 days ago', 'Your note: Sam says start here'], 'a recent arrival says so, and the first line of a note comes along');
   eq(why('', 'nop'), [], 'nothing special to say → no reasons');
+  {
+    // With the day a book was finished, the reason says when: the month this year, the month and year before.
+    const month = (y, m, opts) => new Date(y, m - 1, 1).toLocaleDateString(undefined, opts);
+    const by = (more, read) => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'u', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'] },
+      { id: 'r', t: 1, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', ...more }].concat(read || []) })), S.cleanNext({ reread: true }), rng(1), { r: 1 }, now).picks[0];
+    eq(by({ rating: 5, finished: '2026-03-14' }).why, ['You finished “Housekeeping” in ' + month(2026, 3, { month: 'long' }) + ' and gave it 5 stars'], 'a favorite finished this year says the month');
+    eq(by({ rating: 3, finished: '2025-07-01' }).why, ['You finished “Housekeeping”, also by Robinson, in ' + month(2025, 7, { month: 'long', year: 'numeric' })], 'one finished before says the year too');
+    eq(by({ rating: 5 }).why, ['You gave “Housekeeping” 5 stars'], 'without a day it says what it did before');
+    const again = S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'r', t: 1, title: 'Housekeeping', status: 'read', rating: 5, finished: '2024-11-30' }] })), S.cleanNext({ reread: true }), rng(1), {}, now).picks[0];
+    eq(again.why, ['A reread: you finished it in ' + month(2024, 11, { month: 'long', year: 'numeric' }) + ' and gave it 5 stars'], 'a reread says when it was finished');
+  }
   for (const hour of ['00:30', '09:00', '15:00', '23:30']) {
     const at = new Date('2026-10-13T' + hour + ':00').getTime();
     const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }, { id: 'o', t: 1, title: 'O', added: '2020-01-01' }] })), base, rng(1), { o: 1 }, at).picks[0].why[0];
