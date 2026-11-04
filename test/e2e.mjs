@@ -1433,6 +1433,26 @@ step('on a phone the small controls answer a tap around them, without looking an
   } finally { await ctx.close(); }
 });
 
+step('on a phone a tap leaves no hover look behind, and no grey-blue flash', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH]);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#list .bk')).webkitTapHighlightColor), 'rgba(0, 0, 0, 0)', 'a tap flashes the browser\'s own box over a row');
+    await page.tap('#list .bk[data-id="b03"]');
+    await page.tap('details.more > summary >> nth=0');
+    const look = m => page.$eval(`#f-moods button[data-m="${m}"]`, e => { const c = getComputedStyle(e); return [c.borderColor, c.color, c.backgroundColor]; });
+    await page.tap('#f-moods button[data-m="funny"]');
+    await page.tap('#f-moods button[data-m="funny"]');
+    assert.equal(await page.getAttribute('#f-moods button[data-m="funny"]', 'aria-pressed'), 'false');
+    // A phone leaves the last place tapped hovered until the next tap, which Chromium's taps here don't: the mouse stands in.
+    assert.equal(await page.evaluate(() => matchMedia('(hover: hover)').matches), false);
+    await page.hover('#f-moods button[data-m="funny"]');
+    assert.deepEqual(await look('funny'), await look('dark'), 'a mood tapped off still looks half chosen');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('with a mouse, a sheet\'s Done keeps its own size, so its hover border isn\'t a tall box', async () => {
   const ctx = await context(DESK);
   try {

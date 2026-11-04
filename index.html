@@ -78,6 +78,10 @@ body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.45 var(--san
 body.locked{overflow:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
+/* A hover look shows only where something can hover (a mouse): on a touch screen a tap would leave it behind, on a mood
+   tapped off, say (CSS Media Queries Level 4, 7.2, the hover feature). A tap shows as a quiet pressed look instead
+   (below the buttons), not the browser's own grey-blue box. */
+button,a,summary,label,select{-webkit-tap-highlight-color:transparent}
 button:disabled{cursor:default;opacity:.5}
 input,select,textarea{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;min-width:0;font-size:16px;width:100%}
 textarea{resize:vertical;min-height:84px;line-height:1.45}
@@ -99,10 +103,10 @@ a{color:var(--accent)}
 .brand svg{width:30px;height:30px;flex:none}
 .brand b{font:italic 500 26px/1 var(--serif);letter-spacing:-.01em}
 .tbtn{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:7px 13px;font:600 13.5px var(--sans);color:var(--ink2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.tbtn:hover{color:var(--ink);border-color:var(--ink3)}
+@media (hover:hover){.tbtn:hover{color:var(--ink);border-color:var(--ink3)}}
 .tbtn svg{width:16px;height:16px;flex:none}
 .tbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.tbtn.primary:hover{filter:brightness(1.06);color:var(--accent-ink)}
+@media (hover:hover){.tbtn.primary:hover{filter:brightness(1.06);color:var(--accent-ink)}}
 .sync{border-style:dashed}
 .sync i{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
 .sync[data-s="ok"] i{background:var(--green)}
@@ -130,7 +134,7 @@ a{color:var(--accent)}
 .fade-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to left,#000 calc(100% - 32px),transparent)}
 .fade-l.fade-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
 .chip{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 13px var(--sans);color:var(--ink2);white-space:nowrap}
-.chip:hover{color:var(--ink);border-color:var(--ink3)}
+@media (hover:hover){.chip:hover{color:var(--ink);border-color:var(--ink3)}}
 .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
 .chip .n{font:500 11.5px var(--mono);opacity:.7;margin-left:3px}
 .selects{display:flex;gap:6px;flex:0 1 auto;min-width:0}
@@ -154,7 +158,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
 .grp .n{font:500 11.5px var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink3);margin-left:.2em}
 .bk{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px 10px 10px;box-shadow:var(--shadow);width:100%;min-width:0}
-.bk:hover{border-color:var(--line2)}
+@media (hover:hover){.bk:hover{border-color:var(--line2)}}
 /* rows out of sight aren't laid out until they come near, so a long list redraws quickly on a slow phone, and
    find-in-page still finds them. Until then a row counts as the height it last had, or as an average row (74px inside
    its padding); render() carries those heights across a redraw and keeps the reader's place. */
@@ -197,15 +201,19 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 
 /* buttons */
 .btn{background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:9px 15px;font:600 14.5px var(--sans);color:var(--ink);white-space:nowrap}
-.btn:hover{border-color:var(--ink3)}
+@media (hover:hover){.btn:hover{border-color:var(--ink3)}}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.primary:hover{filter:brightness(1.06)}
+@media (hover:hover){.btn.primary:hover{filter:brightness(1.06)}}
 .btn.quiet{background:none;border-color:transparent;color:var(--ink2)}
-.btn.quiet:hover{border-color:var(--line2);color:var(--ink)}
+@media (hover:hover){.btn.quiet:hover{border-color:var(--line2);color:var(--ink)}}
 .btn.danger{color:var(--bad);border-color:transparent;background:none}
-.btn.danger:hover{border-color:var(--bad)}
+@media (hover:hover){.btn.danger:hover{border-color:var(--bad)}}
 #stErase{white-space:normal;text-align:left} /* its second-tap words don't fit a phone on one line */
 .btn.sm{padding:6px 11px;font-size:13.5px;border-radius:8px}
+/* pressed */
+.bk:active,.nx-alt:active{background:var(--surface2)}
+.chip:not([aria-pressed="true"]):active,.tagpicks button:not([aria-pressed="true"]):active,.seg button:not([aria-pressed="true"]):active{background:var(--sunk)}
+.btn:active,.tbtn:active,.nextbtn:active{filter:brightness(.96)}
 
 /* sheets */
 #sheet{position:fixed;inset:0;z-index:50}
@@ -259,7 +267,7 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 #f-back{justify-self:start}
 .tagpicks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .tagpicks button{background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:500 12.5px var(--sans);color:var(--ink2)}
-.tagpicks button:hover{border-color:var(--ink3);color:var(--ink)}
+@media (hover:hover){.tagpicks button:hover{border-color:var(--ink3);color:var(--ink)}}
 .checks{display:flex;flex-wrap:wrap;gap:8px 18px}
 .checks label{display:inline-flex;gap:7px;align-items:center;font-size:14.5px}
 details.more{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
@@ -297,7 +305,7 @@ details.more .fs{padding:2px 12px 12px}
 .rv-tick{flex:none;align-self:stretch;display:flex;align-items:flex-start;margin:-9px -10px -9px -10px;padding:15px 10px 9px;cursor:pointer}
 .rv-main{flex:1;min-width:0;display:grid;gap:2px}
 .rv-main input{padding:3px 7px;margin-left:-8px;width:calc(100% + 8px);font-size:16px;border-color:transparent;background:transparent}
-.rv-main input:hover{border-color:var(--line2)}
+@media (hover:hover){.rv-main input:hover{border-color:var(--line2)}}
 .rv-main input:focus{border-color:var(--line2);background:var(--surface)}
 .rv-main .rt{font:500 17px var(--serif)}
 .rv-meta{font:500 11.5px var(--mono);color:var(--ink3);letter-spacing:.02em;overflow-wrap:anywhere}
@@ -321,7 +329,7 @@ details.more .fs{padding:2px 12px 12px}
 .countrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:14px 2px 10px}
 .countrow .count{margin:0}
 .nextbtn{flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--accent);border-radius:999px;padding:6px 13px;font:600 13.5px var(--sans);color:var(--accent);box-shadow:var(--shadow);white-space:nowrap}
-.nextbtn:hover{background:var(--accent-soft)}
+@media (hover:hover){.nextbtn:hover{background:var(--accent-soft)}}
 .nextbtn svg{width:16px;height:16px;flex:none}
 .nx-crit{display:grid;gap:14px;padding-bottom:16px;margin-bottom:16px;border-bottom:3px double var(--rule)}
 .nx-f{display:grid;gap:6px;justify-items:start;min-width:0}
@@ -360,7 +368,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-alts{display:grid;gap:8px;margin-top:20px;animation:deal .28s ease-out}
 .nx-alts h3{margin:0}
 .nx-alt{display:flex;gap:10px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
-.nx-alt:hover{border-color:var(--ink3)}
+@media (hover:hover){.nx-alt:hover{border-color:var(--ink3)}}
 .nx-alt .cv{width:34px;height:50px}
 .nx-alt .cv::after{top:8px;left:7px;right:5px}
 .nx-alt .cv-t{font-size:13px}
@@ -377,7 +385,8 @@ details.more .fs{padding:2px 12px 12px}
 /* footer */
 .foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink2)}
 .foot a{color:var(--ink2);text-decoration:none}
-.foot a:hover,.foot a:focus-visible{color:var(--accent);text-decoration:underline}
+.foot a:focus-visible{color:var(--accent);text-decoration:underline}
+@media (hover:hover){.foot a:hover{color:var(--accent);text-decoration:underline}}
 
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:11px;padding:10px 14px;font:600 14px var(--sans);display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);transition:transform .2s,opacity .2s;z-index:60;width:max-content;max-width:calc(100vw - 32px)}
