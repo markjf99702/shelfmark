@@ -459,6 +459,7 @@ details.more .fs{padding:2px 12px 12px}
 .nx-morein{display:grid;gap:14px;padding-top:12px}
 .nx-blurb{font:italic 15px/1.4 var(--serif);color:var(--ink2);margin-top:4px}
 .nx-dl{font-size:13px;color:var(--ink);margin-top:2px}
+.nx-note{font-size:13px;color:var(--ink2);margin-top:2px;overflow-wrap:anywhere}
 .nx-alt .nx-w{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* on a phone the moods are one row to swipe along, edge to edge (with a mouse they wrap) */
 @media (max-width:640px) and (pointer:coarse){
@@ -1479,7 +1480,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // one date (a library catalogued in one go), and then when a book was added tells it from none of the others. A volume
   // of a set says first that it's next, after the one read (kin, from kinOf).
   function nextWhy(b, c, fans, now, span, kin) {
-    var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0], next = kin ? after(b, kin) : '';
+    var fan = '', when = '', f = fanOf(b, fans), next = kin ? after(b, kin) : '';
     // With the day a book was finished, it says when: "You finished “Housekeeping” in March and gave it 5 stars".
     if (b.status === 'read') fan = 'A reread: you ' + (finished(b) ? 'finished it' + finishedIn(b, now) + ' and ' : '') + 'gave it ' + plural(b.rating, 'star');
     else if (f && (c.lean === 'loved' || fondness(f) >= 3)) {
@@ -1497,8 +1498,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     var why = c.lean === 'oldest' || c.lean === 'newest' ? [when, fan] : [fan, when];
     if (next) why.unshift('Next in the set: you’ve read ' + next);
-    if (note) why.push('Your note: ' + (note.length > 140 ? note.slice(0, 139).trim() + '…' : note));
     return why.filter(Boolean);
+  }
+  // The first line of a book's note, for a line of its own under the pick's details. A note is as often about the copy
+  // (its binding, where it came from) as about reading it, so it isn't one of the reasons.
+  function nextNote(b) {
+    var note = (b.notes || '').split('\n')[0].trim();
+    return note ? 'Your note: ' + (note.length > 140 ? note.slice(0, 139).trim() + '…' : note) : '';
   }
   // Up to three suggestions, drawn by weight from the books not yet shown (skip: {id: 1}), then from the rest.
   // fresh says how many were new; none means every match has been shown. kin (kinOf(all)) can be passed in.
@@ -1541,7 +1547,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       rereadMatch: c.reread || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { reread: true }), kin).length - pool.length,
       easings: pool.length ? [] : easings(all, c, kin),
       browsed: c.browse ? 0 : nextBooks(all, Object.assign({}, c, { browse: true }), function (b) { return b.way === 'browse'; }, kin).length,
-      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span, kin) }; })
+      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span, kin), note: nextNote(b) }; })
     };
   }
 
@@ -3297,6 +3303,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
         (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
         (dl ? '<span class="nx-dl">' + dl + '</span>' : '') +
+        (t.note ? '<span class="nx-note">' + esc(t.note) + '</span>' : '') +
         (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
         '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span>' +
         (b.status === 'read' ? '' : '<button class="btn sm quiet nx-done" type="button" id="nxRead">Already read it</button>') + '</div></div>' +

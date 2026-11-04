@@ -2846,6 +2846,25 @@ step('What to read next opens with More choices closed, keeping what\'s set in i
   }
 });
 
+step('a pick\'s note is a line of its own under its details, not one of the reasons', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ id: 'g', t: 1000, title: 'Gilead', authors: ['Marilynne Robinson'], kind: 'fiction', genres: ['literary'], notes: 'Spine is loose\nFound on a train' },
+      { id: 'h', t: 1000, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5 }]);
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('.nx-pick .nx-t'), 'Gilead');
+    assert.deepEqual(await page.$$eval('.nx-why li', els => els.map(e => e.textContent)), ['You gave \u201cHousekeeping\u201d 5 stars']);
+    assert.equal(await page.textContent('.nx-pick .nx-note'), 'Your note: Spine is loose');
+    // Under the details, over the reasons, and in their small type.
+    const at = await page.$$eval('.nx-pick .nx-dl, .nx-pick .nx-note, .nx-pick .nx-why', els => els.map(e => [e.className, e.getBoundingClientRect().top, parseFloat(getComputedStyle(e).fontSize)]));
+    assert.deepEqual(at.map(a => a[0]), ['nx-dl', 'nx-note', 'nx-why']);
+    assert.ok(at[0][1] < at[1][1] && at[1][1] < at[2][1], 'the note isn\'t between the details and the reasons: ' + JSON.stringify(at));
+    assert.equal(at[1][2], at[0][2], 'the note isn\'t in the details\' type');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
   try {

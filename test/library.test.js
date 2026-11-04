@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -421,8 +421,16 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   const why = (lean, id) => S.dealNext(lib, S.cleanNext({ lean }), rng(1), { old: id !== 'old' ? 1 : 0, new: id !== 'new' ? 1 : 0, lg2: id !== 'lg2' ? 1 : 0, nop: id !== 'nop' ? 1 : 0 }, now).picks[0].why;
   eq(why('', 'lg2'), ['You gave “The Dispossessed” 5 stars', 'In your library since ' + new Date(2024, 5, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })], 'a book by an author you rated highly says so, and one over two years on the shelf says how long');
   check(/^Waiting longest of these: in your library since .*2019$/.test(why('oldest', 'old')[0]), 'the longest-waiting book says so, with the month it was added');
-  eq(why('', 'new'), ['New arrival: added 5 days ago', 'Your note: Sam says start here'], 'a recent arrival says so, and the first line of a note comes along');
+  eq(why('', 'new'), ['New arrival: added 5 days ago'], 'a recent arrival says so, and its note isn\'t one of the reasons');
   eq(why('', 'nop'), [], 'nothing special to say → no reasons');
+  {
+    // A note goes on a line of its own: its first line, cut at 140 characters.
+    const note = id => S.dealNext(lib, S.cleanNext({}), rng(1), { old: id !== 'old' ? 1 : 0, new: id !== 'new' ? 1 : 0, lg2: id !== 'lg2' ? 1 : 0, nop: id !== 'nop' ? 1 : 0 }, now).picks[0].note;
+    eq([note('new'), note('nop')], ['Your note: Sam says start here', ''], 'the pick carries the first line of its note, and nothing without one');
+    eq(S.nextNote({ notes: '  Spine is loose  \nFound on a train' }), 'Your note: Spine is loose', 'only the first line, trimmed');
+    eq(S.nextNote({ notes: 'x'.repeat(200) }), 'Your note: ' + 'x'.repeat(139) + '…', 'a long one is cut at 140 characters');
+    eq([S.nextNote({}), S.nextNote({ notes: '\nSecond line only' })], ['', ''], 'no note, or an empty first line, gives no line');
+  }
   {
     // With the day a book was finished, the reason says when: the month this year, the month and year before.
     const month = (y, m, opts) => new Date(y, m - 1, 1).toLocaleDateString(undefined, opts);
