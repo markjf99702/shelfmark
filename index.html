@@ -1137,11 +1137,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function stamp(b, old) { b.t = Math.max(Date.now(), old && old.t ? old.t + 1 : 0); return b; }
   function putBook(b) { var c = cleanBook(stamp(b, DOC.books[b.id])); if (!c) return null; DOC.books[c.id] = c; persist(); render(); return c; }
-  function removeBook(id) {
+  // kb: Remove was pressed from the keyboard. The keyboard goes to Undo, and then to the book that took the removed
+  // one's place in the list (the next, or else the one before), or the search box.
+  function removeBook(id, kb) {
     var old = DOC.books[id]; if (!old || old.del) return;
+    var ids = [].map.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id; }), i = ids.indexOf(id), near = i < 0 ? null : ids[i + 1] || ids[i - 1];
     DOC.books[id] = stamp({ id: id, del: 1 }, old); persist(); render();
-    toast('Removed “' + short(old.title) + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); });
+    function next() { return rowOf(near) || ($('tools').hidden ? $('list').querySelector('button') : $('q')); }
+    if (!kb) refocus(rowOf(near));
+    toast('Removed “' + short(old.title) + '”', 'Undo', function () { var back = Object.assign({}, old); DOC.books[id] = stamp(back, DOC.books[id]); persist(); render(); return rowOf(id); }, kb, next);
   }
+  function rowOf(id) { return id ? [].filter.call(document.querySelectorAll('#list .bk'), function (r) { return r.dataset.id === id; })[0] : null; }
 
   // ---------- covers ----------
   // With lookups on, each book's cover is found once through Open Library's search, by ISBN or by title and
@@ -1376,16 +1382,41 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     el.drawn = html; el.innerHTML = html;
     var f = id && ($(id) || $('sheetTitle')); if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
   }
-  var toastT;
-  function toast(m, act, fn) {
+  // A toast says what was just done, for a few seconds (a long one needs time to read), and stays while the pointer or the
+  // keyboard is on it. Its button (Undo) goes with it: hidden, out of the keyboard's reach and doing nothing, and its
+  // words go a moment after it has faded. kb: what it's about was done from the keyboard, so the keyboard goes to the
+  // button; back() says where the keyboard goes when the toast goes with it there, and the button's fn() where it goes
+  // after the button is used.
+  var toastT = 0, toastClr = 0, toastMs = 0, toastBack = null, toastHold = { focus: false, hover: false };
+  function toast(m, act, fn, kb, back) {
     var t = $('toast'), b = $('toastBtn'), ft = !$('sheet').hidden && $('sheet').querySelector('.ft');
     t.style.setProperty('--above', ft ? Math.max(0, Math.round($('sheet').getBoundingClientRect().bottom - ft.getBoundingClientRect().top)) + 'px' : '');
+    clearTimeout(toastClr);
     $('toastTx').textContent = m; b.hidden = !act; b.textContent = act || '';
-    b.onclick = act ? function () { t.classList.remove('show'); fn(); } : null;
-    t.classList.add('show'); clearTimeout(toastT);
-    toastT = setTimeout(function () { t.classList.remove('show'); }, act || m.length > 60 ? 6000 : 3000); // a long one needs time to read
+    toastBack = back || null;
+    b.onclick = act ? function () { var had = t.contains(document.activeElement); toastBack = null; hideToast(); var to = fn(); if (had) refocus(to); } : null;
+    t.classList.add('show'); toastMs = act || m.length > 60 ? 6000 : 3000;
+    if (act && kb) try { b.focus(); } catch (e) { }
+    toastHold.focus = t.contains(document.activeElement);
+    holdToast();
   }
-  function hideToast() { clearTimeout(toastT); $('toast').classList.remove('show'); $('toastBtn').hidden = true; $('toastBtn').onclick = null; }
+  function holdToast() { clearTimeout(toastT); if (!toastHold.focus && !toastHold.hover && $('toast').classList.contains('show')) toastT = setTimeout(hideToast, toastMs); }
+  function hideToast() {
+    var t = $('toast'), b = $('toastBtn'), had = t.contains(document.activeElement), back = toastBack;
+    clearTimeout(toastT); toastBack = null; toastHold.focus = toastHold.hover = false;
+    t.classList.remove('show'); b.hidden = true; b.onclick = null;
+    clearTimeout(toastClr); toastClr = setTimeout(function () { $('toastTx').textContent = ''; }, 400);
+    if (had) refocus(back && back());
+  }
+  function refocus(el) { if (isShown(el)) try { el.focus({ preventScroll: true }); } catch (e) { } }
+  function isShown(el) { return !!el && document.contains(el) && el.getClientRects().length > 0; }
+  (function () {
+    var t = $('toast');
+    t.addEventListener('focusin', function () { toastHold.focus = true; holdToast(); });
+    t.addEventListener('focusout', function (e) { toastHold.focus = t.contains(e.relatedTarget); holdToast(); });
+    t.addEventListener('mouseenter', function () { toastHold.hover = true; holdToast(); });
+    t.addEventListener('mouseleave', function () { toastHold.hover = false; holdToast(); });
+  })();
   function download(name, text, type) {
     var url = URL.createObjectURL(new Blob([text], { type: type })), a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -1588,7 +1619,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       n = putBook(n); closeSheet();
       toast(STORE ? STORE_TOAST[STORE] : dup ? 'Added — you already had a copy' + (dup.room ? ' in ' + dup.room : '') : 'Added “' + short(n.title) + '”');
     });
-    else $('f-del').addEventListener('click', function () { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id); });
+    else $('f-del').addEventListener('click', function (e) { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id, !e.detail); });
     head(); growTitle(); drawState();
     if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
   }
@@ -2015,11 +2046,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('nxx').addEventListener('click', closeSheet);
     $('nxAgain').addEventListener('click', function () { dealNow(); showPick(); });
-    $('nxGo').addEventListener('click', function () {
+    $('nxGo').addEventListener('click', function (e) {
       var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
       var was = b.status || '';
       putBook(Object.assign({}, b, { status: 'reading' })); closeSheet();
-      toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); });
+      // From the keyboard, Undo takes the keyboard; then it goes back to where the sheet was opened from (or, with
+      // nothing left unread, to the book).
+      var from = document.activeElement, back = function () { return from !== document.body && isShown(from) ? from : rowOf(b.id); };
+      toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return back(); }, !e.detail, back);
     });
     drawCrit(); dealNow();
   }
@@ -2316,6 +2350,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   $('sortSel').addEventListener('change', function () { PREF.sort = this.value; UI.sort = ''; savePrefs(); render(); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !$('sheet').hidden) { closeSheet(); return; }
+    if (e.key === 'Escape' && $('toast').contains(document.activeElement)) { hideToast(); return; }
     if (e.key === '/' && $('sheet').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) { e.preventDefault(); $('q').focus(); }
   });
   window.addEventListener('hashchange', checkLink);

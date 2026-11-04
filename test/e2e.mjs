@@ -621,6 +621,65 @@ step('a book to check says To check, and the To check view says what to check', 
   }
 });
 
+step('a toast\'s Undo goes with the toast, and from the keyboard Undo takes the keyboard while it shows', async () => {
+  const ctx = await context(DESK);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    const shown = () => page.evaluate(() => document.getElementById('toast').classList.contains('show'));
+    const focused = () => page.evaluate(() => document.activeElement.id || document.activeElement.dataset.id || document.activeElement.tagName);
+    // With a mouse: once the toast has gone, its Undo can't be reached or used, and its words don't linger.
+    await page.click('#list .bk[data-id="b04"]');
+    await page.click('#f-del');
+    assert.match(await page.textContent('#toastTx'), /Removed “Middlemarch”/);
+    await page.mouse.move(5, 5);
+    await until(async () => !(await shown()), 'the toast to go', 9000);
+    await wait(500);
+    assert.equal(await page.isHidden('#toastBtn'), true, 'the gone toast\'s Undo can still be reached');
+    assert.equal(await page.textContent('#toastTx'), '', 'the gone toast\'s words stay in the page');
+    await page.focus('.foot a >> nth=-1');
+    await page.keyboard.press('Tab');
+    assert.notEqual(await focused(), 'toastBtn', 'Tab past the footer reaches the gone Undo');
+    await page.keyboard.press('Enter');
+    await page.evaluate(() => document.getElementById('toastBtn').click());
+    assert.deepEqual(await titles(page), ['Piranesi', 'Cat’s Cradle'], 'Undo brought the book back after its toast had gone');
+    // From the keyboard: Remove puts the keyboard on Undo, and the toast stays while it's there; Undo brings the book
+    // back and the keyboard to it.
+    await page.focus('#list .bk[data-id="b03"]');
+    await page.keyboard.press('Enter');
+    await page.focus('#f-del');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'toastBtn', 'Remove from the keyboard leaves Undo out of reach');
+    await wait(6500);
+    assert.equal(await shown(), true, 'the toast went with the keyboard on its Undo');
+    await page.keyboard.press('Enter');
+    assert.deepEqual(await titles(page), ['Piranesi', 'Cat’s Cradle']);
+    assert.equal(await focused(), 'b03', 'the keyboard didn\'t go to the book brought back');
+    // When the toast goes with the keyboard on it (Escape here), the keyboard goes to the book that took the removed one's place.
+    await page.keyboard.press('Enter');
+    await page.focus('#f-del');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'toastBtn');
+    await page.keyboard.press('Escape');
+    assert.equal(await shown(), false);
+    assert.equal(await focused(), 'b05', 'the keyboard didn\'t go to the next book');
+    assert.deepEqual(page.problems, []);
+    // Start reading from the keyboard goes to Undo too, and back to What to read next? after.
+    await page.close();
+    const next = await open(ctx);
+    await seed(next, [PIRANESI, MIDDLEMARCH, CRADLE]);
+    await next.focus('#nextBtn');
+    await next.keyboard.press('Enter');
+    await next.focus('#nxGo');
+    await next.keyboard.press('Enter');
+    const on = () => next.evaluate(() => document.activeElement.id);
+    assert.equal(await on(), 'toastBtn');
+    await next.keyboard.press('Escape');
+    assert.equal(await on(), 'nextBtn');
+    assert.deepEqual(next.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('the privacy page links lead somewhere else', async () => {
   const ctx = await context();
   try {
