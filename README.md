@@ -99,7 +99,15 @@ Then open **Settings › Connect Google Drive** on each device you use. The copy
 
 It can also convert a Goodreads or LibraryThing export, leaving out the books on your to-read shelf or wishlist that aren't in the house (it asks first). With a Google Drive connector, it can answer questions about your library by reading the library file, which it never changes.
 
-To use it, zip the `shelfmark-cataloger` folder and upload it as a skill in claude.ai; it needs code execution turned on. Its script also runs on its own:
+To add it to Claude:
+1. Download this repository (**Code › Download ZIP** on GitHub) and unzip it.
+2. Zip just the `skill/shelfmark-cataloger` folder: on a Mac, right-click it › **Compress**; on an iPhone, in Files, press and hold it › **Compress**. Upload that zip, not the whole repository's: an upload fails when the folder's name doesn't match the skill's or its `SKILL.md` is missing (the Help Center page below lists both).
+3. In claude.ai, turn on **Settings › Capabilities › Code execution and file creation** (**Create and edit files** in the newer settings). On a Team or Enterprise plan, an owner manages these in **Organization settings**.
+4. Open **Customize › Skills**, tap **+**, then **Create skill › Upload a skill**, and choose the zip.
+
+Skills work on every Claude plan, Free included: "Skills are available for users on Free, Pro, Max, Ultra, Team, and Enterprise plans" (Claude Help Center, [Use skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)). Then send Claude your shelf photos.
+
+The skill's script also runs on its own:
 
 ```
 python3 skill/shelfmark-cataloger/scripts/make_shelfmark.py books.json
