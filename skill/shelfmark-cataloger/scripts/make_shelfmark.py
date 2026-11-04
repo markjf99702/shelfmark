@@ -28,7 +28,10 @@ longer list is written as numbered files of up to 3,000 each, to open one after 
 
 With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
 aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
-given --keep-unowned. It says how many it left out.
+given --keep-unowned, which puts them on Shelfmark's wishlist. It says how many.
+
+A batch with "wanted": true (books from a shop's table, or a list of books to buy) goes on the wishlist,
+as does a book with "wanted": true.
 
 With --details it makes reading details for books already in the library instead: what kind of book each is
 and what reading it is like, for What to read next. details.json is {"name": ..., "books": [...]}, each entry
@@ -317,6 +320,7 @@ def clean(b, i, warn):
     if out['status'] != 'read':
         out['finished'] = ''
     out['aside'] = yes(b.get('aside'))  # a book they gave up: Shelfmark shows it as Set aside
+    out['wanted'] = yes(b.get('wanted'))  # a book they want, not one in the house: it goes on the wishlist
     loan = b.get('loan') if isinstance(b.get('loan'), dict) else {'to': b.get('lent_to') or b.get('lentTo')} if b.get('lent_to') or b.get('lentTo') else None
     if loan and s(loan.get('to'), 80):
         out['loan'] = {'to': s(loan.get('to'), 80)}
@@ -432,10 +436,13 @@ def from_goodreads(rows, keep):
     books, left = [], 0
     for r in rows:
         shelf = cell(r, 'exclusive shelf').lower()
-        if shelf == 'to-read' and not whole(cell(r, 'owned copies'), 0, 9999) and not keep:
+        away = shelf == 'to-read' and not whole(cell(r, 'owned copies'), 0, 9999)  # not in the house
+        if away:
             left += 1
-            continue
+            if not keep:
+                continue
         books.append({
+            'wanted': away,
             'title': series_off(cell(r, 'title')),
             'authors': [cell(r, 'author')] + split_names(cell(r, 'additional authors')),
             'isbn': ', '.join(x for x in (cell(r, 'isbn13'), cell(r, 'isbn')) if x),
@@ -461,10 +468,13 @@ def from_librarything(rows, keep):
     for r in rows:
         held = [x.strip() for x in cell(r, 'collections').split(',') if x.strip()]
         low = {x.lower() for x in held}
-        if low & LT_UNOWNED and 'your library' not in low and not keep:
+        away = bool(low & LT_UNOWNED) and 'your library' not in low  # not in the house
+        if away:
             left += 1
-            continue
+            if not keep:
+                continue
         books.append({
+            'wanted': away,
             'title': cell(r, 'title'),
             'authors': [cell(r, 'author (first, last)') or turned(cell(r, 'primary author', 'author (last, first)'))],
             'isbn': ', '.join(x for x in (cell(r, 'isbn'), cell(r, 'isbns')) if x),
@@ -571,6 +581,8 @@ def build(doc, warn):
             tail = f' ({n} of {len(parts)})'
             label = name[:120 - len(tail)] + tail if name else f'Part {n} of {len(parts)}'
         batch = {'id': bid, 'name': label, 'made': made, 'room': s(doc.get('room'), 60), 'shelf': s(doc.get('shelf'), 60), 'books': part}
+        if yes(doc.get('wanted')):  # books from a shop's table or a list to buy: all of them go on the wishlist
+            batch['wanted'] = True
         outs.append({'shelfmark': 1, 'batch': {k: v for k, v in batch.items() if v != ''}})
     return outs, name
 
@@ -657,7 +669,7 @@ def main():
     ap.add_argument('--base', default=DEFAULT_BASE, help='where Shelfmark lives')
     ap.add_argument('--no-link', action='store_true')
     ap.add_argument('--import', dest='kind', choices=sorted(IMPORTS), help='read a Goodreads or LibraryThing export (CSV) instead')
-    ap.add_argument('--keep-unowned', action='store_true', help='with --import, keep books that aren’t in the house too')
+    ap.add_argument('--keep-unowned', action='store_true', help='with --import, put books that aren’t in the house on the wishlist')
     ap.add_argument('--details', action='store_true', help='make reading details for books already in the library, not a batch of new books')
     a = ap.parse_args()
     if a.details:
@@ -670,7 +682,7 @@ def main():
     if a.kind:
         doc, left = from_export(a.books, a.kind, a.keep_unowned)
         if left and not doc['books']:
-            raise SystemExit(f'error: every book was left out: {left}. To add them, run again with --keep-unowned.')
+            raise SystemExit(f'error: every book was left out: {left}. To put them on the wishlist, run again with --keep-unowned.')
     else:
         try:
             doc = json.loads(Path(a.books).read_text(encoding='utf-8'))
@@ -682,8 +694,10 @@ def main():
     books = [x for o in outs for x in o['batch']['books']]
     place = ' › '.join(x for x in (b.get('room'), b.get('shelf')) if x)
     print(f'{name or "Books"}: {len(books):,} book{"s" if len(books) != 1 else ""}' + (f', shelved in {place} unless they say otherwise' if place else ''))
-    if left:
-        print(f'Left out: {left}. To add them too, run again with --keep-unowned.')
+    if left and a.keep_unowned:
+        print(f'On the wishlist: {left}, not in the house.')
+    elif left:
+        print(f'Left out: {left}. To put them on the wishlist, run again with --keep-unowned.')
     shown = books[:20] if a.kind else books  # an export's whole list is in the file; here it would only be long
     for x in shown:
         by = ', '.join(x.get('authors', [])) or 'author unknown'

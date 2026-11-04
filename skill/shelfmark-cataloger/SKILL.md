@@ -36,6 +36,8 @@ Shelfmark tracks a **room** and a **shelf** for each book, free text they choose
 - For a photo of a whole bookcase, give each book its own `shelf` ("Tall bookcase, shelf 2 from top"). Count shelves the way they'd say it, and tell them the convention you used.
 - Keep shelf names consistent across batches from the same bookcase, so they group together in Shelfmark. When you have their library file (see **Questions about their library**), reuse its room and shelf names exactly as they're written there.
 
+Books they want rather than have (a photo of a shop's table or a friend's shelf, a list of books to buy) go on Shelfmark's **wishlist**: put `"wanted": true` at the top level of the batch, and leave out the room and shelf. Say so when you hand it over.
+
 Pick up anything else they mention: "these are all read" → `status: "read"`; "I finished this one last week" → `status: "read"` with that day in `finished`; "I gave up on that one" → `aside: true`; "the signed one on the left" → `signed: true`; "Sam has the Le Guin" → `loan: {"to": "Sam"}`.
 
 ## 3. Build the batch
@@ -70,6 +72,7 @@ Every field but `title` is optional. The full list is in `references/shelfmark-f
 - `rating`: 1–5.
 - `finished`: the day they finished a book they've read (YYYY-MM-DD), only if they tell you.
 - `aside`: true for a book they gave up on.
+- `wanted`: true for a book they want, not one in the house (or `"wanted": true` on the whole batch).
 - `loan`: `{"to", "since"}`.
 - `tags`, `notes`.
 - `added`: the day it joined the library (YYYY-MM-DD), only if they tell you; otherwise it's the day they add it.
@@ -112,7 +115,7 @@ If a Google Drive connector is available and they ask about their collection ("d
 2. Download it, and parse the JSON: `{"shelfmark": 1, "library": {"books": {id: book}, "seen": {…}}}`.
 3. Ignore books with `"del": 1`; they were removed.
 
-Book fields are as above, plus `check` (an unresolved flag). `aside` marks a book they gave up on (shown as Set aside). `finished` says when a read book was finished, so "what did I read this year?" is the books with `status` `read` and a `finished` day in this year. **Only read this file; never write, move or rename it.** Shelfmark syncs it and manages it. New books go in through a link. Changes to existing books (marking one read, recording a loan) are made in Shelfmark itself.
+Book fields are as above, plus `check` (an unresolved flag). A book with `"wanted": true` is on their wishlist, not in the house: "do I own it?" is no, but they meant to buy it. `aside` marks a book they gave up on (shown as Set aside). `finished` says when a read book was finished, so "what did I read this year?" is the books with `status` `read` and a `finished` day in this year. **Only read this file; never write, move or rename it.** Shelfmark syncs it and manages it. New books go in through a link. Changes to existing books (marking one read, recording a loan) are made in Shelfmark itself.
 
 ## Reading details
 
@@ -159,14 +162,14 @@ python3 scripts/make_shelfmark.py librarything_export.tsv --import librarything 
 ```
 
 It reads CSV or tab-separated files in any of the encodings these exports and spreadsheets save in, and does the mechanical part:
-- **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned").
+- **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned"). With `--keep-unowned` they come in on Shelfmark's wishlist instead.
 - **Takes the series off Goodreads titles,** so "The Name of the Wind (The Kingkiller Chronicle, #1)" matches the same book read from a spine.
 - **Turns `<br/>` in reviews into line breaks,** and keeps both the review and any private notes.
 - **Keeps the day each book was read:** Goodreads's and LibraryThing's `Date Read` become `finished`, and a LibraryThing book with one is read.
 - **Keeps reading shelves out of tags:** read, currently-reading and to-read (and LibraryThing's Your library, Wishlist and the like) become the book's status or nothing. Shelves and collections the person made become tags.
 - **Turns LibraryThing's names round:** "Le Guin, Ursula K." becomes "Ursula K. Le Guin".
 
-If it left books out, ask once, with the count: "212 are on your to-read shelf with no copy owned — leave them out?" Leaving them out is the default, so don't hold things up: hand over the file, and if they want those books too, run it again with `--keep-unowned` and hand over the new file instead.
+If it left books out, ask once, with the count: "212 are on your to-read shelf with no copy owned — put them on your Shelfmark wishlist, or leave them out?" Leaving them out is the default, so don't hold things up: hand over the file, and if they want those books on the wishlist, run it again with `--keep-unowned` and hand over the new file instead.
 
 Exports are usually large, so hand over the file rather than the link, and say how many books came through. Over 3,000, the script writes numbered files.
 

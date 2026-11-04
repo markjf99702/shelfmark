@@ -1745,7 +1745,9 @@ step('small grey text, the Reading badge, chip counts, placeholders and stars re
   for (const colorScheme of ['light', 'dark']) {
     const ctx = await context({ ...PHONE, colorScheme });
     try {
-      for (const [url, pairs] of [[base, [['ink3', 'ground'], ['ink3', 'surface'], ['ink3', 'surface2'], ['brass', 'brass-soft'], ['brass', 'surface']]], [base + 'privacy.html', [['ink3', 'ground']]]]) {
+      // ink2 on surface2 is the Set aside badge, ink2 on green-soft an author in a row ticked to mark read, brass the Reading
+      // and Wanted badges and the note on a book on the wishlist.
+      for (const [url, pairs] of [[base, [['ink3', 'ground'], ['ink3', 'surface'], ['ink3', 'surface2'], ['brass', 'brass-soft'], ['brass', 'surface'], ['ink2', 'surface2'], ['ink2', 'green-soft']]], [base + 'privacy.html', [['ink3', 'ground']]]]) {
         const page = await open(ctx, url);
         const ratios = await page.evaluate(pairs => {
           const css = getComputedStyle(document.documentElement), hex = n => css.getPropertyValue('--' + n).trim();
@@ -2579,6 +2581,104 @@ step('Mark what you\'ve read lists the unread books shelf by shelf, narrows to a
     await page.click('#stMark');
     assert.equal(await page.inputValue('#mrShelf') !== '', true, 'the shelf chosen before wasn\'t kept');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('the wishlist: its own chip, out of the counts and What to read next, found by a search with a Wanted badge, and Got it brings a book home', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx), today = await todayIn(page);
+    const CIRCE = { id: 'w1', t: 1000, title: 'Circe', authors: ['Madeline Miller'], wanted: true, added: '2026-10-01', notes: 'Sam says read it' };
+    await seed(page, [MIDDLEMARCH, PIRANESI, CIRCE]);
+    assert.deepEqual(await titles(page), ['Piranesi', 'Middlemarch'], 'a book on the wishlist is in the list');
+    assert.equal(await page.textContent('#count'), '2 books');
+    assert.deepEqual(await page.$$eval('#chips .chip', els => els.map(e => e.getAttribute('aria-label'))), ['All, 2', 'Unread, 2', 'Wishlist, 1']);
+    // A search, as in a shop: does Shelfmark have it, or was it meant to be bought?
+    await page.fill('#q', 'circe');
+    await until(async () => (await titles(page)).length === 1, 'the search');
+    assert.equal(await page.textContent('#list .bk[data-id="w1"] .bdg.wanted'), 'Wanted');
+    assert.equal(await page.textContent('#count'), '0 of 2 books · 1 on your wishlist');
+    await page.fill('#q', '');
+    await page.click('#chips [data-s="wanted"]');
+    assert.deepEqual(await titles(page), ['Circe']);
+    assert.equal(await page.$('#list .bdg.wanted'), null, 'the Wishlist view badges every book Wanted');
+    assert.equal(await page.textContent('#count'), '1 book on your wishlist');
+    // What to read next leaves it out.
+    await page.click('#nextBtn');
+    assert.equal(await page.textContent('#nxOut > .note'), 'From 2 unread books on hand.');
+    await page.click('#nxx');
+    await page.waitForTimeout(450);
+    // Add a book from the Wishlist chip: it's wanted, with no place.
+    await page.click('#addBtn');
+    assert.equal(await page.isChecked('#f-wantbox'), true, 'Add a book from the Wishlist isn\'t wanted');
+    assert.equal(await page.isVisible('#f-room'), false, 'a book wanted asks for a room');
+    await page.fill('#f-title', 'Hamnet');
+    await page.click('#f-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added \u201cHamnet\u201d to your wishlist');
+    assert.deepEqual(await titles(page), ['Circe', 'Hamnet'], 'the book added isn\'t on the wishlist');
+    // Got it: the book is in the house, added today, and its room and shelf come back to fill in.
+    await page.waitForTimeout(450);
+    await page.click('#list .bk[data-id="w1"]');
+    assert.equal(await page.isVisible('#f-want'), true);
+    assert.equal(await page.textContent('#callno'), 'On your wishlist');
+    await page.click('#f-got');
+    assert.equal(await page.isVisible('#f-want'), false);
+    await page.fill('#f-room', 'Hall');
+    await page.click('#bkx');
+    const w = await storedBook(page, 'w1');
+    assert.deepEqual([w.wanted, w.added, w.room, w.notes], [undefined, today, 'Hall', 'Sam says read it'], 'Got it didn\'t bring the book home, added today');
+    assert.deepEqual(await titles(page), ['Hamnet'], 'the book got is still on the wishlist');
+    await page.click('#chips [data-s=""]');
+    assert.equal(await page.textContent('#count'), '3 books');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('a batch of books wanted goes on the wishlist, and a book from the wishlist added from a shelf comes off it, with Undo', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...MIDDLEMARCH, shelf: 'Low' }, { id: 'w1', t: 1000, title: 'Circe', authors: ['Madeline Miller'], wanted: true, added: '2026-10-01', notes: 'Sam says read it' }]);
+    await page.goto(linkTo({ name: 'Bookshop table', wanted: true, books: [{ title: 'Hamnet', authors: ['Maggie O\u2019Farrell'] }, { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Circe', authors: ['Madeline Miller'] }] }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.textContent('#sheetTitle'), 'Add to your wishlist');
+    assert.equal(await page.isVisible('#rv-room'), false, 'books wanted are asked for a shelf');
+    assert.deepEqual(await page.$$eval('#rv > li', lis => lis.map(li => li.querySelector('.rv-tick input').checked)), [true, false, false], 'only the book neither here nor wanted is ticked');
+    assert.match(await page.textContent('#rv-n-1'), /^Already in your library — Den › Low\. Tick it to add it to your wishlist anyway\.$/);
+    assert.match(await page.textContent('#rv-n-2'), /^Already on your wishlist/);
+    assert.equal(await page.textContent('#rv-add'), 'Add 1 to your wishlist');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added 1 to your wishlist');
+    assert.deepEqual(await titles(page), ['Hamnet', 'Circe'], 'the wishlist doesn\'t show, newest first');
+    assert.equal((await stored(page)).library.books[await newId(page, 'Hamnet')].wanted, true);
+    // A shelf's photo with a book that was on the wishlist: it comes off the list into the house, keeping its notes.
+    await page.goto(linkTo({ name: 'Hall', room: 'Hall', books: [{ title: 'Circe', authors: ['Madeline Miller'], isbn: '9780316556347' }] }));
+    await page.waitForSelector('#rv-add');
+    assert.equal(await page.textContent('#rv-n-0'), 'On your wishlist. Adding it takes it off the list.');
+    assert.equal(await page.isChecked('#rv > li .rv-tick input'), true);
+    await page.click('#rv-add');
+    const c = await storedBook(page, 'w1');
+    assert.deepEqual([c.wanted, c.room, c.isbn, c.notes], [undefined, 'Hall', '9780316556347', 'Sam says read it'], 'the book on the wishlist didn\'t become the one in the house');
+    assert.equal(Object.values((await stored(page)).library.books).filter(b => b.title === 'Circe' && !b.del).length, 1, 'a second Circe was added');
+    await page.click('#toastBtn');
+    const back = await storedBook(page, 'w1');
+    assert.deepEqual([back.wanted, back.room, back.isbn], [true, undefined, undefined], 'Undo didn\'t put it back on the wishlist as it was');
+    // Added by hand, the same: the card says it's on the wishlist, and adding it takes it off.
+    await page.waitForTimeout(450);
+    await page.click('#chips [data-s=""]');
+    await page.click('#addBtn');
+    await page.fill('#f-title', 'Circe');
+    await page.fill('#f-authors', 'Madeline Miller');
+    await until(async () => (await page.textContent('#f-dup')) !== '', 'the note on a book on the wishlist');
+    assert.equal(await page.textContent('#f-dup'), 'It’s on your wishlist. Adding it here takes it off the list.');
+    await page.fill('#f-room', 'Den');
+    await page.click('#f-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added \u201cCirce\u201d to Den, off your wishlist');
+    assert.deepEqual([(await storedBook(page, 'w1')).wanted, (await storedBook(page, 'w1')).room], [undefined, 'Den']);
+    await page.click('#toastBtn');
+    assert.equal((await storedBook(page, 'w1')).wanted, true, 'Undo didn\'t put it back on the wishlist');
     assert.deepEqual(page.problems, []);
   } finally { await ctx.close(); }
 });

@@ -20,6 +20,7 @@ Use this when you can't run `scripts/make_shelfmark.py` and need to write a batc
 | `room`, `shelf` | Where the books are. A book with no room of its own gets the batch's room. It gets the batch's shelf only when it has no shelf and no room of its own, or its room is the batch's |
 | `id` | Optional. Shelfmark remembers batch ids it has added, so it can say when a link is opened twice. The script makes one from the content |
 | `made` | Optional. The day the batch was made, as `YYYY-MM-DD`. The script fills it in |
+| `wanted` | `true` for books they want rather than have (a photo of a shop's table, a list of books to buy): every book in the batch goes on Shelfmark's wishlist, with no room or shelf |
 | `books[]` | The books, in shelf order. Up to 3,000: Shelfmark takes the first 3,000 and says how many more there were, so put the rest in another batch |
 
 Each book:
@@ -38,6 +39,7 @@ Each book:
 | `room`, `shelf` | Free text, up to 60 characters each |
 | `status` | `unread` (the default), `reading`, `read` |
 | `rating` | 1–5. A half star rounds up: 4.5 is 5 |
+| `wanted` | `true` for a book they want, not one in the house: it goes on the wishlist, out of the counts, rooms and What to read next, until they tap Got it |
 | `aside` | `true` for a book they gave up: Shelfmark shows it as Set aside and doesn't suggest it. It keeps its `status` under it |
 | `finished` | The day it was finished, `YYYY-MM-DD`, for a book that's `read`. Kept only with `"status": "read"` (the script reads a day with no status as read) |
 | `loan` | `{"to": "Sam", "since": "2026-09-01"}`: lent out, the borrower up to 80 characters, with an optional ISO date |
@@ -88,4 +90,4 @@ With Drive sync on, the whole library is `My Drive › Shelfmark › Shelfmark l
   "seen": {"c20260926-…": 1790000000000}}}
 ```
 
-Books are keyed by id. `t` is when the book last changed, in milliseconds. `"del": 1` marks a removed book, kept so the removal syncs; skip those. `added` is the date it was catalogued. `check` holds an unresolved "unsure" note. Empty fields are left out. Shelfmark owns this file: read it, never write it.
+Books are keyed by id. `t` is when the book last changed, in milliseconds. `"del": 1` marks a removed book, kept so the removal syncs; skip those. `added` is the date it was catalogued. `check` holds an unresolved "unsure" note. `"wanted": true` is a book on the wishlist, not in the house. Empty fields are left out. Shelfmark owns this file: read it, never write it.

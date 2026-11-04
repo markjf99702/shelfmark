@@ -193,6 +193,7 @@ html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,c
 .bdg.reading{background:var(--brass-soft);color:var(--brass)}
 .bdg.read{background:var(--green-soft);color:var(--green)}
 .bdg.aside{background:var(--surface2);color:var(--ink2);box-shadow:inset 0 0 0 1px var(--line2)}
+.bdg.wanted{border:1px solid var(--brass);color:var(--brass)}
 .bdg.lent{background:var(--accent-soft);color:var(--accent)}
 .bdg.check{border:1px dashed var(--accent);color:var(--accent)}
 .bk-ck{font-size:13px;line-height:1.35;color:var(--accent);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
@@ -280,6 +281,8 @@ html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,c
 .flag{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:9px 11px;margin:0 0 14px;font-size:14px}
 .flag span{flex:1;min-width:12em}
 .flag.store{margin:16px 0 0}
+/* a book on the wishlist, in brass: it isn't a doubt to settle, as Check is */
+.flag.want{border-color:var(--brass);background:var(--brass-soft);color:var(--brass)}
 .ft .flag{flex-basis:100%;margin:0}
 /* on a phone, a footer note of more than a few words takes a row of its own, above the button */
 @media (max-width:520px){.ft .note.wide{flex-basis:100%;margin:0}.ft .note.wide~.btn{margin-left:auto}}
@@ -735,7 +738,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       room: str(o.room, 60), shelf: str(o.shelf, 60), status: pick(o.status, STATUSES), rating: int(o.rating, 0, 5), finished: day(o.finished),
       loan: loan, tags: list(o.tags, 20, 40), notes: para(o.notes, 4000),
       edition: str(o.edition, 120), signed: yes(o.signed), first: yes(o.first), condition: pick(o.condition, CONDITIONS),
-      added: day(o.added), check: str(o.check, 300), aside: yes(o.aside),
+      added: day(o.added), check: str(o.check, 300), aside: yes(o.aside), wanted: yes(o.wanted),
       kind: pick(o.kind, KINDS), genres: picks(o.genres, GENRES, 4), moods: picks(o.moods, MOODS, 4), pace: pick(o.pace, PACES),
       chapters: pick(o.chapters, CHAPTERS), way: pick(o.way, WAYS), blurb: str(o.blurb, 300)
     };
@@ -774,6 +777,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function wrapDoc(d) { return { shelfmark: 1, library: d }; }
   function canon(d) { return JSON.stringify(wrapDoc(d)); }
   function live(d) { var out = [], bs = d.books; for (var id in bs) if (!bs[id].del) out.push(bs[id]); return out; }
+  // The books in the house: not those on the wishlist (wanted), which stay out of the counts, rooms, shelves and What to
+  // read next. An older Shelfmark, which doesn't know wanted, shows them as books like any other.
+  function home(d) { return live(d).filter(function (b) { return !b.wanted; }); }
 
   var PARTICLES = /^(de|da|di|du|del|della|der|den|van|von|le|la|st\.?|al|el|bin|ibn|ten|ter)$/i;
   function surname(name) {
@@ -801,7 +807,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // the same rest (f:) or with none (e:).
   function indexKeys(b) { var i = isbn13(b.isbn), p = titleParts(b), k = i ? ['i:' + i] : []; k.push('h:' + p.t, p.rest ? 'f:' + p.t + '|' + p.rest : 'e:' + p.t); return k; }
   function lookupKeys(b) { var i = isbn13(b.isbn), p = titleParts(b), k = i ? ['i:' + i] : []; if (p.rest) k.push('f:' + p.t + '|' + p.rest, 'e:' + p.t); else k.push('h:' + p.t); return k; }
-  function dupIndex(d) { var ix = Object.create(null); live(d).forEach(function (b) { indexKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
+  // wanted: true for the books on the wishlist only, false for those in the house only; left out, every book.
+  function dupIndex(d, wanted) { var ix = Object.create(null); live(d).forEach(function (b) { if (wanted == null || !b.wanted === !wanted) indexKeys(b).forEach(function (k) { if (!ix[k]) ix[k] = b; }); }); return ix; }
   // Where to look a book's cover up: its ISBN when it has one, otherwise its title (before any colon) and first author.
   function coverQuery(b) {
     var i = isbn13(b.isbn);
@@ -829,18 +836,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function otherEdition(a, b) { var i = isbn13(a.isbn), j = isbn13(b.isbn); return !!(i && j && i !== j); }
 
   // A batch is what Claude hands over: {shelfmark: 1, batch: {id, name, made, room, shelf, books: [...]}}.
-  // A book's "unsure" note becomes its "check" flag, so it can be looked at later. A phone can review only so many
+  // A book's "unsure" note becomes its "check" flag, so it can be looked at later. A batch with "wanted" (books from a
+  // shop's table, or a list to buy) puts every book in it on the wishlist. A phone can review only so many
   // at once: the first 3,000 books come through, and more says how many others the batch had.
   var BATCH_MAX = 3000;
   function cleanBatch(o) {
     var b = o && o.batch ? o.batch : o;
     if (Array.isArray(b)) b = { books: b };
     if (!b || typeof b !== 'object' || !Array.isArray(b.books)) return null;
-    var books = [], more = 0;
+    var books = [], more = 0, want = yes(b.wanted) ? { wanted: true } : null;
     b.books.forEach(function (x) {
       if (!x || typeof x !== 'object') return;
       if (books.length >= BATCH_MAX) { if (str(x.title, 300)) more++; return; }
-      var c = cleanBook(Object.assign({}, x, { id: 'n', t: 0, del: 0, check: x.unsure || x.check || '' }));
+      var c = cleanBook(Object.assign({}, x, { id: 'n', t: 0, del: 0, check: x.unsure || x.check || '' }, want));
       if (c) { delete c.id; delete c.t; books.push(c); }
     });
     return {
@@ -1005,7 +1013,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
 
   // ---------- spreadsheet export ----------
-  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'finished', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'check',
+  var CSV_COLS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'format', 'pages', 'room', 'shelf', 'status', 'rating', 'finished', 'lent_to', 'lent_since', 'tags', 'notes', 'edition', 'signed', 'first_edition', 'condition', 'added', 'wanted', 'check',
     'kind', 'genres', 'moods', 'pace', 'chapters', 'how_read', 'blurb'];
   // A cell a spreadsheet could run as a formula gets a ' in front. OWASP's CSV Injection page lists the starts to defuse:
   // = + - @, tab, carriage return and line feed, and the full-width ＝ ＋ － ＠. A plain number ("-5") is left alone.
@@ -1017,7 +1025,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function toCsv(d) {
     var rows = live(d).sort(authorOrder).map(function (b) {
       return [b.title, b.sub, byLine(b), b.isbn, b.publisher, b.year, label(b.format, FORMATS), b.pages, b.room, b.shelf, label(statusOf(b), SHOWN), b.rating, b.finished,
-        b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.check,
+        b.loan && b.loan.to, b.loan && b.loan.since, (b.tags || []).join(', '), b.notes, b.edition, b.signed ? 'yes' : '', b.first ? 'yes' : '', label(b.condition, CONDITIONS), b.added, b.wanted ? 'yes' : '', b.check,
         label(b.kind, KINDS), labels(b.genres, GENRES).join(', '), labels(b.moods, MOODS).join(', '), label(b.pace, PACES), label(b.chapters, CHAPTERS), label(b.way, WAYS), b.blurb].map(csvCell).join(',');
     });
     return '﻿' + [CSV_COLS.join(',')].concat(rows).join('\r\n') + '\r\n';
@@ -1092,7 +1100,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       kind: pick(o.kind, KINDS), moods: picks(o.moods, MOODS, MOODS.length), genre: pick(o.genre, GENRES), pace: pick(o.pace, PACES),
       short: !!o.short, browse: !!o.browse, more: !!o.more };
   }
-  function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && !b.aside && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
+  function onHand(all, reread, browse) { return all.filter(function (b) { return !b.loan && !b.aside && !b.wanted && (browse || b.way !== 'browse') && (!b.status || reread && b.status === 'read' && b.rating >= 4); }); }
   var ANY_DETAILS = { kind: '', moods: [], genre: '', pace: '', short: false };
   function picky(c) { return !!(c.kind || c.moods.length || c.genre || c.pace || c.short); }
   function narrowed(c) { return !!(c.len || c.tag || c.room || picky(c)); }
@@ -1116,7 +1124,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       g = kin.groups[i]; read = kin.read[i]; best = null;
       for (j = 0; j < g.length; j++) {
         b = g[j];
-        if (b.loan || b.aside || !c.browse && b.way === 'browse' || (read ? !(c.reread && b.status === 'read' && b.rating >= 4) : b.status || kin.waits[b.id]) || !ok(b)) continue;
+        if (b.loan || b.aside || b.wanted || !c.browse && b.way === 'browse' || (read ? !(c.reread && b.status === 'read' && b.rating >= 4) : b.status || kin.waits[b.id]) || !ok(b)) continue;
         if (hasDetails(b)) { best = b; break; }
         if (!best) best = b;
       }
@@ -1525,16 +1533,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   // Undo for books just added: each is taken out the way Remove takes one out ({id, t, del: 1}), so a sync takes it out
   // of Drive and the other devices too, if it got there meanwhile. seen: the batch whose adding is undone, which is
-  // forgotten too, so opening its link again doesn't say it was added.
-  function takeBack(ids, seen) {
+  // forgotten too, so opening its link again doesn't say it was added. was: {id: book} for books on the wishlist that
+  // adding made books in the house, which go back as they were.
+  function takeBack(ids, seen, was) {
     var n = 0;
     ids.forEach(function (id) { var old = DOC.books[id]; if (old && !old.del) { DOC.books[id] = stamp({ id: id, del: 1 }, old); n++; } });
+    Object.keys(was || {}).forEach(function (id) { var cur = DOC.books[id]; if (cur && !cur.del) { DOC.books[id] = cleanBook(stamp(Object.assign({}, was[id]), cur)); n++; } });
     if (seen) delete DOC.seen[seen];
     if (!n && !seen) return;
     persist(); render(); if (n) toast(n > 1 ? 'Took them back out' : 'Took it back out');
   }
   // What Add a book starts with. The title is the search that found nothing (Add “…”), or its ISBN when it is one; the
-  // status is Reading, Read or Set aside while that chip is chosen; the room is the one chosen in the room menu, or else the room
+  // status is Reading, Read or Set aside while that chip is chosen, and from the Wishlist chip it's a book wanted (with no
+  // place); the room is the one chosen in the room menu, or else the room
   // and shelf of the last book added by hand this visit (kept in memory only), so a shelf goes in a book at a time.
   // Another room chosen in the menu wins, without that shelf.
   var handPlace = null;
@@ -1547,6 +1558,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (i) b.isbn = i; else b.title = q;
     if (UI.status === 'reading' || UI.status === 'read') b.status = UI.status;
     if (UI.status === 'aside') b.aside = true;
+    if (UI.status === 'wanted') { b.wanted = true; return b; }
     if (handPlace) { b.room = handPlace.room; b.shelf = handPlace.shelf; }
     if (room && placeKey(room) !== placeKey(b.room || '')) { b.room = room; b.shelf = ''; }
     return b;
@@ -1556,8 +1568,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // average row until they're drawn (see .bk), so a row a long way down can end up off the screen by the time a smooth
   // scroll gets there: then it's put in the middle again.
   function showAdded(id) {
-    var b = DOC.books[id], by; if (!b || b.del) return;
-    while ((by = hiddenBy(b, searchWords(UI.q), roomKey()))) { if (by === 'q') { UI.q = ''; $('q').value = ''; } else UI[by] = ''; }
+    var b = DOC.books[id], by, n = 0; if (!b || b.del) return;
+    // A book on the wishlist is shown there; one in the house, anywhere but there.
+    if (b.wanted ? UI.status !== 'wanted' : UI.status === 'wanted') UI.status = b.wanted ? 'wanted' : '';
+    while ((by = hiddenBy(b, searchWords(UI.q), roomKey())) && n++ < 5) { if (by === 'q') { UI.q = ''; $('q').value = ''; } else UI[by] = ''; }
     render();
     var r = rowOf(id), calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; if (!r) return;
     function mid(how) { try { r.scrollIntoView({ block: 'center', behavior: how }); } catch (e) { r.scrollIntoView(); } }
@@ -1628,6 +1642,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // Reading now, which says it's being read, so it has no Reading badge (and data-now, to tell it from its row below).
   function row(b, noPlace, now) {
     var m = [];
+    if (b.wanted && UI.status !== 'wanted') m.push('<span class="bdg wanted">Wanted</span>');
     if (where(b) && !noPlace) m.push('<span class="loc">' + esc(where(b)) + '</span>');
     if (b.aside) m.push('<span class="bdg aside">Set aside</span>');
     else if (b.status === 'reading' && !now) m.push('<span class="bdg reading">Reading</span>');
@@ -1652,9 +1667,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // "Porch › 1  14 books": a heading's count, in words and in plain type, can't be read as part of its name.
   function headCount(n) { return '<span class="n"><span class="sr">,</span>&nbsp;' + plural(n, 'book').replace(' ', '&nbsp;') + '</span>'; }
   // What keeps a book out of the list: 'status' (the chip chosen), 'room', 'tag' or 'q' (the search), or '' for nothing.
-  // q is the search's words, rk the room chosen's key.
+  // q is the search's words, rk the room chosen's key. A book on the wishlist shows under its own chip, and under All
+  // in a search.
   function hiddenBy(b, q, rk) {
-    if (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && statusOf(b) !== UI.status) return 'status';
+    if (b.wanted ? UI.status !== 'wanted' && (UI.status || !q.length) : UI.status === 'wanted' || (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && statusOf(b) !== UI.status)) return 'status';
     if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return 'room';
     if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return 'tag';
     if (q.length && !searchHit(b, q)) return 'q';
@@ -1711,15 +1727,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function drawList() {
     showStore();
-    var all = live(DOC), counts = { '': all.length, unread: 0, reading: 0, read: 0, aside: 0, lent: 0, check: 0 }, tags = Object.create(null), noRoom = 0;
+    // The books in the house (all) are counted; those on the wishlist have a chip of their own, and show elsewhere only in
+    // a search, so one search in a shop answers both "do I have it?" and "did I mean to buy it?". The tag menu has the tags
+    // of the books the chip shows.
+    var every = live(DOC), all = every.filter(function (b) { return !b.wanted; }), noRoom = 0, tags = Object.create(null);
+    var counts = { '': all.length, unread: 0, reading: 0, read: 0, aside: 0, lent: 0, check: 0, wanted: every.length - all.length };
     all.forEach(function (b) {
       counts[statusOf(b)]++; if (b.loan) counts.lent++; if (b.check) counts.check++;
       if (!b.room) noRoom++;
-      (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; });
     });
+    (UI.status === 'wanted' ? every.filter(function (b) { return b.wanted; }) : all).forEach(function (b) { (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; }); });
     // Each room once, however its books spell it, under the spelling most of them use (see place()).
     var at = placeIndex(all), rooms = placeNames(at.rooms);
-    if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check) UI.status = '';
+    if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check || UI.status === 'wanted' && !counts.wanted) UI.status = '';
     if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
     if (UI.room === NOROOM && !noRoom) UI.room = '';
     if (UI.tag && !tags[UI.tag]) UI.tag = '';
@@ -1731,6 +1751,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (counts.aside || UI.status === 'aside') chipDefs.push(['aside', 'Set aside']);
     if (counts.lent) chipDefs.push(['lent', 'Lent out']);
     if (counts.check) chipDefs.push(['check', 'To check']);
+    if (counts.wanted) chipDefs.push(['wanted', 'Wishlist']);
     $('chips').innerHTML = chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
     var rk = Object.keys(rooms).map(function (k) { return rooms[k]; }).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
     $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
@@ -1742,7 +1763,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var fin = $('sortSel').querySelector('option[value="finished"]'), fins = sort === 'finished' || all.some(finished);
     if (fins && !fin) $('sortSel').insertAdjacentHTML('beforeend', '<option value="finished">Recently finished</option>'); else if (!fins && fin) fin.remove();
     $('sortSel').value = sort;
-    $('tools').hidden = !all.length;
+    $('tools').hidden = !every.length;
     // A chip newly chosen is brought into view where the row scrolls sideways (on a touch screen): when To check or Lent
     // out empties, All is chosen instead, at the row's other end. A row swiped along and left is left where it is.
     var chips = $('chips'), on = chips.querySelector('[aria-pressed="true"]');
@@ -1755,7 +1776,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     $('nextBtn').hidden = !onHand(all, true, true).length;
 
     var L = $('list');
-    if (!all.length) {
+    if (!every.length) {
       $('count').textContent = '';
       // Sync is on here but hasn't brought the library yet (a new device): the library is on its way, or in Drive.
       if (D.on && clientId() && !D.last) {
@@ -1771,17 +1792,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         (!D.on && clientId() ? '<p class="away">Use Shelfmark on another device? Connect Google Drive to bring your library here.</p><div class="row"><button class="btn sm" type="button" data-act="drive">Open Settings</button></div>' : '') + '</div>';
       return;
     }
-    var vis = visible(all);
+    var vis = visible(every), wish = UI.status === 'wanted';
+    // The wishlist has no shelves: sorted by shelf, it's by author.
+    if (wish && sort === 'shelf') sort = 'author';
     var order = { author: authorOrder, title: titleOrder, shelf: shelfOrder, added: addedOrder, finished: finishedOrder }[sort] || authorOrder;
     vis.sort(order);
-    var filtered = vis.length !== all.length;
-    // "256 books · 3 lent out · 40 read, 12 this year": this year's are the books finished on a day this calendar year.
-    var year = today().slice(0, 4), thisYear = all.filter(function (b) { return finished(b).slice(0, 4) === year; }).length;
-    $('count').textContent = (filtered ? vis.length + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') +
-      (counts.read ? ' · ' + counts.read + ' read' + (thisYear ? ', ' + thisYear + ' this year' : '') : '');
+    // "256 books · 3 lent out · 40 read, 12 this year": this year's are the books finished on a day this calendar year. A
+    // search that finds books on the wishlist says how many: "2 of 256 books · 1 on your wishlist".
+    var year = today().slice(0, 4), thisYear = all.filter(function (b) { return finished(b).slice(0, 4) === year; }).length, vw = vis.filter(function (b) { return b.wanted; }).length;
+    $('count').textContent = wish ? (vw !== counts.wanted ? vw + ' of ' : '') + plural(counts.wanted, 'book') + ' on your wishlist'
+      : (vis.length - vw !== all.length ? vis.length - vw + ' of ' : '') + plural(all.length, 'book') + (counts.lent ? ' · ' + counts.lent + ' lent out' : '') +
+        (counts.read ? ' · ' + counts.read + ' read' + (thisYear ? ', ' + thisYear + ' this year' : '') : '') + (vw ? ' · ' + vw + ' on your wishlist' : '');
     if (!vis.length) {
       // A search with a chip, room or tag chosen as well: when it's the filter that hides the book, say so.
-      var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag) ? all.filter(function (b) { return searchHit(b, words); }).length : 0;
+      var words = searchWords(UI.q), elsewhere = words.length && (UI.status || UI.room || UI.tag) ? every.filter(function (b) { return searchHit(b, words); }).length : 0;
+      // Nothing in the house yet, only books on the wishlist.
+      if (!all.length && !UI.status && !words.length) {
+        L.innerHTML = '<div class="empty"><h2>No books in the house yet</h2><p>' + plural(counts.wanted, 'book is', 'books are') + ' on your wishlist.</p>' +
+          '<div class="row"><button class="btn primary" type="button" data-act="wish">Show the wishlist</button><button class="btn" type="button" data-act="add">Add a book by hand</button></div></div>';
+        return;
+      }
       L.innerHTML = '<div class="empty">' + (elsewhere
         ? '<h2>Not with these filters</h2><p>Nothing here matches “' + esc(UI.q) + '”, but ' + plural(elsewhere, 'book') + ' in your whole library ' + (elsewhere === 1 ? 'does' : 'do') + '.</p>' +
           '<div class="row"><button class="btn primary" type="button" data-act="all">Search all books</button><button class="btn" type="button" data-act="clear">Show everything</button></div>'
@@ -1796,9 +1826,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (sort === 'shelf') {
       var groups = [], g = null;
       // A shelf is one heading however its books spell it (they sort together), spelled as most of the library's books do.
-      vis.forEach(function (b) {
-        var k = keys(b).rk + '\u0001' + keys(b).sk;
-        if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
+      // Books on the wishlist that a search finds come last, under a heading of their own.
+      vis.filter(function (b) { return !b.wanted; }).concat(vis.filter(function (b) { return b.wanted; })).forEach(function (b) {
+        var k = b.wanted ? '\u0002' : keys(b).rk + '\u0001' + keys(b).sk;
+        if (!g || g.k !== k) groups.push(g = { k: k, name: b.wanted ? 'On your wishlist' : [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b);
       });
       groups.forEach(function (g) {
@@ -1935,7 +1966,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function distinct(f) { var s = Object.create(null); live(DOC).forEach(function (b) { var v = f(b); (Array.isArray(v) ? v : [v]).forEach(function (x) { if (x) s[x] = 1; }); }); return Object.keys(s).sort(COLL.compare); }
   // The rooms (or shelves) to suggest in a field: each place once, as most books spell it.
   function places(k) {
-    var c = Object.create(null), n; live(DOC).forEach(function (b) { if (b[k]) c[b[k]] = (c[b[k]] || 0) + 1; });
+    var c = Object.create(null), n; home(DOC).forEach(function (b) { if (b[k]) c[b[k]] = (c[b[k]] || 0) + 1; });
     n = placeNames(c); return Object.keys(n).map(function (x) { return n[x]; }).sort(COLL.compare);
   }
 
@@ -1946,7 +1977,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // clear: the card is a new book kept from before (see draft), and this starts it afresh.
   function bookSheet(b, isNew, clear) {
     // status is what the card shows, Set aside (aside) among them; base is the status a book set aside keeps under it.
-    var st = { status: statusOf(b), base: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
+    var st = { status: statusOf(b), base: b.status || 'unread', wanted: !!b.wanted, rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
       moods: (b.moods || []).slice(), genres: (b.genres || []).slice() };
     function seg(k, name, from, note) {
       return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' + (note || '') + '</div>';
@@ -1964,13 +1995,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
       (isNew ? '<p class="note" id="f-dup" role="status"></p>' : '') + '</div></div>' +
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
-      '<div class="fs">' +
+      // A book on the wishlist says so, with Got it for the day it comes into the house; a new one can be put there.
+      (isNew ? '' : '<div class="flag want" id="f-want"' + (st.wanted ? '' : ' hidden') + '><span><b>On your wishlist.</b> Not in the house yet.</span><button class="btn sm" type="button" id="f-got">Got it</button></div>') +
+      '<div class="fs">' + (isNew ? '<label class="opt"><input type="checkbox" id="f-wantbox"' + (st.wanted ? ' checked' : '') + '><span>On my wishlist, not in the house yet</span></label>' : '') +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + SHOWN.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
       '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">☆</button>'; }).join('') + '</div>' +
       '<label class="fl fin" id="f-finrow"><span>Finished</span><input id="f-finished" type="date" value="' + esc(b.finished || '') + '"></label></div>' +
-      '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
+      '<div class="two" id="f-place"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
       '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="next" autocomplete="off"></label></div>' +
-      '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
+      '<div class="loan" id="f-loanrow"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
       '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
       '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back</button>' +
       '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="none" autocomplete="off">' +
@@ -2007,7 +2040,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return Object.assign({}, b, {
         title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
         format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
-        room: v('f-room'), shelf: v('f-shelf'), status: st.status === 'aside' ? st.base : st.status, aside: st.status === 'aside', rating: st.rating, finished: st.status === 'read' ? v('f-finished') : '', loan: to ? { to: to, since: v('f-since') } : null,
+        room: v('f-room'), shelf: v('f-shelf'), status: st.status === 'aside' ? st.base : st.status, aside: st.status === 'aside', wanted: st.wanted, rating: st.rating, finished: st.status === 'read' ? v('f-finished') : '', loan: to ? { to: to, since: v('f-since') } : null,
         tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check,
         kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods.slice(), genres: st.genres.slice(), blurb: $('f-blurb').value
       });
@@ -2035,16 +2068,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         changed = true;
       });
       // A room or shelf typed in is saved as the other books spell that place (the field keeps what was typed).
-      if (n.room !== shown.room || n.shelf !== shown.shelf) placed(next, placeIndex(live(DOC).filter(function (x) { return x.id !== b.id; })));
+      if (n.room !== shown.room || n.shelf !== shown.shelf) placed(next, placeIndex(home(DOC).filter(function (x) { return x.id !== b.id; })));
       if (changed) { b = putBook(next) || b; shown = n; }
     }
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
     // hasn't touched since the card opened or last saved. What they're typing stays, and wins when it's saved.
     var FIELDS = ['title', 'sub', 'authors', 'isbn', 'publisher', 'year', 'pages', 'format', 'condition', 'edition', 'signed', 'first',
-      'room', 'shelf', 'status', 'aside', 'rating', 'finished', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
+      'room', 'shelf', 'status', 'aside', 'wanted', 'rating', 'finished', 'loan', 'tags', 'notes', 'added', 'check', 'kind', 'way', 'pace', 'chapters', 'moods', 'genres', 'blurb'];
     function put(k, x) {
       if (k === 'status') { st.base = x || 'unread'; if (st.status !== 'aside') st.status = st.base; }
       else if (k === 'aside') st.status = x ? 'aside' : st.base;
+      else if (k === 'wanted') st.wanted = !!x;
       else if (k === 'rating') st.rating = x || 0;
       else if (k === 'check') st.check = x || '';
       else if (k === 'kind' || k === 'way' || k === 'pace' || k === 'chapters') st[k] = x || '';
@@ -2081,13 +2115,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     function head() {
       var t = str(v('f-title'), 300) || 'Untitled';
-      $('callno').textContent = [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
+      $('callno').textContent = st.wanted ? 'On your wishlist' : [str(v('f-room'), 60), str(v('f-shelf'), 60)].filter(Boolean).join(' › ') || (isNew ? 'New book' : 'Not shelved yet');
       $('bkcv').innerHTML = cover({ title: t, isbn: v('f-isbn'), authors: list(v('f-authors'), 12, 120, true) }, 'lg', true);
     }
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
       panel.querySelectorAll('#f-rating button').forEach(function (x) { var on = +x.dataset.v <= st.rating; x.classList.toggle('on', on); x.textContent = on ? '★' : '☆'; x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
-      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); $('f-finrow').hidden = st.status !== 'read'; drawCount();
+      $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim() || st.wanted; $('f-finrow').hidden = st.status !== 'read'; drawCount();
+      // A book on the wishlist has no place in the house yet, and isn't lent out.
+      $('f-place').hidden = $('f-loanrow').hidden = st.wanted; if ($('f-want')) $('f-want').hidden = !st.wanted;
+      if ($('f-add')) $('f-add').textContent = st.wanted ? 'Add to wishlist' : 'Add to library';
+      if ($('f-del')) $('f-del').textContent = st.wanted ? 'Remove from wishlist' : 'Remove from library';
       ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
       panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });
       // A genre chosen is a button that takes it off (it isn't a choice pressed in or out, as a mood is).
@@ -2097,12 +2135,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('f-genre').hidden = st.genres.length >= 4;
       $('f-rdsum').textContent = [label(st.kind, KINDS), st.way === 'dip' || st.way === 'browse' ? label(st.way, WAYS) : '', label(st.genres[0], GENRES), label(st.moods[0], MOODS)].filter(Boolean).join(' · ');
     }
-    // Adding a book that's here already says so, and where the first copy is, as the title, author or ISBN is typed.
+    // Adding a book that's here already says so, and where the first copy is, as the title, author or ISBN is typed; one
+    // on the wishlist says adding it takes it off (see Add to library). Put on the wishlist, a book that's here says so.
     var dupT;
     function drawDup() {
       clearTimeout(dupT); if (!isNew || !panel.isConnected) return;
-      var n = read(), d = n && findDup(dupIndex(DOC), n), at = d && where(d);
-      $('f-dup').textContent = !d ? '' : otherEdition(d, n) ? 'You already have another edition' + (at ? ' — ' + at : '') + '.' : 'You already have this' + (at ? ' — ' + at : '') + '. Add another copy?';
+      var n = read(), d = n && findDup(dupIndex(DOC, false), n), w = n && !d && findDup(dupIndex(DOC, true), n), at = d && where(d);
+      $('f-dup').textContent = w ? (st.wanted ? 'It’s on your wishlist already.' : 'It’s on your wishlist. Adding it here takes it off the list.') : !d ? ''
+        : st.wanted ? 'You already have ' + (otherEdition(d, n) ? 'another edition' : 'this') + (at ? ' — ' + at : '') + '. Put it on your wishlist anyway?'
+        : otherEdition(d, n) ? 'You already have another edition' + (at ? ' — ' + at : '') + '.' : 'You already have this' + (at ? ' — ' + at : '') + '. Add another copy?';
     }
     // Notes keep 4,000 characters (an older Shelfmark open in another tab would cut longer ones as it synced): near that,
     // a count under them says how many are used.
@@ -2216,21 +2257,31 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (clear) $('f-clear').addEventListener('click', function () { done = true; clear(); });
     // Added, the book is shown in the list (see showAdded), and the toast says where it's shelved, or where the copy
     // already here is, with Undo. From the keyboard, Undo takes the keyboard, and then it goes to the book.
+    // A book on the wishlist added to the house is that book from then on: the one on the wishlist takes what's typed here
+    // (keeping its notes and tags) and comes off the list. Undo puts it back as it was.
     if (isNew) $('f-add').addEventListener('click', function (e) {
       var n = read();
       if (!n) { $('f-title').focus(); toast('A book needs a title'); return; }
       if (!n.added) n.added = today();
-      placed(n, placeIndex(live(DOC)));
-      var dup = findDup(dupIndex(DOC), n);
+      if (n.wanted) { delete n.room; delete n.shelf; delete n.loan; } else placed(n, placeIndex(home(DOC)));
+      var dup = findDup(dupIndex(DOC, false), n), wish = !n.wanted && !dup && findDup(dupIndex(DOC, true), n), was = {};
+      if (wish) { was[wish.id] = wish; n = Object.assign({}, wish, n, { id: wish.id, wanted: false }); }
       done = true; draft = null;
       n = putBook(n); closeSheet(); if (!n) return;
-      handPlace = { room: n.room || '', shelf: n.shelf || '' };
+      if (!n.wanted) handPlace = { room: n.room || '', shelf: n.shelf || '' };
       showAdded(n.id);
       if (STORE) { toast(STORE_TOAST[STORE]); return; }
       var at = clip(where(dup || n)), stop = /…$/.test(at) ? '' : '.', id = n.id;
-      toast(!dup ? 'Added “' + short(n.title) + '”' + (at ? ' to ' + at : '') : 'Added another ' + (otherEdition(dup, n) ? 'edition' : 'copy') + (at ? '. The first is in ' + at + stop : ' of “' + short(n.title) + '”'),
-        'Undo', function () { takeBack([id]); return $('addBtn'); }, !e.detail, function () { return rowOf(id); });
+      toast(n.wanted ? 'Added “' + short(n.title) + '” to your wishlist' : wish ? 'Added “' + short(n.title) + '”' + (at ? ' to ' + at : '') + ', off your wishlist'
+        : !dup ? 'Added “' + short(n.title) + '”' + (at ? ' to ' + at : '') : 'Added another ' + (otherEdition(dup, n) ? 'edition' : 'copy') + (at ? '. The first is in ' + at + stop : ' of “' + short(n.title) + '”'),
+        'Undo', function () { takeBack(wish ? [] : [id], '', was); return $('addBtn'); }, !e.detail, function () { return rowOf(id); });
     });
+    // Got it: the book on the wishlist is in the house now, added today. Its room and shelf come back to fill in.
+    if ($('f-got')) $('f-got').addEventListener('click', function (e) {
+      st.wanted = false; $('f-added').value = today(); drawState(); head(); later();
+      if (!e.detail) refocus($('f-room'));
+    });
+    if ($('f-wantbox')) $('f-wantbox').addEventListener('change', function () { st.wanted = this.checked; drawState(); head(); drawDup(); });
     else $('f-del').addEventListener('click', function (e) { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id, !e.detail); });
     head(); growTitle(); drawState();
     if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
@@ -2364,11 +2415,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var twin = null;
       lookupKeys(b).forEach(function (k) { if (inBatch[k] != null && twin == null) twin = inBatch[k]; });
       indexKeys(b).forEach(function (k) { if (inBatch[k] == null) inBatch[k] = i; });
-      return { b: b, dup: null, near: null, twin: twin, on: true, mine: false, ticked: false };
+      return { b: b, dup: null, wish: null, near: null, twin: twin, on: true, mine: false, ticked: false };
     });
+    // A batch of books wanted (a shop's table, a list to buy) goes on the wishlist, with no place in the house.
+    var wishes = rows.every(function (r) { return r.b.wanted; }), mixed = !wishes && rows.some(function (r) { return r.b.wanted; });
     // Shelve them in starts out as the library spells the batch's room and shelf.
-    var home = placeIndex(live(DOC)), room = place(batch.room, home.rooms);
-    batch = Object.assign({}, batch, { room: room, shelf: place(batch.shelf, home.shelves[placeKey(room)]) });
+    var house = placeIndex(home(DOC)), room = place(batch.room, house.rooms);
+    batch = Object.assign({}, batch, { room: room, shelf: place(batch.shelf, house.shelves[placeKey(room)]) });
     var bulk = { room: batch.room, shelf: batch.shelf }, nc = rows.filter(function (r) { return r.b.check; }).length, readAll = false;
     // Counts here can run into thousands, so they're written like the 3,000 in the note about a batch too big to take.
     function num(n) { return n.toLocaleString('en-US'); }
@@ -2376,9 +2429,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // while it's open, and for a row whose title or author is changed, a moment after the typing stops. On a sync, a row
     // the person has ticked, unticked or edited (mine) keeps its tick; after an edit, one they haven't ticked or unticked
     // follows what the edit found. A book that may be another volume of a set already here (near) stays ticked, with a note.
+    // A book on the wishlist (wish) stays ticked, to come off it into the house, unless it's wanted again.
     function check(only) {
-      var ix = dupIndex(DOC);
-      (only || rows).forEach(function (r) { r.dup = findDup(ix, r.b); r.near = r.dup ? null : nearDup(ix, r.b); if (only ? !r.ticked : !r.mine) r.on = !r.dup; });
+      var ix = dupIndex(DOC, false), wx = dupIndex(DOC, true);
+      (only || rows).forEach(function (r) {
+        r.dup = findDup(ix, r.b); r.wish = r.dup ? null : findDup(wx, r.b); r.near = r.dup || r.wish ? null : nearDup(ix, r.b);
+        if (only ? !r.ticked : !r.mine) r.on = !r.dup && !(r.wish && r.b.wanted);
+      });
     }
     function head() {
       var nd = rows.filter(function (r) { return r.dup; }).length, seenAt = got(DOC.seen, batch.id);
@@ -2389,31 +2446,33 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // What the batch says of the book, as its row in the list will: Read, Reading or Set aside (Read, with "I've read all
     // of these" ticked, for a book it doesn't say any of), stars and a loan, and then a signed copy, a first edition and the format.
     function stLine(r) {
-      var b = r.b, st = b.aside ? 'aside' : b.status || (readAll ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
+      var b = r.b, st = b.aside ? 'aside' : b.status || (readAll && !b.wanted ? 'read' : ''), m = [], ed = [b.signed ? 'Signed' : '', b.first ? 'First edition' : '', label(b.format, FORMATS)].filter(Boolean).join(' · ');
       if (st === 'aside') m.push('<span class="bdg aside">Set aside</span>'); else if (st === 'reading') m.push('<span class="bdg reading">Reading</span>'); else if (st === 'read') m.push('<span class="bdg read">Read' + (b.finished ? ' · ' + esc(fmtDay(b.finished)) : '') + '</span>');
       if (b.rating) m.push(stars(b.rating));
       if (b.loan) m.push('<span class="bdg lent">Lent to ' + esc(b.loan.to) + (b.loan.since ? ' · ' + esc(fmtDay(b.loan.since)) : '') + '</span>');
       if (ed) m.push('<span class="rv-ed">' + esc(ed) + '</span>');
+      if (b.wanted && mixed) m.unshift('<span class="bdg wanted">Wanted</span>');
       return m.join('');
     }
     // The row's ISBN, year, publisher and where it will go, as Shelve them in now says: its place is left out when that's
     // the place Shelve them in names, which says it already.
     function meta(r) {
-      var b = r.b, to = shelve(Object.assign({}, b), bulk, batch), at = where(to);
+      var b = r.b, to = b.wanted ? b : shelve(Object.assign({}, b), bulk, batch), at = b.wanted ? '' : where(to);
       if (placeKey(to.room) === placeKey(bulk.room) && placeKey(to.shelf) === placeKey(bulk.shelf)) at = '';
       return [b.isbn, b.year, b.publisher, at].filter(Boolean).join(' · ');
     }
     function addWhat(t) { return 'Add “' + (str(t, 300) || 'Untitled') + '”'; }
     function have(r) {
+      if (r.wish) return r.b.wanted ? '<b>Already on your wishlist</b>. Tick it to add it again.' : '<b>On your wishlist</b>. Adding it takes it off the list.';
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
       if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
       if (!d) return '';
-      return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (otherEdition(d, r.b) ? 'this one too.' : 'another copy.');
+      return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (r.b.wanted ? 'it to your wishlist anyway.' : otherEdition(d, r.b) ? 'this one too.' : 'another copy.');
     }
     check();
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add books from Claude</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">' + (wishes ? 'Add to your wishlist' : 'Add books from Claude') + '</h2><button class="btn sm quiet" type="button" id="rvx">Not now</button></div><div class="bd">' +
       '<div id="rv-head">' + head() + '</div>' +
-      '<div class="bulk"><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
+      '<div class="bulk"' + (wishes ? ' hidden' : '') + '><span class="lbl">Shelve them in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-shelf" list="dl-shelf" placeholder="Shelf" value="' + esc(batch.shelf) + '" autocomplete="off"></div>' +
       '<p class="note" id="rv-bulknote">' + (batch.room || batch.shelf ? 'For any book Claude didn’t place. Change it to move them all.' : 'Leave blank to keep what each book says.') + '</p>' +
       '<label class="opt"><input type="checkbox" id="rv-read"><span>I’ve read all of these</span></label></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
@@ -2428,7 +2487,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           (b.blurb ? '<span class="rv-blurb">' + esc(b.blurb) + '</span>' : '') +
           '<span class="rv-meta"' + (mt ? '>' + esc(mt) : ' hidden>') + '</span>' +
           (b.check ? '<span class="rv-flag" id="rv-c-' + i + '">Check: ' + esc(b.check) + '</span>' : '') +
-          '<span class="rv-dup rv-have" id="rv-n-' + i + '"' + (r.dup || r.near ? '' : ' hidden') + '>' + have(r) + '</span>' +
+          '<span class="rv-dup rv-have" id="rv-n-' + i + '"' + (r.dup || r.near || r.wish ? '' : ' hidden') + '>' + have(r) + '</span>' +
           (r.twin != null ? '<span class="rv-dup" id="rv-t-' + i + '">Also in this list above — a second copy?</span>' : '') +
           '</div></li>';
       }).join('') + '</ul></div>' +
@@ -2438,16 +2497,17 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (fromLink && !added) setTimeout(function () { if ($('sheet').hidden) toast('Nothing added. Tap the link in Claude again when you’re ready.'); }, 0);
     });
     var added = false;
+    // "Add 5 books", "Add 3 to your wishlist", or for a batch of both "Add 3 books, 2 to your wishlist".
     function count() {
-      var n = rows.filter(function (r) { return r.on; }).length;
-      $('rv-add').textContent = n ? 'Add ' + num(n) + (n === 1 ? ' book' : ' books') : 'Add'; $('rv-add').disabled = !n;
+      var on = rows.filter(function (r) { return r.on; }), n = on.length, w = on.filter(function (r) { return r.b.wanted; }).length, k = n - w;
+      $('rv-add').textContent = !n ? 'Add' : !k ? 'Add ' + num(w) + ' to your wishlist' : 'Add ' + num(k) + (k === 1 ? ' book' : ' books') + (w ? ', ' + num(w) + ' to your wishlist' : ''); $('rv-add').disabled = !n;
       $('rv-n').textContent = n === rows.length ? '' : num(rows.length - n) + ' left out';
     }
     // A row's tick and its note on a book already here, drawn again.
     function drawHave(li) {
       var r = rows[+li.dataset.i], h = li.querySelector('.rv-have');
       li.querySelector('.rv-tick input').checked = r.on; li.classList.toggle('off', !r.on);
-      h.innerHTML = have(r); h.hidden = !r.dup && !r.near;
+      h.innerHTML = have(r); h.hidden = !r.dup && !r.near && !r.wish;
     }
     sheetRefresh = function (changed) {
       if (changed) { check(); panel.querySelectorAll('#rv > li').forEach(drawHave); count(); }
@@ -2492,24 +2552,32 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function (e) {
-      var now = Date.now(), on = today(), n = 0, ids = [], checks = 0, home = placeIndex(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
+      var now = Date.now(), on = today(), n = 0, w = 0, ids = [], was = {}, checks = 0, ix = placeIndex(home(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
         // goes where the library already spells its room and shelf, or where a book before it in the batch went. "I've
-        // read all of these" marks Read each book the batch doesn't say is being read, read or set aside.
-        var b = cleanBook(placed(shelve(Object.assign({}, r.b, { id: uid(), t: now - i, added: r.b.added || on }, read && !r.b.status && !r.b.aside ? { status: 'read' } : null), bulk, batch), home)); if (!b) return;
-        DOC.books[b.id] = b; n++; ids.push(b.id); if (b.check) checks++; countPlace(home, b);
+        // read all of these" marks Read each book the batch doesn't say is being read, read or set aside. A book wanted
+        // goes on the wishlist, with no place. One on the wishlist that's in the house now is that book from then on: it
+        // takes the batch's (keeping its notes and tags), added today, and comes off the list.
+        var t = now - i, wish = !r.b.wanted && r.wish && DOC.books[r.wish.id], b;
+        if (wish && (wish.del || !wish.wanted)) wish = null;
+        if (r.b.wanted) b = cleanBook(Object.assign({}, r.b, { id: uid(), t: t, added: r.b.added || on }));
+        else b = cleanBook(placed(shelve(Object.assign({}, wish, r.b, { id: wish ? wish.id : uid(), t: wish ? Math.max(t, wish.t + 1) : t, added: r.b.added || on, wanted: false }, read && !r.b.status && !r.b.aside ? { status: 'read' } : null), bulk, batch), ix));
+        if (!b) return;
+        if (wish) was[wish.id] = wish; else ids.push(b.id);
+        DOC.books[b.id] = b; if (b.wanted) w++; else { n++; countPlace(ix, b); } if (b.check) checks++;
       });
-      if (!n) return;
+      if (!n && !w) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); added = true; closeSheet();
-      UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
+      UI.q = ''; UI.status = n ? '' : 'wanted'; UI.room = ''; UI.tag = ''; $('q').value = ''; UI.sort = 'added'; render();
       window.scrollTo(0, 0);
-      // Undo takes them all back out, and forgets the link was used if this was its first time.
+      // Undo takes them all back out (and puts books back on the wishlist), and forgets the link was used if this was its
+      // first time.
       if (!saved) toast(STORE_TOAST[STORE]);
-      else toast('Added ' + plural(n, 'book') + ' — newest first' + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
-        function () { takeBack(ids, seen); return $('importBtn'); }, !e.detail, function () { return rowOf(ids[0]); });
+      else toast('Added ' + (n ? plural(n, 'book') + (w ? ' and ' + w + ' to your wishlist' : '') + ' — newest first' : w + ' to your wishlist') + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
+        function () { takeBack(ids, seen, was); return $('importBtn'); }, !e.detail, function () { return rowOf(ids[0] || Object.keys(was)[0]); });
     });
     count();
     return panel;
@@ -2671,9 +2739,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function markSheet() {
     var ticked = Object.create(null), groups = [], total = 0;
     function group() {
-      var at = placeIndex(live(DOC)), g = null, here = Object.create(null);
+      var at = placeIndex(home(DOC)), g = null, here = Object.create(null);
       groups = [];
-      live(DOC).filter(function (b) { return statusOf(b) === 'unread'; }).sort(shelfOrder).forEach(function (b) {
+      home(DOC).filter(function (b) { return statusOf(b) === 'unread'; }).sort(shelfOrder).forEach(function (b) {
         var k = keys(b).rk + '\u0001' + keys(b).sk;
         if (!g || g.k !== k) groups.push(g = { k: k, name: [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
         g.bs.push(b); here[b.id] = k;
@@ -2756,7 +2824,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // reading details, and of those, the ones the books of the kind chosen have.
     // all and kin, when given, are the library and its kinOf, worked out once for the choices and the deal together.
     function drawCrit(all, kin) {
-      var has = nextOffers(all || live(DOC), c, kin); fitNext(c, has);
+      var has = nextOffers(all || home(DOC), c, kin); fitNext(c, has);
       var fit = has.fit, moods = MOODS.filter(function (m) { return fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return fit.genres[g[0]]; });
       var tk = Object.keys(fit.tags).sort(COLL.compare), rk = Object.keys(fit.rooms).sort(COLL.compare), lens = LENGTHS.filter(function (o) { return !o[0] || fit.lens[o[0]]; }), favs = has.reread;
       var html = seg('kind', 'Fiction or not', KINDS, fit.kinds) +
@@ -2790,7 +2858,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // Pick again works through every match before repeating one (see nextDeal). Once round says it's going round
     // again, every deal says so, until a choice changes.
     function dealNow(all, kin) {
-      var r = nextDeal(all || live(DOC), c, Math.random, dealt, Date.now(), kin);
+      var r = nextDeal(all || home(DOC), c, Math.random, dealt, Date.now(), kin);
       deal = r.deal; dealt = r.state; round = dealt.round; top = 0;
       drawOut();
       clearTimeout(sayT); $('nxSay').textContent = spoken();
@@ -2815,7 +2883,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
           ? '<h3>' + (chosen(c).length > 1 ? 'Nothing matches all of these' : 'Nothing matches that') + '</h3>' + (said ? '<p>' + esc(said) + '</p>' : '') +
             (deal.easings.length ? '<div class="row nx-ease">' + deal.easings.map(function (e) { return '<button class="btn sm" type="button" data-ease="' + e.k + '">' + labels[e.k] + ' · ' + plural(e.n, 'book') + '</button>'; }).join('') + '</div>' : '') +
             '<button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
-          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read' + (live(DOC).some(function (b) { return b.aside; }) ? ', set aside' : '') + ' or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
+          : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read' + (home(DOC).some(function (b) { return b.aside; }) ? ', set aside' : '') + ' or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
         return;
       }
       var t = p[top], b = t.b, dl = detailHtml(b);
@@ -2835,10 +2903,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         }).join('') + '</div>' : '') +
         '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' +
         // With no book marked read yet (a library that came in unread), the pick could well be one already read.
-        (live(DOC).some(function (x) { return statusOf(x) === 'read'; }) ? '' : '<div class="nx-ask nx-mark"><p class="note">No book here is marked read yet, so this could be one you’ve read.</p>' +
+        (home(DOC).some(function (x) { return statusOf(x) === 'read'; }) ? '' : '<div class="nx-ask nx-mark"><p class="note">No book here is marked read yet, so this could be one you’ve read.</p>' +
           '<button class="btn sm" type="button" id="nxMark">Mark what you’ve read, a shelf at a time</button></div>') + ask;
     }
-    function both() { var all = live(DOC), kin = kinOf(all); drawCrit(all, kin); dealNow(all, kin); }
+    function both() { var all = home(DOC), kin = kinOf(all); drawCrit(all, kin); dealNow(all, kin); }
     function changed() { PREF.next = c; savePrefs(); dealt = {}; round = 0; both(); }
     // After Pick again, a pick drawn where little or none of it shows (More choices open, a small phone, the sheet
     // scrolled past it) is brought up to just under the heading, so the book that changed is in view. A tap on a choice
@@ -2924,7 +2992,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var all = live(DOC);
     openSheet('<div class="hd"><h2 id="sheetTitle">Settings</h2><button class="btn sm quiet" type="button" id="stx">Done</button></div><div class="bd">' +
       '<section class="sect" id="driveSect"></section>' +
-      (all.some(function (b) { return statusOf(b) === 'unread'; }) ? '<section class="sect"><h3>Books you’ve read</h3><p>Tick the ones you’ve read, a shelf at a time, and mark them all read at once.</p>' +
+      (all.some(function (b) { return statusOf(b) === 'unread' && !b.wanted; }) ? '<section class="sect"><h3>Books you’ve read</h3><p>Tick the ones you’ve read, a shelf at a time, and mark them all read at once.</p>' +
         '<div class="row"><button class="btn" type="button" id="stMark">Mark what you’ve read</button></div></section>' : '') +
       '<section class="sect"><h3>Covers and details from Open Library</h3>' +
       '<label class="opt"><input type="checkbox" id="stLook" aria-label="Show covers and look up details on Open Library" aria-describedby="stLookTx"' + (PREF.lookups ? ' checked' : '') + '><span id="stLookTx">Show covers, and look up a book’s details by its ISBN. Covers are found by ISBN, or by title and author for books without one, so a cover may show a different edition from yours. The first time, they fill in over a minute or so. This sends those to openlibrary.org, and nothing else. Off unless you turn it on, on each device.</span></label></section>' +
@@ -3228,6 +3296,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     else if (a.dataset.act === 'import') importSheet();
     else if (a.dataset.act === 'drive') openSettings();
     else if (a.dataset.act === 'sync') syncNow(); // signing in to Google has to happen inside the tap
+    else if (a.dataset.act === 'wish') { UI.status = 'wanted'; render(); }
     else if (a.dataset.act === 'clear') { UI.q = ''; UI.status = ''; UI.room = ''; UI.tag = ''; $('q').value = ''; render(); }
     // The search stays, and the filters go. The keyboard goes to the first book found (the button has gone).
     else if (a.dataset.act === 'all') { UI.status = ''; UI.room = ''; UI.tag = ''; render(); var f = $('list').querySelector('.bk'); if (f && !e.detail) try { f.focus(); } catch (x) { } }

@@ -117,6 +117,8 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(['read', 'reading', '', 'unread'].map(status => S.cleanBook({ id: 'a', title: 'T', status, finished: '2026-03-14' }).finished), ['2026-03-14', undefined, undefined, undefined],
     'a finished day is kept for a book that’s read, and dropped for one being read again or unread');
   eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: 'last March' }).finished, undefined, 'and a finished day that isn’t a day is dropped');
+  eq([true, 'yes', false, 'no'].map(wanted => S.cleanBook({ id: 'a', title: 'T', wanted }).wanted), [true, true, undefined, undefined], 'a book wanted is on the wishlist, yes or no');
+  eq(S.cleanBatch({ batch: { wanted: true, books: [{ title: 'A' }, { title: 'B', wanted: false }] } }).books.map(b => b.wanted), [true, true], 'a batch of books wanted puts every one on the wishlist');
   // A book set aside keeps the status it had, with aside set, and shows as Set aside.
   eq([true, 'yes', 1, false, 'no', 0].map(aside => S.cleanBook({ id: 'a', title: 'T', status: 'reading', aside })).map(b => [b.status, b.aside || false, S.statusOf(b)]),
     [['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', false, 'reading'], ['reading', false, 'reading'], ['reading', false, 'reading']], 'a book set aside keeps its status under it, and shows as Set aside');
@@ -200,7 +202,8 @@ function randomDoc(r, n) {
 // time, so there the book shows as it did before; synced back, the copy with the fields wins (newer()'s field count at
 // the same time) and they come back whole. This needs the repository's history; without it, it says so.
 const NEWER = [{ id: 'f', t: 5, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5, finished: '2026-03-14' },
-  { id: 'g', t: 5, title: 'Ulysses', authors: ['James Joyce'], status: 'reading', aside: true }, { id: 'h', t: 5, title: 'Moby-Dick', authors: ['Herman Melville'], aside: true }];
+  { id: 'g', t: 5, title: 'Ulysses', authors: ['James Joyce'], status: 'reading', aside: true }, { id: 'h', t: 5, title: 'Moby-Dick', authors: ['Herman Melville'], aside: true },
+  { id: 'i', t: 5, title: 'Circe', authors: ['Madeline Miller'], wanted: true }];
 for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'when reading details came']]) {
   let old = '';
   try { old = execFileSync('git', ['show', rev + ':index.html'], { cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1e8 }); } catch (e) { }
@@ -209,13 +212,20 @@ for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'w
   const lib = S.cleanDoc({ books: NEWER });
   const there = O.cleanDoc(JSON.parse(S.canon(lib)));
   eq(O.live(there).map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]), NEWER.map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]),
-    'Shelfmark as it was ' + when + ' opens a library with finished days and books set aside, each book as it was, at the same time');
+    'Shelfmark as it was ' + when + ' opens a library with finished days, books set aside and a wishlist, each book as it was, at the same time');
   // It writes its copy back to Drive, with what it knows; here the two are merged, either way round.
   const back = S.cleanDoc(JSON.parse(O.canon(O.mergeDocs(there, O.cleanDoc(JSON.parse(S.canon(lib)))))));
   eq([S.mergeDocs(lib, back), S.mergeDocs(back, lib)], [lib, lib], 'and its copy, synced back, leaves them whole');
 }
 
 // ---------- duplicates ----------
+{
+  // The books in the house and those on the wishlist are looked up apart, so a book wanted isn't one "already here".
+  const d = S.cleanDoc({ books: [{ id: 'h', t: 1, title: 'Emma', authors: ['Jane Austen'] }, { id: 'w', t: 1, title: 'Circe', authors: ['Madeline Miller'], wanted: true }] });
+  const find = (wanted, title, author) => { const b = S.findDup(S.dupIndex(d, wanted), { title, authors: [author] }); return b && b.id; };
+  eq([find(false, 'Circe', 'Madeline Miller'), find(true, 'Circe', 'Madeline Miller'), find(true, 'Emma', 'Jane Austen'), find(undefined, 'Circe', 'Madeline Miller')], [null, 'w', null, 'w'], 'the house and the wishlist are looked up apart, or together');
+  eq(S.nextPool(S.live(d), S.cleanNext({})).map(b => b.id), ['h'], 'a book on the wishlist isn’t suggested');
+}
 {
   eq(S.surname('Ursula K. Le Guin'), 'Le Guin', 'surname keeps particles');
   eq(S.surname('Martin Luther King Jr.'), 'King', 'surname drops Jr.');
@@ -1080,6 +1090,10 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       execFileSync('python3', [py, finIn, '--out', finDir, '--no-link'], { encoding: 'utf8' });
       const fins = (await S.parseIncoming(fs.readFileSync(path.join(finDir, fs.readdirSync(finDir)[0]), 'utf8'))).batch.books.map(b => [b.status, b.finished, b.aside]);
       eq(fins, [['read', '2026-03-14', undefined], ['read', '2026-04-01', undefined], ['reading', undefined, true]], 'the script keeps the day a book was finished, as Shelfmark does, and a book set aside');
+      const wantIn = path.join(tmp, 'want.json'), wantDir = fs.mkdtempSync(path.join(tmp, 'want-'));
+      fs.writeFileSync(wantIn, JSON.stringify({ name: 'Bookshop table', wanted: 'yes', books: [{ title: 'Circe' }, { title: 'Hamnet' }] }));
+      execFileSync('python3', [py, wantIn, '--out', wantDir, '--no-link'], { encoding: 'utf8' });
+      eq((await S.parseIncoming(fs.readFileSync(path.join(wantDir, fs.readdirSync(wantDir)[0]), 'utf8'))).batch.books.map(b => b.wanted), [true, true], 'a batch of books wanted, from the script, puts every one on the wishlist');
       // Text longer than Shelfmark keeps, and authors or tags past its limits, are cut or dropped with a warning, so the
       // end of a long review isn't lost unseen.
       const longIn = path.join(tmp, 'long.json'), longDir = fs.mkdtempSync(path.join(tmp, 'long-'));
@@ -1197,15 +1211,17 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       eq([byTitle.Mort.status, byTitle.Mort.tags, byTitle.Mort.isbn, byTitle.Mort.check], ['reading', ['humor'], undefined, undefined], 'currently-reading is a status, and empty ="" cells are no ISBN');
       eq([byTitle['Bought, Not Read Yet'].status, byTitle['Bought, Not Read Yet'].tags, byTitle['Bought, Not Read Yet'].authors], [undefined, ['classics'], ['Bo Owner', 'Kurt Vonnegut, Jr.', 'Neil Gaiman']],
         'a to-read book with a copy owned comes in unread, its additional authors whole');
-      check(/Left out: 1 on the to-read shelf with no copy owned\. To add them too, run again with --keep-unowned\./.test(grOut.said), 'the script says how many it left out, and how to add them');
+      check(/Left out: 1 on the to-read shelf with no copy owned\. To put them on the wishlist, run again with --keep-unowned\./.test(grOut.said), 'the script says how many it left out, and how to add them');
       const grAll = await imported(grIn, 'goodreads', '--keep-unowned');
-      eq([grAll.batch.books.length, grAll.batch.books[2].title, /Left out/.test(grAll.said)], [5, 'Wishful Thinking', false], 'with --keep-unowned they come in too');
+      eq([grAll.batch.books.length, grAll.batch.books[2].title, grAll.batch.books.map(b => !!b.wanted), /Left out/.test(grAll.said), /On the wishlist: 1 on the to-read shelf/.test(grAll.said)],
+        [5, 'Wishful Thinking', [false, false, true, false, false], false, true], 'with --keep-unowned they come in on the wishlist, and only they do');
       const ltOut = await imported(ltIn, 'librarything');
       eq(ltOut.batch.books, [
         { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, status: 'read', rating: 5, finished: '2024-12-01', tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice' },
         { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', status: 'reading' },
       ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist, keeps its own collections out of tags, and a Date Read makes a book read on that day');
       check(/Left out: 1 in Wishlist or Read but unowned and not in Your library/.test(ltOut.said), 'and says what it left out');
+      eq((await imported(ltIn, 'librarything', '--keep-unowned')).batch.books.map(b => [b.title, !!b.wanted]), [['The Hobbit', false], ['Slaughterhouse-Five', false], ['Le Petit Prince', true]], 'and with --keep-unowned, its Wishlist is the wishlist');
       // The point of it all: imported books are found as books already on the shelves.
       const shelves = S.dupIndex(S.cleanDoc({ books: [{ id: 'w', t: 1, title: 'The Name of the Wind', authors: ['Patrick Rothfuss'] }, { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] }] }));
       eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');
@@ -1294,7 +1310,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     { id: 'a', t: 1, title: 'Zed, "the" book', authors: ['Amy Zane'], tags: ['x', 'y'], notes: 'line one\nline two', loan: { to: 'Sam', since: '2026-02-03' } },
     { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true, finished: '2026-03-14' },
     { id: 'c', t: 1, del: 1 },
-    { id: 'd', t: 1, title: 'Ulysses', authors: ['Zoe Zed'], status: 'reading', aside: true }
+    { id: 'd', t: 1, title: 'Ulysses', authors: ['Zoe Zed'], status: 'reading', aside: true, wanted: true }
   ] }));
   const lines = csv.replace(/^﻿/, '').split('\r\n');
   check(lines[0].startsWith('title,subtitle,authors,isbn'), 'the spreadsheet has a header row');
@@ -1302,7 +1318,8 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
   check(csv.includes('"Zed, ""the"" book"') && csv.includes('"line one\nline two"'), 'commas, quotes and line breaks are quoted');
   check(!csv.includes(',c,'), 'removed books are left out');
   { const head = lines[0].split(','), cells = lines[1].split(','); eq([cells[head.indexOf('status')], cells[head.indexOf('finished')]], ['Read', '2026-03-14'], 'a read book’s finished day has a column of its own');
-    eq(lines[3].split(',')[head.indexOf('status')], 'Set aside', 'and a book set aside says so'); }
+    eq(lines[3].split(',')[head.indexOf('status')], 'Set aside', 'and a book set aside says so');
+    eq([cells[head.indexOf('wanted')], lines[3].split(',')[head.indexOf('wanted')]], ['', 'yes'], 'and so does a book on the wishlist'); }
   eq(S.csvCell('-5'), '-5', 'plain negative numbers are left alone');
   // OWASP's CSV Injection page (community.owasp.org/attacks/CSV_Injection) lists = + - @, tab, carriage return and line
   // feed, and their full-width forms, as the starts of a cell to defuse.
