@@ -919,6 +919,70 @@ step('by shelf, a shelf\'s heading stays under the top bar while its books go by
   }
 });
 
+step('by shelf, Move on a shelf\'s heading moves or renames the whole shelf at once, with Undo', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, room: 'Living room', shelf: 'Left bookcase' }, { ...MIDDLEMARCH, room: 'Living room', shelf: 'left bookcase', status: 'read' },
+      { ...CRADLE, room: 'Living room', shelf: 'Left bookcase' }, { id: 'b06', t: 1000, title: 'Emma', authors: ['Jane Austen'], room: 'Study', shelf: 'Desk' },
+      { id: 'b07', t: 1000, title: 'Moby-Dick', authors: ['Herman Melville'], wanted: true }]);
+    await page.selectOption('#sortSel', 'shelf');
+    const heads = () => page.$$eval('#list .shelf .grp', els => els.map(e => e.textContent.replace(/\s+/g, ' ')));
+    const places = async () => { const l = (await stored(page)).library.books; return ['b03', 'b04', 'b05', 'b06'].map(id => [l[id].room, l[id].shelf].join(' › ')); };
+    // With Unread chosen the heading counts 2 of the shelf's 3 books; Move moves all 3, and says so.
+    await page.click('#chips .chip[data-s="unread"]');
+    assert.deepEqual(await heads(), ['Living room › Left bookcase, 2 books', 'Study › Desk, 1 book']);
+    assert.equal(await page.getAttribute('#list [data-mv] >> nth=0', 'aria-label'), 'Move or rename Living room › Left bookcase');
+    await page.click('#list [data-mv] >> nth=0');
+    assert.equal(await page.textContent('#sheetTitle'), 'Move 3 books');
+    assert.equal(await page.textContent('#sheet .lede'), 'Every book on Living room › Left bookcase, the one your filters hide too. Change the room to move them all, or only the shelf to rename it.');
+    assert.deepEqual([await page.inputValue('#mv-room'), await page.inputValue('#mv-shelf'), await page.isDisabled('#mvgo')], ['Living room', 'Left bookcase', true], 'the boxes don\'t start as where the books are');
+    await page.fill('#mv-room', 'study');
+    await page.fill('#mv-shelf', 'desk');
+    assert.equal(await page.textContent('#mv-n'), 'They join the book on Study › Desk.');
+    await page.click('#mvgo');
+    assert.equal(await sheetOpen(page), false);
+    assert.equal(await page.textContent('#toastTx'), 'Moved 3 books to Study › Desk');
+    assert.deepEqual(await places(), ['Study › Desk', 'Study › Desk', 'Study › Desk', 'Study › Desk'], 'the books aren\'t spelled as the shelf they joined');
+    assert.deepEqual(await heads(), ['Study › Desk, 3 books']);
+    // Undo puts each back as it was spelled.
+    await page.click('#toastBtn');
+    assert.deepEqual(await places(), ['Living room › Left bookcase', 'Living room › left bookcase', 'Living room › Left bookcase', 'Study › Desk']);
+    // Only the shelf changed renames it; Enter in Shelf is Move. The wishlist's heading has no Move.
+    await wait(450);
+    await page.click('#chips .chip[data-s=""]');
+    await page.click('#list [data-mv] >> nth=0');
+    await page.fill('#mv-shelf', 'Tall bookcase');
+    await page.press('#mv-shelf', 'Enter');
+    assert.equal(await page.textContent('#toastTx'), 'Moved 3 books to Living room › Tall bookcase');
+    assert.deepEqual(await places(), ['Living room › Tall bookcase', 'Living room › Tall bookcase', 'Living room › Tall bookcase', 'Study › Desk']);
+    await page.fill('#q', 'm');
+    await until(async () => (await heads()).some(h => /wishlist/.test(h)), 'the search');
+    assert.deepEqual(await page.$$eval('#list .shelf', els => els.map(e => e.querySelector('.grp').textContent.replace(/\s+/g, ' ') + ': ' + e.querySelectorAll('[data-mv]').length)),
+      ['Living room › Tall bookcase, 1 book: 1', 'On your wishlist, 1 book: 0'], 'the wishlist has a Move');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
+step('on a phone a shelf\'s Move answers a tap 44px tall inside its heading, and the heading stays under the top bar with it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, Array.from({ length: 30 }, (_, i) => ({ id: 'q' + i, t: 1000, title: 'Book ' + i, authors: ['Ann Lee'], room: 'Living room', shelf: i < 20 ? 'Tall bookcase' : 'Window' })));
+    await page.selectOption('#sortSel', 'shelf');
+    await page.evaluate(() => scrollTo(0, 1200));
+    // (the invisible box is placed from inside the button's border)
+    const [gh, top, bottom, bar] = await page.evaluate(() => {
+      const g = document.querySelectorAll('#list .gh')[0], b = g.querySelector('[data-mv]'), a = getComputedStyle(b, '::after'), c = getComputedStyle(b), r = b.getBoundingClientRect();
+      return [g.getBoundingClientRect().toJSON(), r.top + parseFloat(c.borderTopWidth) + parseFloat(a.top), r.bottom - parseFloat(c.borderBottomWidth) - parseFloat(a.bottom), document.querySelector('.top').getBoundingClientRect().bottom];
+    });
+    assert.ok(Math.abs(gh.top - bar) <= 1, 'the heading isn\'t under the top bar: ' + gh.top + ' and ' + bar);
+    assert.ok(bottom - top >= 43.5, 'Move answers a tap only ' + (bottom - top) + 'px tall');
+    assert.ok(top >= gh.top - 0.5 && bottom <= gh.bottom + 0.5, 'Move\'s taps reach past its heading');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book to check says To check, and the To check view says what to check', async () => {
   for (const width of [390, 320]) {
     const ctx = await context({ ...PHONE, viewport: { width, height: 760 } });

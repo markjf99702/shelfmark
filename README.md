@@ -17,7 +17,7 @@
 - **Catalog.** For each book it keeps:
   - title, subtitle, authors
   - ISBN, publisher, year, pages, format
-  - where it is: a room and a shelf, in your own words; one typed with other capitals ("Living Room") goes into the one you have ("Living room")
+  - where it is: a room and a shelf, in your own words; one typed with other capitals ("Living Room") goes into the one you have ("Living room"). Sorted by shelf, each shelf's heading has **Move**, to move every book on it to another room or shelf, or rename the shelf, at once, with Undo
   - unread, reading, read or set aside (one you gave up, kept out of What to read next), the day you finished it, and a rating (stars given to an unread book mark it read; Read fills in today as the day finished, to change or empty)
   - who you lent it to, and since when (once it's been out a month, the list says how long: "Lent to Sam · 20 months")
   - tags and notes

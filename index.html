@@ -162,8 +162,14 @@ a{color:var(--accent)}
 .shelf+.shelf{margin-top:6px}
 .shelf-bks{display:grid;grid-template-columns:var(--cols);gap:10px}
 .grp{position:sticky;top:var(--toph,calc(env(safe-area-inset-top,0px) + 55px));z-index:1;background:var(--ground);margin:0;padding:8px 2px 10px;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);overflow:hidden;overflow-wrap:anywhere}
+/* In the list a shelf's heading has a Move button at its end, and the two stay under the top bar together. */
+.gh{position:sticky;top:var(--toph,calc(env(safe-area-inset-top,0px) + 55px));z-index:1;background:var(--ground);display:flex;align-items:center;gap:10px}
+.gh>.grp{position:static;flex:1;min-width:0}
+.mvb{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:3px 11px;font:600 12.5px/18px var(--sans);color:var(--ink2)}
+@media (hover:hover){.mvb:hover{color:var(--ink);border-color:var(--ink3)}}
+.mvb:active{background:var(--sunk)}
 /* the keyboard's book is scrolled clear of the heading too, one of two lines included */
-html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,calc(env(safe-area-inset-top,0px) + 55px)) + 60px)}
+html:has(#list .shelf:not(.now):not(.rest)){scroll-padding-top:calc(var(--toph,calc(env(safe-area-inset-top,0px) + 55px)) + 64px)}
 /* The rule runs on from the count to the edge, on the heading's last line when a long one wraps (the count goes with the
    shelf's last word). It takes no room on the line, so it never wraps onto a line of its own; the heading clips the rest. */
 .grp::after{content:"";display:inline-block;width:100%;margin-right:-100%;height:1px;vertical-align:middle;background:linear-gradient(to right,transparent 10px,var(--line2) 10px)}
@@ -569,6 +575,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .sharerow .btn::after{content:"";position:absolute;inset:-8px 0}
   .now-acts .btn{position:relative}
   .now-acts .btn::after{content:"";position:absolute;inset:-8px 0}
+  .gh>.grp{line-height:18px;padding-top:12px;padding-bottom:14px}
+  .mvb{position:relative;padding:4px 12px}
+  .mvb::after{content:"";position:absolute;inset:-9px 0}
 }
 @media (pointer:coarse){.nx-moods{row-gap:16px}#f-genres:not([hidden]){margin-bottom:2px}}
 @media (pointer:coarse) and (max-width:640px){.nx-moods{padding-top:10px;padding-bottom:10px;margin:-8px -16px}}
@@ -1773,7 +1782,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return { seen: seen, tall: tall };
   }
   function render() {
-    var a = document.activeElement, was = a && a.dataset && ($('list').contains(a) ? (a.classList.contains('bk') ? { id: a.dataset.id, now: !!a.dataset.now } : a.dataset.fin ? { fin: a.dataset.fin } : a.dataset.aside ? { aside: a.dataset.aside } : null) :
+    var a = document.activeElement, was = a && a.dataset && ($('list').contains(a) ? (a.classList.contains('bk') ? { id: a.dataset.id, now: !!a.dataset.now } : a.dataset.fin ? { fin: a.dataset.fin } : a.dataset.aside ? { aside: a.dataset.aside } : a.dataset.mv ? { mv: a.dataset.mv } : null) :
       $('chips').contains(a) ? { s: a.dataset.s } : null);
     var view = viewKey(), at = window.scrollY > 0 && drawnView === view ? spot() : null;
     drawList();
@@ -1787,7 +1796,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     drawnView = viewKey();
     drawFind();
     if (was && (!document.activeElement || document.activeElement === document.body))
-      refocus(was.id ? rowOf(was.id, was.now) : was.fin ? nowBtn(was.fin, 'fin') : was.aside ? nowBtn(was.aside, 'aside') : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
+      refocus(was.id ? rowOf(was.id, was.now) : was.fin ? nowBtn(was.fin, 'fin') : was.aside ? nowBtn(was.aside, 'aside') : was.mv ? nowBtn(was.mv, 'mv') : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
   }
   // What the list shows, for Share this list: {books, groups}, or null when it shows no books.
   var onList = null;
@@ -1899,8 +1908,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     onList = { books: vis, groups: groups };
     $('shareBtn').hidden = false;
     if (groups) {
+      // Each shelf in the house has Move, to move or rename the whole shelf (see moveSheet).
       groups.forEach(function (g) {
-        html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3>' +
+        html += '<section class="shelf"><div class="gh"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3>' +
+          (g.k === WISHK ? '' : '<button class="mvb" type="button" data-mv="' + esc(g.k) + '" aria-label="Move or rename ' + esc(g.name) + '">Move</button>') + '</div>' +
           '<div class="shelf-bks">' + g.bs.map(function (b) { return row(b, true); }).join('') + '</div></section>';
       });
     } else {
@@ -2798,6 +2809,66 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     takeIncoming(f.text().then(parseIncoming));
   });
 
+  // ---------- moving a shelf ----------
+  // Every book in the house on one shelf (k: its room and shelf, however they're spelled; see shelfGroups), moved or
+  // renamed at once: the Room and Shelf boxes start out as where they are now, and the books get what they say then,
+  // spelled as the other books already spell a place they're moved to. One save, with Undo, which puts back each one
+  // still where they went.
+  function moveSheet(k) {
+    var bs = home(DOC).filter(function (b) { return shelfKey(b) === k; }), at = placeIndex(home(DOC));
+    if (!bs.length) return;
+    var b0 = bs[0], room = place(b0.room, at.rooms), shelf = place(b0.shelf, at.shelves[keys(b0).rk]), name = [room, shelf].filter(Boolean).join(' › ') || 'Not shelved yet';
+    var hidden = bs.length - (onList ? onList.books.filter(function (b) { return !b.wanted && shelfKey(b) === k; }).length : bs.length), from = sheetFrom;
+    var ids = bs.map(function (b) { return b.id; }), others = home(DOC).filter(function (b) { return ids.indexOf(b.id) < 0; });
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Move ' + plural(bs.length, 'book') + '</h2><button class="btn sm quiet" type="button" id="mvx">Cancel</button></div><div class="bd">' +
+      '<p class="lede">' + (bs.length === 1 ? 'The book' : 'Every book') + ' on <b>' + esc(name) + '</b>' + (hidden ? ', the ' + (hidden === 1 ? 'one' : hidden) + ' your filters hide too' : '') + '. Change the room to move ' + (bs.length === 1 ? 'it' : 'them all') + ', or only the shelf to rename it.</p>' +
+      '<div class="two"><label class="fl"><span>Room</span><input id="mv-room" list="dl-room" value="' + esc(room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
+      '<label class="fl"><span>Shelf</span><input id="mv-shelf" list="dl-shelf" value="' + esc(shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="go" autocomplete="off"></label></div></div>' +
+      '<div class="ft">' + storeFlag() + '<span class="note grow" id="mv-n"></span><button class="btn primary" type="button" id="mvgo" disabled>Move ' + plural(bs.length, 'book') + '</button></div>' +
+      datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')));
+    // Where they'd go, as the other books spell it, and how many are there already.
+    function to() {
+      var b = placed({ room: $('mv-room').value, shelf: $('mv-shelf').value }, placeIndex(others));
+      return { room: b.room, shelf: b.shelf, n: others.filter(function (x) { return placeKey(x.room) === placeKey(b.room) && placeKey(x.shelf) === placeKey(b.shelf); }).length };
+    }
+    function draw() {
+      var t = to(), same = t.room === room && t.shelf === shelf;
+      $('mvgo').disabled = same;
+      $('mv-n').textContent = same || !t.n ? '' : (bs.length === 1 ? 'It joins ' : 'They join ') + (t.n === 1 ? 'the book' : 'the ' + t.n + ' books') + ' on ' + ([t.room, t.shelf].filter(Boolean).join(' › ') || 'no shelf') + '.';
+      $('mv-n').classList.toggle('wide', !!t.n && !same);
+    }
+    panel.addEventListener('input', draw);
+    panel.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.isComposing || e.target.tagName !== 'INPUT') return;
+      e.preventDefault(); if (e.target.id === 'mv-room') $('mv-shelf').focus(); else if (!$('mvgo').disabled) $('mvgo').click();
+    });
+    $('mvx').addEventListener('click', closeSheet);
+    $('mvgo').addEventListener('click', function (e) {
+      var t = to(), was = {}, n = 0;
+      ids.forEach(function (id) {
+        var b = DOC.books[id]; if (!b || b.del || b.wanted || shelfKey(b) !== k) return;
+        was[id] = { room: b.room || '', shelf: b.shelf || '' };
+        DOC.books[id] = cleanBook(stamp(Object.assign({}, b, { room: t.room, shelf: t.shelf }), b)); n++;
+      });
+      closeSheet(); if (!n) return;
+      var saved = persist(); render();
+      var nk = placeKey(t.room) + '\u0001' + placeKey(t.shelf), head = nowBtn(nk, 'mv');
+      if (head) try { head.closest('.shelf').scrollIntoView({ block: 'start' }); } catch (x) { }
+      function back() { return nowBtn(nk, 'mv') || (isShown(from) ? from : $('q')); }
+      if (!saved) { toast(STORE_TOAST[STORE]); return; }
+      toast('Moved ' + plural(n, 'book') + ' to ' + clip([t.room, t.shelf].filter(Boolean).join(' › ') || 'Not shelved yet'), 'Undo', function () {
+        var m = 0;
+        Object.keys(was).forEach(function (id) {
+          var b = DOC.books[id]; if (!b || b.del || (b.room || '') !== t.room || (b.shelf || '') !== t.shelf) return;
+          DOC.books[id] = cleanBook(stamp(Object.assign({}, b, was[id]), b)); m++;
+        });
+        if (m) { persist(); render(); }
+        return nowBtn(k, 'mv') || $('q');
+      }, !e.detail, back);
+    });
+    draw();
+  }
+
   // ---------- marking what's been read, a shelf at a time ----------
   // The unread books, shelf by shelf, each with a tick, to stand at a bookcase and tick what's been read there. The Shelf
   // menu narrows the list to one shelf (kept for the visit); ticks on other shelves stay ticked. Mark … as read marks
@@ -3380,6 +3451,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   $('syncBtn').addEventListener('click', function () { if (!hasToken()) askToken(); else if (D.err || offline) { D.err = ''; sync(); } else { settingsSheet(); } });
   $('list').addEventListener('click', function (e) {
     var n = e.target.closest('[data-fin],[data-aside]'); if (n) { nowDone(n.dataset.fin || n.dataset.aside, !e.detail, !n.dataset.fin); return; }
+    var mv = e.target.closest('[data-mv]'); if (mv) { moveSheet(mv.dataset.mv); return; }
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') $('addBtn').click();
