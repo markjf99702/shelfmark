@@ -340,7 +340,7 @@ details.more .fs{padding:2px 12px 12px}
 }
 .nx-pick{display:flex;gap:14px;align-items:flex-start;animation:deal .28s ease-out}
 .nx-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin-top:2px;outline:none}
+.nx-t{font:500 22px/1.2 var(--serif);overflow-wrap:anywhere;margin:2px 0 0;outline:none}
 .nx-t .s{color:var(--ink2);font-weight:400}
 .nx-why{margin:6px 0 6px;padding:0;list-style:none;display:grid;gap:5px}
 .nx-why li{position:relative;padding-left:14px;font-size:14.5px;line-height:1.35}
@@ -348,6 +348,7 @@ details.more .fs{padding:2px 12px 12px}
 .lb-what{margin:0 0 14px}
 .lb-what li{color:var(--ink2);font-size:15px}
 .nx-alts{display:grid;gap:8px;margin-top:20px;animation:deal .28s ease-out}
+.nx-alts h3{margin:0}
 .nx-alt{display:flex;gap:10px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
 .nx-alt:hover{border-color:var(--ink3)}
 .nx-alt .cv{width:34px;height:50px}
@@ -2132,9 +2133,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The choices stay in this device's prefs. "Pick again" works through every match before repeating one.
   var RANGES = { short: 'under 250 pages', medium: '250 to 450 pages', long: 'over 450 pages' };
   function nextSheet() {
-    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, round = 0, ask = '';
+    var c = cleanNext(PREF.next), seen = {}, deal = null, top = 0, round = 0, ask = '', sayT = 0;
     openSheet('<div class="hd"><h2 id="sheetTitle">What to read next</h2><button class="btn sm quiet" type="button" id="nxx">Close</button></div>' +
-      '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut" aria-live="polite"></div></div>' +
+      '<div class="bd"><div class="nx-crit" id="nxCrit"></div><div class="nx-out" id="nxOut"></div><p class="sr" id="nxSay" aria-live="polite"></p></div>' +
       '<div class="ft"><button class="btn" type="button" id="nxAgain">Pick again</button><span class="grow"></span><button class="btn primary" type="button" id="nxGo">Start reading</button></div>').classList.add('tall');
     function meta(b) { return [byLine(b), b.year, b.pages ? plural(b.pages, 'page') : ''].filter(Boolean).join(' · '); }
     // A row of choices: Any and those of from that are offered (on), or nothing when none is.
@@ -2187,6 +2188,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (deal.picks.length && !deal.fresh) { round++; seen = {}; }
       deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
       drawOut();
+      clearTimeout(sayT); $('nxSay').textContent = spoken();
+    }
+    // After each deal, one line for screen readers (#nxSay): the pick, by whom, where it is, and what it came from.
+    function spoken() {
+      var p = deal.picks[top], n = nextNotes(deal, c, round > 0);
+      if (!p) return !deal.hand ? 'Nothing unread on hand.' : chosen(c).length > 1 ? 'Nothing matches all of these.' : 'Nothing matches that.';
+      return 'Try ' + p.b.title + (byLine(p.b) ? ' by ' + byLine(p.b) : '') + (where(p.b) ? ', on ' + where(p.b) : '') + '. ' + (n[0] || '');
     }
     function drawOut() {
       var o = $('nxOut'), p = deal.picks;
@@ -2207,13 +2215,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       }
       var t = p[top], b = t.b, dl = detailLine(b);
       o.innerHTML = '<div class="nx-pick">' + cover(b, 'lg') + '<div class="nx-tx"><span class="lbl">' + (b.status === 'read' ? 'Read it again' : 'Try this one') + '</span>' +
-        '<span class="nx-t" tabindex="-1">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</span>' +
+        '<h3 class="nx-t" tabindex="-1">' + esc(b.title) + (b.sub ? '<span class="s">: ' + esc(b.sub) + '</span>' : '') + '</h3>' +
         (meta(b) ? '<span class="bk-a">' + esc(meta(b)) + '</span>' : '') +
         (b.blurb ? '<span class="nx-blurb">' + esc(b.blurb) + '</span>' : '') +
         (dl ? '<span class="nx-dl">' + esc(dl) + '</span>' : '') +
         (t.why.length ? '<ul class="nx-why">' + t.why.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '') +
         '<span class="loc">' + esc(where(b) || 'Not shelved yet') + '</span></div></div>' +
-        (p.length > 1 ? '<div class="nx-alts"><span class="lbl">Or one of these</span>' + p.map(function (x, i) {
+        (p.length > 1 ? '<div class="nx-alts"><h3 class="lbl">Or one of these</h3>' + p.map(function (x, i) {
           if (i === top) return '';
           var w = x.b.blurb || x.why[0];
           return '<button class="nx-alt" type="button" data-i="' + i + '">' + cover(x.b) + '<span class="bk-tx"><span class="bk-t">' + esc(x.b.title) + '</span>' +
@@ -2267,7 +2275,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var t = $('nxOut').querySelector('.nx-t'); if (t) try { t.focus(); } catch (x) { }
     });
     $('nxx').addEventListener('click', closeSheet);
-    $('nxAgain').addEventListener('click', function () { dealNow(); showPick(); });
+    // From the keyboard, Pick again puts the keyboard on the new pick's title, as a tap on one of the others does.
+    $('nxAgain').addEventListener('click', function (e) {
+      dealNow(); showPick();
+      var t = !e.detail && $('nxOut').querySelector('.nx-t'); if (t) try { t.focus({ preventScroll: true }); } catch (x) { }
+    });
     $('nxGo').addEventListener('click', function (e) {
       var b = deal.picks[top] && DOC.books[deal.picks[top].b.id]; if (!b || b.del) return;
       var was = b.status || '';
@@ -2278,6 +2290,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return back(); }, !e.detail, back);
     });
     both();
+    // A live region is read out only when it changes once it's on the page, so the first line is said again a moment on.
+    var first = $('nxSay').textContent; $('nxSay').textContent = '';
+    sayT = setTimeout(function () { var x = $('nxSay'); if (x) x.textContent = first; }, 700);
   }
 
   // ---------- settings ----------

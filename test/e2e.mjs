@@ -1396,6 +1396,26 @@ step('when nothing matches, a button puts the choice in the way back to Any, and
   } finally { await ctx.close(); }
 });
 
+step('What to read next says each pick in a line for screen readers, and Pick again from the keyboard goes to the new pick', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...MIDDLEMARCH, shelf: 'Tall bookcase' }, PIRANESI, CRADLE, { id: 'b09', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Den', shelf: 'Tall bookcase' }]);
+    await page.click('#nextBtn');
+    const said = { Middlemarch: 'Middlemarch by George Eliot, on Den › Tall bookcase', Piranesi: 'Piranesi by Susanna Clarke, on Hall', 'Cat\u2019s Cradle': 'Cat\u2019s Cradle by Kurt Vonnegut, Jr.',
+      Walden: 'Walden by Henry David Thoreau, on Den › Tall bookcase' };
+    assert.equal(await page.getAttribute('#nxOut', 'aria-live'), null, 'the whole pick is read out with every change');
+    await until(async () => (await page.textContent('#nxSay')) !== '', 'the first line to be said', 3000);
+    assert.equal(await page.textContent('#nxSay'), 'Try ' + said[await page.textContent('.nx-pick .nx-t')] + '. From 4 unread books on hand.');
+    assert.equal(await page.evaluate(() => document.querySelector('.nx-pick .nx-t').tagName + document.querySelector('.nx-alts h3').textContent), 'H3Or one of these');
+    await page.focus('#nxAgain');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.className), 'nx-t', 'the keyboard stayed on Pick again');
+    assert.equal(await page.textContent('#nxSay'), 'Try ' + said[await page.textContent('.nx-pick .nx-t')] + '. From 4 unread books on hand.');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('Pick again brings the new pick into view, with More choices open on a narrow phone', async () => {
   const ctx = await context({ ...PHONE, viewport: { width: 360, height: 740 } });
   try {
