@@ -1497,6 +1497,19 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
         const missing = lines.filter(l => !chkSaid.split('\n').includes(l));
         eq(missing, [], 'the script says what it put right, left out and took off, and which books still have no details:\n' + chkSaid);
         check(!/Persuasion” matches/.test(chkSaid), 'two copies of one book aren’t several books');
+        // Two volumes of a set share the head of their title: a slip between their ids is put right too, and an entry
+        // with the head alone stays with the volume its id names.
+        const volIn = path.join(tmp, 'volumes.json'), headIn = path.join(tmp, 'head.json');
+        fs.writeFileSync(volIn, JSON.stringify({ books: [{ id: 'l5', title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'], pace: 'slow' },
+          { id: 'l4', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'], pace: 'fast' }] }));
+        fs.writeFileSync(headIn, JSON.stringify({ books: [{ id: 'l5', title: 'The Lantern Cycle', authors: ['Ada Quill'], kind: 'fiction' }] }));
+        const volSaid = execFileSync('python3', [py, volIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const headSaid = execFileSync('python3', [py, headIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        eq((await S.parseIncoming(/Link: (\S+)/.exec(volSaid)[1])).details.books.map(e => [e.id, e.title, e.pace]),
+          [['l4', 'The Lantern Cycle: First Light', 'slow'], ['l5', 'The Lantern Cycle: Second Dark', 'fast']], 'a slip between two volumes\' ids is put right: ' + volSaid);
+        check(volSaid.includes('  Fixed the id of “The Lantern Cycle: First Light”: l5 is “The Lantern Cycle: Second Dark” by Ada Quill; it’s l4\n'), 'and it says so: ' + volSaid);
+        eq((await S.parseIncoming(/Link: (\S+)/.exec(headSaid)[1])).details.books.map(e => [e.id, e.title]), [['l5', 'The Lantern Cycle: Second Dark']], 'the head of the title alone stays with its id: ' + headSaid);
+        check(!/Fixed|warning/.test(headSaid), 'and says nothing of it: ' + headSaid);
         // --redo keeps what the books have, for Replace.
         const redo = (await S.parseIncoming(/Link: (\S+)/.exec(execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--redo', '--out', chkDir], { encoding: 'utf8' }))[1])).details.books;
         eq([redo.length, redo[1].kind, redo[2].id], [7, 'nonfiction', 'l3'], 'with --redo, every detail stays');

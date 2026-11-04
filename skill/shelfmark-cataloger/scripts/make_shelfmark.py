@@ -808,9 +808,19 @@ def head(t):
     return bare(fold(t).partition(':')[0])
 
 
+def rest(b):
+    """What follows a title's head: after its colon, or else the subtitle (as keys() reads it)."""
+    f, colon, r = fold(b.get('title') or '').partition(':')
+    return bare(r if colon else fold(b.get('sub') or ''))
+
+
 def agrees(e, b):
-    """Whether an entry is for the book its id names: no title to say otherwise, or the same ISBN, book or title."""
-    return not e.get('title') or bool(set(keys(e)[1]) & set(keys(b)[0])) or head(e['title']) == head(b['title'])
+    """Whether an entry is for the book its id names: no title to say otherwise, the same ISBN or book, or the same
+    head of the title with the same rest, when both have one. So one volume of a set ("Series: Its Name") isn't taken
+    for another with the same head, and a slip between them is put right too."""
+    if not e.get('title') or set(keys(e)[1]) & set(keys(b)[0]):
+        return True
+    return head(e['title']) == head(b['title']) and (not rest(e) or not rest(b) or rest(e) == rest(b))
 
 
 def copies(bs):
@@ -821,8 +831,14 @@ def copies(bs):
     return len({which(b) for b in bs}) == 1
 
 
+def full(b):
+    """The title with its subtitle, for a warning that tells two of them apart."""
+    t = b.get('title') or ''
+    return t + (f': {b["sub"]}' if b.get('sub') and ':' not in t else '')
+
+
 def book_line(b):
-    return f'“{short(b["title"])}”' + (f' by {", ".join(b["authors"])}' if b.get('authors') else '')
+    return f'“{short(full(b), 90)}”' + (f' by {", ".join(b["authors"])}' if b.get('authors') else '')
 
 
 def check_details(entries, books, redo):
@@ -843,7 +859,7 @@ def check_details(entries, books, redo):
         elif not bs and n in wrong and wrong[n][1]:
             # Nothing has its title: perhaps the title is written another way. Kept for the book its id names, to check.
             e['id'] = wrong[n][0]
-            did['kept'].append((e['title'], e['id'], wrong[n][1]))
+            did['kept'].append((full(e), e['id'], wrong[n][1]))
         if n in wrong and (len(bs) == 1 or len(bs) > 1 and copies(bs)):
             did['fixed'].append((e, wrong[n], bs))
     out, hit = [], set()
@@ -914,7 +930,7 @@ def details_main(doc, a):
             print(f'  Fixed the id of “{short(e.get("title") or old)}”: {old} ' + (f'is {book_line(b)}' if b else 'isn’t in the library') +
                   (f'; it’s {e["id"]}' if e.get('id') else f'; it’s for the {len(bs)} copies of it, found by title'))
         for title, bid, b in did['kept']:
-            warn.append(f'“{short(title)}”: its id {bid} is {book_line(b)}, and no book has its title; kept for that book, so check it’s the right one')
+            warn.append(f'“{short(title, 90)}”: its id {bid} is {book_line(b)}, and no book has its title; kept for that book, so check it’s the right one')
         for e in did['lost']:
             warn.append(f'“{short(e.get("title") or e.get("id") or "")}” matches no book in the library. If it’s there under another title, give that one’s id and run again; '
                         'if it hasn’t been added yet, Shelfmark leaves it out until it is, and the link is opened again')
