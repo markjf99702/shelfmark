@@ -79,6 +79,8 @@ https://shelfmark.junkdrawer.works/#s1z<data>
 
 `<data>` is the compact batch JSON, compressed with raw DEFLATE, then base64url-encoded without padding. `#s1j<data>` is the same without compression. `#batch=<URL-encoded JSON>` also works and can be written by hand, but it gets long. The part after `#` never reaches a server.
 
+A batch or reading details whose link would be longer than 8,000 characters is handed over as numbered links instead, of up to 50 books each. Each is an ordinary link of its own, a batch (or reading details) with its own `id` (the whole one's with `-1`, `-2`… after it) and a `name` ending "(2 of 6)", the batch's `room`, `shelf` and `wanted` kept, so each opens its own review and Shelfmark knows when one is opened twice. The file stays whole. `scripts/make_shelfmark.py` makes these.
+
 ## The library file (read only)
 
 With Drive sync on, the whole library is `My Drive › Shelfmark › Shelfmark library.json`, and a downloaded backup has the same shape:

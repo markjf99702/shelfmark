@@ -24,7 +24,9 @@ on commas and semicolons, and authors on " & " too, as Shelfmark splits them):
 It checks every ISBN's check digit (a misread one is dropped and flagged, never guessed at), maps
 common words for format, condition and status onto Shelfmark's, flags likely doubles in the list,
 and exits 1 (printing why) if the input can't be used. Shelfmark takes 3,000 books at a time, so a
-longer list is written as numbered files of up to 3,000 each, to open one after another.
+longer list is written as numbered files of up to 3,000 each, to open one after another. A link longer than
+8,000 characters comes as numbered links of up to 50 books each instead, each opening its own review (up to
+20 of them; past that, it's the file).
 
 With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
 aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
@@ -45,6 +47,12 @@ from pathlib import Path
 
 DEFAULT_BASE = 'https://shelfmark.junkdrawer.works/'
 MAX_BOOKS = 3000  # the most Shelfmark takes in one batch (BATCH_MAX in index.html)
+# A link longer than this is handed over as numbered links instead, of up to PER_LINK books each: RFC 9110 (HTTP
+# Semantics, June 2022), section 4.1, recommends that everything handling a URI supports at least 8000 octets, and
+# Claude has to copy every character of a link, where one slip breaks it. Past MAX_LINKS links, it's the file only.
+LINK_MAX = 8000
+PER_LINK = 50
+MAX_LINKS = 20
 FORMATS = {
     'hardcover': 'hardcover', 'hardback': 'hardcover', 'hard cover': 'hardcover', 'hc': 'hardcover', 'cloth': 'hardcover', 'library binding': 'hardcover',
     'paperback': 'paperback', 'softcover': 'paperback', 'soft cover': 'paperback', 'trade paperback': 'paperback', 'pb': 'paperback', 'tpb': 'paperback',
@@ -587,14 +595,19 @@ def build(doc, warn):
         bid = 'c' + made.replace('-', '') + '-' + hashlib.sha1((name + body).encode()).hexdigest()[:10]
         label = name
         if len(parts) > 1:
-            bid += f'-{n}'
-            tail = f' ({n} of {len(parts)})'
-            label = name[:120 - len(tail)] + tail if name else f'Part {n} of {len(parts)}'
+            bid, label = part_of(bid, name, n, len(parts))
         batch = {'id': bid, 'name': label, 'made': made, 'room': s(doc.get('room'), 60), 'shelf': s(doc.get('shelf'), 60), 'books': part}
         if yes(doc.get('wanted')):  # books from a shop's table or a list to buy: all of them go on the wishlist
             batch['wanted'] = True
         outs.append({'shelfmark': 1, 'batch': {k: v for k, v in batch.items() if v != ''}})
     return outs, name
+
+
+def part_of(pid, name, n, k):
+    """Part n of k of a batch or of reading details: its own id, and its name with "(2 of 3)" after it, which the review
+    screen shows."""
+    tail = f' ({n} of {k})'
+    return f'{pid}-{n}', name[:120 - len(tail)] + tail if name else f'Part {n} of {k}'
 
 
 def build_details(doc, warn):
@@ -627,18 +640,23 @@ def build_details(doc, warn):
         entries.append(e)
     if not entries:
         raise SystemExit('error: no usable entries (each needs an id or title, and at least one detail)')
-    if len(entries) > MAX_BOOKS:
-        raise SystemExit(f'error: Shelfmark takes {MAX_BOOKS:,} at a time; split these into smaller files')
     made = datetime.date.today().isoformat()
     name = s(doc.get('name'), 120) or 'Reading details'
-    did = 'd' + made.replace('-', '') + '-' + hashlib.sha1((name + json.dumps(entries, ensure_ascii=False, sort_keys=True)).encode()).hexdigest()[:10]
-    return {'shelfmark': 1, 'details': {'id': did, 'name': name, 'made': made, 'books': entries}}, name
+    # Up to 3,000 entries a file, as for a batch: more come as numbered files, each of its own.
+    parts = [entries[i:i + MAX_BOOKS] for i in range(0, len(entries), MAX_BOOKS)]
+    outs = []
+    for n, part in enumerate(parts, 1):
+        did, label = 'd' + made.replace('-', '') + '-' + hashlib.sha1((name + json.dumps(part, ensure_ascii=False, sort_keys=True)).encode()).hexdigest()[:10], name
+        if len(parts) > 1:
+            did, label = part_of(did, name, n, len(parts))
+        outs.append({'shelfmark': 1, 'details': {'id': did, 'name': label, 'made': made, 'books': part}})
+    return outs, name
 
 
 def details_main(doc, a):
     warn = []
-    out, name = build_details(doc, warn)
-    books = out['details']['books']
+    outs, name = build_details(doc, warn)
+    books = [e for o in outs for e in o['details']['books']]
     kinds = {k: sum(1 for e in books if e.get('kind') == k) for k in KINDS}
     browse = sum(1 for e in books if e.get('way') == 'browse')
     print(f'{name}: {len(books):,} book{"s" if len(books) != 1 else ""} (' + ', '.join(f'{n} {k}' for k, n in kinds.items() if n) +
@@ -649,16 +667,70 @@ def details_main(doc, a):
         print(f'  - {e.get("title") or e["id"]}: ' + ' · '.join(x for x in bits if x))
     for w in warn:
         print(f'warning: {w}')
+    hand_over(outs, 'details', a, f'{slug(name)}-{outs[0]["details"]["made"]}', '.details.shelfmark.json')
+
+
+def hand_over(outs, key, a, stem, ext='.shelfmark.json'):
+    """Writes the file, and prints where it is and the link that opens it. A link longer than LINK_MAX comes as numbered
+    links of up to PER_LINK books each, every one a batch (or reading details) of its own, with its own id and named
+    "… (2 of 6)", so each opens its own review and is safe to open twice. More than MAX_BOOKS make numbered files, with no
+    link."""
     Path(a.out).mkdir(parents=True, exist_ok=True)
-    f = Path(a.out) / f'{slug(name)}-{out["details"]["made"]}.details.shelfmark.json'
-    f.write_text(json.dumps(out, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    one, what = ('book', 'books') if key == 'batch' else ('entry', 'entries')
+    if len(outs) > 1:
+        print(f'\nShelfmark takes {MAX_BOOKS:,} {what} at a time, so these are in {len(outs)} numbered files. '
+              'Hand over all of them, to open in Shelfmark one after another (Import › Open a file):')
+        for n, o in enumerate(outs, 1):
+            f = Path(a.out) / f'{stem}-{n}{ext}'
+            f.write_text(json.dumps(o, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            k = len(o[key]['books'])
+            print(f'File {n} of {len(outs)} ({k:,} {what if k != 1 else one}): {f}')
+        return
+    f = Path(a.out) / f'{stem}{ext}'
+    f.write_text(json.dumps(outs[0], ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
     print(f'\nFile: {f}')
-    if not a.no_link:
-        url = link(out, a.base if a.base.endswith('/') else a.base + '/')
-        if len(url) > 30000:
-            print(f'\nThe link is {len(url):,} characters, too long to pass around safely. Hand over the file instead.')
-        else:
-            print(f'\nLink: {url}')
+    if a.no_link:
+        return
+    base = a.base if a.base.endswith('/') else a.base + '/'
+    url = link(outs[0], base)
+    if len(url) <= LINK_MAX:
+        print(f'\nLink: {url}')
+        return
+    parts, why = links(outs[0], key, base)
+    if why:
+        print(f'\nThe link would be {len(url):,} characters, too long to copy safely, and {why}. Hand over the file instead.')
+        return
+    print(f'\nThe link would be {len(url):,} characters, too long to copy safely, so here it is as {len(parts)} links of up to {PER_LINK} books each. '
+          'Hand over all of them, numbered, to tap one after another: each opens its own review in Shelfmark, and is safe to open twice. '
+          'On a computer, the file is simpler.')
+    for n, (k, u) in enumerate(parts, 1):
+        print(f'Link {n} of {len(parts)} ({k:,} book{"s" if k != 1 else ""}, {len(u):,} characters): {u}')
+
+
+def links(out, key, base):
+    """The links for a batch or reading details too long for one: [(books, link)], each of up to PER_LINK books and
+    LINK_MAX characters, taken in order. Or why there are none: too many to tap one by one, or a book that alone makes a
+    link too long."""
+    inner, groups, cur = out[key], [], []
+    if len(inner['books']) > PER_LINK * MAX_LINKS:
+        return [], f'{-(-len(inner["books"]) // PER_LINK)} links would be too many to tap one by one'
+
+    def doc(books, n, k):
+        pid, label = part_of(inner['id'], inner.get('name', ''), n, k)
+        return {'shelfmark': 1, key: dict(inner, id=pid, name=label, books=books)}
+    for b in inner['books']:
+        if cur and (len(cur) == PER_LINK or len(link(doc(cur + [b], 99, 99), base)) > LINK_MAX):
+            groups.append(cur)
+            cur = []
+        cur.append(b)
+    groups.append(cur)
+    if len(groups) > MAX_LINKS:
+        return [], f'{len(groups)} links would be too many to tap one by one'
+    made = [(len(g), link(doc(g, n, len(groups)), base)) for n, g in enumerate(groups, 1)]
+    long = next((u for k, u in made if len(u) > LINK_MAX), None)
+    if long:
+        return [], f'one book alone makes a link of {len(long):,} characters'
+    return made, ''
 
 
 def link(out, base):
@@ -719,26 +791,7 @@ def main():
         print(f'  … and {len(books) - len(shown):,} more')
     for w in warn:
         print(f'warning: {w}')
-    Path(a.out).mkdir(parents=True, exist_ok=True)
-    stem = f'{slug(name or "books")}-{b["made"]}'
-    if len(outs) > 1:
-        print(f'\nShelfmark takes {MAX_BOOKS:,} books at a time, so these are in {len(outs)} numbered files. '
-              'Hand over all of them, to open in Shelfmark one after another (Import › Open a file):')
-        for n, o in enumerate(outs, 1):
-            f = Path(a.out) / f'{stem}-{n}.shelfmark.json'
-            f.write_text(json.dumps(o, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-            k = len(o['batch']['books'])
-            print(f'File {n} of {len(outs)} ({k:,} book{"s" if k != 1 else ""}): {f}')
-        return
-    f = Path(a.out) / f'{stem}.shelfmark.json'
-    f.write_text(json.dumps(outs[0], ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-    print(f'\nFile: {f}')
-    if not a.no_link:
-        url = link(outs[0], a.base if a.base.endswith('/') else a.base + '/')
-        if len(url) > 30000:
-            print(f'\nThe link is {len(url):,} characters, too long to pass around safely. Hand over the file instead.')
-        else:
-            print(f'\nLink: {url}')
+    hand_over(outs, 'batch', a, f'{slug(name or "books")}-{b["made"]}')
 
 
 if __name__ == '__main__':

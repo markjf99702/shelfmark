@@ -89,7 +89,7 @@ The script:
 
 If it prints warnings, read them: a dropped ISBN or a double usually means one more look at the photo. Another volume of the same set doesn't warn, so keep every volume you see. Pass on any that say notes were cut (a long Goodreads review, say), so the person can keep the whole text somewhere else.
 
-Links are compressed, so a few shelves' worth makes a link of a few thousand characters. For a few hundred books or more, lead with the file; the script says so when a link gets too long to pass around safely.
+Links are compressed, so a few shelves' worth makes a link of a few thousand characters. When one link would be longer than 8,000 characters (RFC 9110, section 4.1, recommends every app support links at least that long, so a longer one may not open everywhere, and it's a lot to copy without a slip), the script gives numbered links of up to 50 books each instead ("Link 1 of 6 (50 books, 4,857 characters): …"). Each is a batch of its own, named "… (1 of 6)", that opens its own review in Shelfmark and is safe to open twice. Past 20 links, or when one book alone makes a link too long, it says to hand over the file instead.
 
 Shelfmark takes 3,000 books at a time. For more, the script writes numbered files (`…-1.shelfmark.json`, `…-2.shelfmark.json` and so on), each a batch of its own and none with a link: hand over all of them, and say to open them in Shelfmark one after another.
 
@@ -101,8 +101,8 @@ Keep the reply tidy:
 1. One line: how many books, and from where.
 2. The list, short: *Title — Author*, one per line, grouped by shelf if there are several. Mark flagged ones and say what to check.
 3. Anything you couldn't read, and where it is in the photo.
-4. The Shelfmark link, as a link. Tapping it opens Shelfmark with the list to review. Copy it character for character from the script's output: it's encoded data, and one changed character breaks it.
-5. The file as the fallback (**Import** › **Open a file** in Shelfmark).
+4. The Shelfmark link, as a link. Tapping it opens Shelfmark with the list to review. Copy it character for character from the script's output: it's encoded data, and one changed character breaks it. When the script gave numbered links, give every one, in order, each with its number and how many books ("Link 2 of 6, 50 books"), and say to tap them one after another: each opens its own review, to add before tapping the next.
+5. The file as the fallback (**Import** › **Open a file** in Shelfmark), and the simpler way on a computer when there are numbered links. On a phone, it downloads from the chat, and opens from Files with **Import** › **Open a file**.
 
 Don't claim you've added books to their library. They add them when they open the link and tap **Add**.
 
@@ -123,7 +123,7 @@ Shelfmark's **What to read next** can choose by what a book is like: fiction, no
 
 1. Read their library: the Drive file as above, or a backup file they send (**Settings › Download a backup**). Skip removed books.
 2. Write an entry for each book you know, keyed by its `id` from the file, with its `title`, `sub` and `authors` too, as the file has them (they find the book if the id doesn't). Leave out books that already have every detail, unless they ask you to redo them.
-3. Run the script with `--details`, and hand over the link (or the file, when the script says the link is too long).
+3. Run the script with `--details`, and hand over the link, or the numbered links when it gives several (each opens its own review), with the file for a computer; or only the file, when it says to.
 
 ```
 python3 scripts/make_shelfmark.py details.json --details --out /mnt/user-data/outputs
@@ -171,7 +171,7 @@ It reads CSV or tab-separated files in any of the encodings these exports and sp
 
 If it left books out, ask once, with the count: "212 are on your to-read shelf with no copy owned — put them on your Shelfmark wishlist, or leave them out?" Leaving them out is the default, so don't hold things up: hand over the file, and if they want those books on the wishlist, run it again with `--keep-unowned` and hand over the new file instead.
 
-Exports are usually large, so hand over the file rather than the link, and say how many books came through. Over 3,000, the script writes numbered files.
+Exports are usually large: lead with the file, give the numbered links too when the script prints them (for up to 1,000 books), and say how many books came through. Over 3,000, the script writes numbered files.
 
 Without code tools, map the columns by hand the same way:
 - **Goodreads:** `Title` (without the series in brackets), `Author` and `Additional Authors`, `ISBN13` or `ISBN` (strip the `="…"` wrapper), `Publisher`, `Year Published`, `Number of Pages`, `My Rating` → `rating` (0 means none), `Exclusive Shelf` → `status`, `Date Read` (2023/04/15) → `finished` (2023-04-15), `Bookshelves` (less the reading shelves) → `tags`, `My Review` and `Private Notes` → `notes`.

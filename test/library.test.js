@@ -1268,6 +1268,51 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
       eq([parts[1].books[0].title, parts[2].books[0].title], ['Book 3001', 'Book 6001'], 'the parts keep the list in order');
       check(/Shelfmark takes 3,000 books at a time, so these are in 3 numbered files/.test(said) && /File 3 of 3 \(1 book\): /.test(said) && !/Link:/.test(said), 'the script says so, and hands over the files without a link');
 
+      // A link too long to copy safely (over 8,000 characters, RFC 9110 §4.1) comes as numbered links of up to 50 books,
+      // each a batch of its own that opens its own review; the file stays whole. Notes of random letters keep the links
+      // from compressing to nothing.
+      {
+        const r = rng(11), words = n => Array.from({ length: n }, () => 'abcdefghijklmnopqrstuvwxyz '[Math.floor(r() * 27)]).join('');
+        const longIn = path.join(tmp, 'longlink.json'), longOut = fs.mkdtempSync(path.join(tmp, 'longlink-'));
+        fs.writeFileSync(longIn, JSON.stringify({ name: 'Tall bookcase', room: 'Den', shelf: 'Top', books: Array.from({ length: 120 }, (_, i) => ({ title: 'Book ' + (i + 1), authors: ['Ann Lee'], notes: words(100) })) }));
+        const said = execFileSync('python3', [py, longIn, '--out', longOut], { encoding: 'utf8' });
+        const links = [...said.matchAll(/^Link (\d+) of (\d+) \(([\d,]+) books?, ([\d,]+) characters\): (\S+)$/gm)];
+        check(!/^Link: /m.test(said) && /too long to copy safely, so here it is as 3 links of up to 50 books each/.test(said), 'a link too long to copy safely says so, and comes as numbered links: ' + said.slice(-300));
+        eq(links.map(m => [+m[1], +m[2], +m[3]]), [[1, 3, 50], [2, 3, 50], [3, 3, 20]], 'of up to 50 books each, numbered');
+        check(links.every(m => m[5].length <= 8000 && +m[4].replace(/,/g, '') === m[5].length), 'each link is 8,000 characters or fewer, and says how long it is');
+        const parts = [];
+        for (const m of links) parts.push((await S.parseIncoming(m[5])).batch);
+        eq(parts.map(p => [p.name, p.room, p.shelf, p.books.length]), [['Tall bookcase (1 of 3)', 'Den', 'Top', 50], ['Tall bookcase (2 of 3)', 'Den', 'Top', 50], ['Tall bookcase (3 of 3)', 'Den', 'Top', 20]], 'each link opens as a batch of its own, named for its part, with the batch\'s room and shelf');
+        eq(parts.flatMap(p => p.books.map(b => b.title)), Array.from({ length: 120 }, (_, i) => 'Book ' + (i + 1)), 'and together they hold every book once, in order');
+        eq(new Set(parts.map(p => p.id)).size, 3, 'each with an id of its own, so opening one twice says so');
+        const whole = (await S.parseIncoming(fs.readFileSync(path.join(longOut, fs.readdirSync(longOut)[0]), 'utf8'))).batch;
+        eq([fs.readdirSync(longOut).length, whole.books.length], [1, 120], 'the file stays whole');
+        // Reading details the same way, and over 3,000 entries as numbered files instead of stopping.
+        const detLong = path.join(tmp, 'detlong.json'), detOut = fs.mkdtempSync(path.join(tmp, 'detlong-'));
+        fs.writeFileSync(detLong, JSON.stringify({ name: 'Reading details', books: Array.from({ length: 130 }, (_, i) => ({ id: 'b' + i, title: 'Book ' + i, kind: 'fiction', blurb: words(120) })) }));
+        const detSaid2 = execFileSync('python3', [py, detLong, '--details', '--out', detOut], { encoding: 'utf8' });
+        const dl = [...detSaid2.matchAll(/^Link (\d+) of (\d+) \(([\d,]+) books?, [\d,]+ characters\): (\S+)$/gm)];
+        const dparts = [];
+        for (const m of dl) dparts.push((await S.parseIncoming(m[4])).details);
+        eq(dparts.map(d => [d.name, d.books.length]), [['Reading details (1 of 3)', 50], ['Reading details (2 of 3)', 50], ['Reading details (3 of 3)', 30]], 'reading details too long for one link come as numbered links of their own');
+        const detBig = path.join(tmp, 'detbig.json'), detBigOut = fs.mkdtempSync(path.join(tmp, 'detbig-'));
+        fs.writeFileSync(detBig, JSON.stringify({ name: 'Reading details', books: Array.from({ length: 3001 }, (_, i) => ({ id: 'b' + i, title: 'Book ' + i, kind: 'fiction' })) }));
+        const bigSaid = execFileSync('python3', [py, detBig, '--details', '--out', detBigOut], { encoding: 'utf8' });
+        const dfiles = fs.readdirSync(detBigOut).sort(), dbig = [];
+        for (const f of dfiles) dbig.push((await S.parseIncoming(fs.readFileSync(path.join(detBigOut, f), 'utf8'))).details);
+        eq(dbig.map(d => [d.name, d.books.length, d.more]), [['Reading details (1 of 2)', 3000, 0], ['Reading details (2 of 2)', 1, 0]], 'reading details for over 3,000 books come as numbered files, not an error');
+        check(/File 2 of 2 \(1 entry\): /.test(bigSaid) && !/Link/.test(bigSaid) && new Set(dbig.map(d => d.id)).size === 2, 'each with an id of its own, and no link: ' + bigSaid.slice(-200));
+        // Past 20 links it's the file only, and so it is when one book alone makes a link too long.
+        const manyIn = path.join(tmp, 'many.json'), manyOut = fs.mkdtempSync(path.join(tmp, 'many-'));
+        fs.writeFileSync(manyIn, JSON.stringify({ books: Array.from({ length: 1001 }, (_, i) => ({ title: 'Book ' + (i + 1), notes: words(60) })) }));
+        check(/21 links would be too many to tap one by one\. Hand over the file instead\./.test(execFileSync('python3', [py, manyIn, '--out', manyOut], { encoding: 'utf8' })), 'more than 20 links: the file instead');
+        const han = () => String.fromCodePoint(0x4e00 + Math.floor(r() * 20000));
+        const oneIn = path.join(tmp, 'one.json'), oneOut = fs.mkdtempSync(path.join(tmp, 'one-'));
+        fs.writeFileSync(oneIn, JSON.stringify({ books: [{ title: 'Short' }, { title: 'Long notes', notes: Array.from({ length: 4000 }, han).join('') }] }));
+        const oneSaid = execFileSync('python3', [py, oneIn, '--out', oneOut], { encoding: 'utf8' });
+        check(/one book alone makes a link of [\d,]+ characters\. Hand over the file instead\./.test(oneSaid) && !/^Link/m.test(oneSaid), 'a book that alone makes a link too long: the file instead: ' + oneSaid.slice(-200));
+      }
+
       // Exports from Goodreads and LibraryThing, read by the script itself, the way they come: a byte-order mark,
       // CRLF line ends, quoted line breaks and a short row; LibraryThing's tab-separated file in UTF-16.
       const cellq = v => /[",\r\n\t]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
