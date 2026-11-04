@@ -2127,7 +2127,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         return;
       }
       L.innerHTML = '<div class="empty">' + EMPTY_ART + '<h2>Your shelves are empty</h2><p>A catalog for the books in your house: where each one is, what you’ve read, and who borrowed what. It stays in this browser' + (D.on ? ' and your Google Drive' : '') + ', nowhere else.</p>' +
-        '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude with the Shelfmark skill.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch).</span></li><li><span>Tap it, and check the list before anything is added.</span></li></ol>' +
+        '<ol class="steps"><li><span><b>Photograph a shelf</b>, a stack of covers, or the barcodes, and send the photos to Claude with the Shelfmark skill.' + SKILL_HOW + '</span></li><li><span>Claude gives you a <b>Shelfmark link</b> (or a file, for a big batch).</span></li><li><span>' +
+          // In an iPhone's Home Screen app, a tapped link opens in Safari's copy instead (see homeScreenApp()).
+          (homeScreenApp() ? 'Links from Claude open in Safari, not in this app: press and hold it in Claude, copy it, and paste it in <b>Open a link or file</b>. Check the list before anything is added.' : 'Tap it, and check the list before anything is added.') + '</span></li></ol>' +
         '<div class="row"><button class="btn primary" type="button" data-act="add">Add a book by hand</button><button class="btn" type="button" data-act="import">Open a link or file</button></div>' +
         // Google's sign-in script isn't loaded from here: it loads when Settings opens, as the privacy page says.
         (!D.on && clientId() ? '<p class="away">Use Shelfmark on another device? Connect Google Drive to bring your library here.</p><div class="row"><button class="btn sm" type="button" data-act="drive">Open Settings</button></div>' : '') + '</div>';

@@ -833,11 +833,14 @@ step('in the app on an iPhone\'s Home Screen, Import starts with the paste box a
     const order = () => page.$$eval('#sheet .bd > *', els => els.map(e => e.className.split(' ')[0] || e.tagName.toLowerCase()));
     await page.click('#importBtn');
     assert.equal(await page.locator('#sheet .im-app').count(), 0, 'Safari, or a phone that isn\'t an iPhone, gets the iPhone\'s note');
+    assert.equal(await page.textContent('.empty .steps li:last-child'), 'Tap it, and check the list before anything is added.');
     assert.deepEqual((await order()).slice(0, 2), ['steps', 'noskill']);
     await page.click('#imx');
     // Safari sets navigator.standalone only in an app opened from the Home Screen.
     await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
     await page.reload();
+    // The empty shelves say so too, where Safari says to tap the link.
+    assert.equal(await page.textContent('.empty .steps li:last-child'), 'Links from Claude open in Safari, not in this app: press and hold it in Claude, copy it, and paste it in Open a link or file. Check the list before anything is added.');
     await page.click('#importBtn');
     assert.equal(await page.textContent('#sheet .im-app'), 'Links from Claude open in Safari, not in this app. Press and hold the link in Claude, copy it, and paste it here.');
     assert.deepEqual((await order()).slice(0, 4), ['lede', 'fl', 'row', 'steps'], 'the paste box isn\'t first');
