@@ -2263,6 +2263,63 @@ step('Add a book starts from the chip and the search, and the book added is show
   } finally { await ctx.close(); }
 });
 
+step('a new book closed before Add keeps its typing for the next Add a book, and Cancel or Clear lets it go', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [WALDEN]);
+    const kept = () => page.locator('.kept').count();
+    // a sheet closed other than by Back leaves its history entry a moment later
+    const gone = () => until(() => page.evaluate(() => !(history.state && history.state.sheet)), 'the card\'s history entry to go', 3000);
+    // Escape keeps it, and the next Add a book opens with it, saying so.
+    await page.click('#addBtn');
+    assert.equal(await kept(), 0);
+    await page.fill('#f-title', 'Half a Title');
+    await page.fill('#f-authors', 'Ada Quill');
+    await page.click('#f-status button[data-v="reading"]');
+    await page.keyboard.press('Escape');
+    assert.equal(await sheetOpen(page), false);
+    await gone();
+    assert.equal(Object.values((await stored(page)).library.books).length, 1, 'closing it added the book');
+    await page.click('#addBtn');
+    assert.equal(await page.textContent('.kept .note'), 'Kept from before');
+    assert.deepEqual([await page.inputValue('#f-title'), await page.inputValue('#f-authors'), await page.getAttribute('#f-status button[data-v="reading"]', 'aria-pressed')], ['Half a Title', 'Ada Quill', 'true']);
+    // So does Back, untouched; Clear starts afresh.
+    await page.goBack();
+    await until(async () => !(await sheetOpen(page)), 'Back to close the card', 3000);
+    await wait(450); // a tap where the last one was is ignored for a moment after a sheet closes (see tapGuard)
+    await page.click('#addBtn');
+    assert.equal(await page.inputValue('#f-title'), 'Half a Title');
+    await page.click('#f-clear');
+    assert.deepEqual([await kept(), await page.inputValue('#f-title'), await page.inputValue('#f-authors')], [0, '', '']);
+    // A tap beside the card keeps it too; Cancel lets it go.
+    await page.fill('#f-title', 'Another Start');
+    await page.mouse.click(195, 10); // the dimmed page above the sheet
+    assert.equal(await sheetOpen(page), false);
+    await gone();
+    await page.click('#addBtn');
+    assert.equal(await page.inputValue('#f-title'), 'Another Start');
+    await page.click('#bkx2');
+    await gone();
+    await wait(450);
+    await page.click('#addBtn');
+    assert.deepEqual([await kept(), await page.inputValue('#f-title')], [0, '']);
+    // Opened and closed with nothing typed, nothing is kept; added, nothing is kept either.
+    await page.keyboard.press('Escape');
+    await gone();
+    await wait(450);
+    await page.click('#addBtn');
+    assert.equal(await kept(), 0);
+    await page.fill('#f-title', 'Moby-Dick');
+    await page.click('#f-add');
+    await gone();
+    await wait(450);
+    await page.click('#addBtn');
+    assert.deepEqual([await kept(), await page.inputValue('#f-title')], [0, '']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a book added by hand to a long list sorted by author is in view, on a phone and with a mouse', async () => {
   for (const opts of [PHONE, DESK, { ...PHONE, reducedMotion: 'reduce' }]) {
     const ctx = await context(opts);

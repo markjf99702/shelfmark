@@ -265,6 +265,8 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 /* Add a book: a book that's here already says so under Author (out of the way while there's nothing to say) */
 #f-dup{margin:-2px 0 0}
 #f-notes-n{margin:0}
+.kept{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.kept .note{flex:1;margin:0}
 #f-dup:empty{position:absolute;margin:0}
 /* the title is a box of one line that grows to show a long one whole */
 .card-tt .ti{font:500 20px/1.25 var(--serif);padding:6px 8px;min-height:0;resize:none;overflow:hidden;display:block}
@@ -1449,6 +1451,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // and shelf of the last book added by hand this visit (kept in memory only), so a shelf goes in a book at a time.
   // Another room chosen in the menu wins, without that shelf.
   var handPlace = null;
+  // A new card closed with Escape, Back or a tap beside it, before Add, keeps what was typed for the next Add a book this
+  // visit (in memory only), which says so and can clear it. Cancel lets it go.
+  var draft = null;
+  function openNew(q) { var d = draft; if (d) bookSheet(d, true, function () { draft = null; openNew(q); }); else bookSheet(newBook(q), true); }
   function newBook(q) {
     q = str(q, 300); var b = { title: '' }, i = /^[\d\s-]+[\dXx]$/.test(q) && isbn13(q), room = UI.room && UI.room !== NOROOM ? UI.room : '';
     if (i) b.isbn = i; else b.title = q;
@@ -1822,7 +1828,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // The card's title box grows to show the whole title: as the card opens, as it's typed in, and when the screen
   // changes width (a phone turned, a window resized), which wraps it onto more lines or fewer.
   function growTitle() { var t = $('f-title'); if (!t) return; t.style.height = 'auto'; t.style.height = t.scrollHeight + t.offsetHeight - t.clientHeight + 'px'; }
-  function bookSheet(b, isNew) {
+  // clear: the card is a new book kept from before (see draft), and this starts it afresh.
+  function bookSheet(b, isNew, clear) {
     var st = { status: b.status || 'unread', rating: b.rating || 0, check: b.check || '', kind: b.kind || '', way: b.way || '', pace: b.pace || '', chapters: b.chapters || '',
       moods: (b.moods || []).slice(), genres: (b.genres || []).slice() };
     function seg(k, name, from, note) {
@@ -1834,7 +1841,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var view = UI.status, had = { check: !!b.check, loan: b.loan ? b.loan.to : '' }, backTold = null;
     var panel = openSheet(
       '<div class="hd"><span class="callno" id="callno"></span><button class="btn sm quiet" type="button" id="bkx">' + (isNew ? 'Cancel' : 'Done') + '</button></div>' +
-      '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2><div class="card">' +
+      '<div class="bd"><h2 class="sr" id="sheetTitle">' + (isNew ? 'Add a book' : esc(b.title)) + '</h2>' +
+      (clear ? '<div class="kept"><span class="note">Kept from before</span><button class="btn sm" type="button" id="f-clear">Clear</button></div>' : '') + '<div class="card">' +
       '<div class="card-top"><span id="bkcv">' + cover(b, 'lg') + '</span><div class="card-tt">' +
       '<label class="fl"><span>Title</span><textarea class="ti" id="f-title" rows="1" maxlength="300" enterkeyhint="done" autocomplete="off"' + (isNew ? ' autofocus' : '') + '>' + esc(b.title) + '</textarea></label>' +
       '<label class="fl"><span>Author</span><input id="f-authors" value="' + esc(byLine(b)) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
@@ -1872,19 +1880,26 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="ft">' + (isNew ? storeFlag() + '<span class="grow"></span><button class="btn quiet" type="button" id="bkx2">Cancel</button><button class="btn primary" type="button" id="f-add">Add to library</button>'
         : '<button class="btn danger" type="button" id="f-del">Remove from library</button><span class="grow"></span><button class="btn primary" type="button" id="bkx2">Done</button>') + '</div>' +
       datalist('dl-room', places('room')) + datalist('dl-shelf', places('shelf')) + datalist('dl-lent', distinct(function (x) { return x.loan && x.loan.to; })),
-      function () { if (!isNew) { flush(); settled(); } });
+      function () { if (!isNew) { flush(); settled(); } else if (!done) keep(); });
 
     function v(id) { return $(id).value; }
-    function read() {
+    // The form as typed, and as the book it makes.
+    function read() { return cleanBook(form()); }
+    function form() {
       var to = v('f-lent').trim();
-      return cleanBook(Object.assign({}, b, {
+      return Object.assign({}, b, {
         title: v('f-title'), authors: v('f-authors'), sub: v('f-sub'), isbn: v('f-isbn'), publisher: v('f-publisher'), year: v('f-year'), pages: v('f-pages'),
         format: v('f-format'), condition: v('f-condition'), edition: v('f-edition'), signed: $('f-signed').checked, first: $('f-first').checked,
         room: v('f-room'), shelf: v('f-shelf'), status: st.status, rating: st.rating, loan: to ? { to: to, since: v('f-since') } : null,
         tags: v('f-tags'), notes: $('f-notes').value, added: v('f-added'), check: st.check,
-        kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods, genres: st.genres, blurb: $('f-blurb').value
-      }));
+        kind: st.kind, way: st.way, pace: st.pace, chapters: st.chapters, moods: st.moods.slice(), genres: st.genres.slice(), blurb: $('f-blurb').value
+      });
     }
+    // A new card's typing, kept as it closes (see draft): unless it was added, cancelled or cleared (done), and only if
+    // something was typed, or it was kept from before already.
+    var done = false, opened = '';
+    function typed() { var f = form(); f.authors = list(f.authors, 12, 120, true); f.tags = list(f.tags, 20, 40); return f; }
+    function keep() { var f = typed(); draft = clear || JSON.stringify(f) !== opened ? f : null; }
     // shown is what the form held when the card opened or last saved. A save puts only the fields changed since
     // then onto the book as it is now, so a card left open doesn't undo what another tab or device changed
     // meanwhile, and a card closed untouched writes nothing.
@@ -2071,7 +2086,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         toast(did.length ? 'Filled in the ' + did.slice(0, -1).join(', ') + (did.length > 1 ? ' and ' : '') + did[did.length - 1] : 'Open Library had nothing to add');
       }).catch(function () { if (panel.isConnected) toast('Couldn’t reach Open Library. Try again in a moment.'); }).then(function () { btn.disabled = false; btn.textContent = 'Look it up'; });
     });
-    $('bkx').addEventListener('click', closeSheet); $('bkx2').addEventListener('click', closeSheet);
+    function cancel() { if (isNew) { done = true; draft = null; } closeSheet(); }
+    $('bkx').addEventListener('click', cancel); $('bkx2').addEventListener('click', cancel);
+    if (clear) $('f-clear').addEventListener('click', function () { done = true; clear(); });
     // Added, the book is shown in the list (see showAdded), and the toast says where it's shelved, or where the copy
     // already here is, with Undo. From the keyboard, Undo takes the keyboard, and then it goes to the book.
     if (isNew) $('f-add').addEventListener('click', function (e) {
@@ -2080,6 +2097,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!n.added) n.added = today();
       placed(n, placeIndex(live(DOC)));
       var dup = findDup(dupIndex(DOC), n);
+      done = true; draft = null;
       n = putBook(n); closeSheet(); if (!n) return;
       handPlace = { room: n.room || '', shelf: n.shelf || '' };
       showAdded(n.id);
@@ -2091,6 +2109,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     else $('f-del').addEventListener('click', function (e) { clearTimeout(saveT); sheetDone = null; closeSheet(); removeBook(b.id, !e.detail); });
     head(); growTitle(); drawState();
     if (!isNew) { shown = read(); cardFlush = flush; cardRefresh = refresh; }
+    else { opened = JSON.stringify(typed()); if (clear) drawDup(); }
   }
 
   // Open Library, only when the person has turned lookups on in Settings. It's sent the ISBN and nothing else (not the
@@ -2890,7 +2909,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
 
   // ---------- wiring ----------
-  $('addBtn').addEventListener('click', function () { bookSheet(newBook(''), true); });
+  $('addBtn').addEventListener('click', function () { openNew(''); });
   $('importBtn').addEventListener('click', importSheet);
   $('nextBtn').addEventListener('click', nextSheet);
   function openSettings() { loadGis(); settingsSheet(); }
@@ -2900,7 +2919,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     var b = e.target.closest('.bk'); if (b) { bookSheet(Object.assign({}, DOC.books[b.dataset.id]), false); return; }
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') $('addBtn').click();
-    else if (a.dataset.act === 'addq') bookSheet(newBook(UI.q), true);
+    else if (a.dataset.act === 'addq') openNew(UI.q);
     else if (a.dataset.act === 'import') importSheet();
     else if (a.dataset.act === 'drive') openSettings();
     else if (a.dataset.act === 'sync') syncNow(); // signing in to Google has to happen inside the tap
