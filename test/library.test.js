@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -1077,6 +1077,18 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
     const at = b => { const x = S.placed(Object.assign({}, b), ix); return [x.room || '', x.shelf || ''].join(' > '); };
     eq([at({ room: 'HALL', shelf: 'top shelf' }), at({ room: 'Bedroom', shelf: 'TOP SHELF' }), at({ room: 'Attic', shelf: 'top shelf' }), at({ shelf: 'loose' }), at({ room: 'hall' })],
       ['Hall > Top Shelf', 'Bedroom > Top shelf', 'Attic > top shelf', ' > Loose', 'Hall > '], 'a shelf takes the spelling of a shelf in the same room only');
+  }
+  // A tag is one tag however it's capitalised, like a place: it filters, is offered and is saved as most books spell it.
+  {
+    const lib = S.live(S.cleanDoc({ books: [{ id: 'p', t: 1, title: 'Persuasion', tags: ['Signed', 'gift'] }, { id: 'm', t: 1, title: 'Middlemarch', tags: ['signed'] },
+      { id: 'w', t: 1, title: 'Walden', tags: ['signed', 'Gift'] }, { id: 'e', t: 1, title: 'Emma', tags: ['gift'] }, { id: 'h', t: 1, title: 'Hamlet' }] }));
+    eq(lib.filter(b => S.hasTag(b, 'SIGNED')).map(b => b.id), ['m', 'p', 'w'], 'a tag finds every book with it, whatever its capitals');
+    eq(S.tagCounts(lib), { gift: 2, signed: 2, Signed: 1, Gift: 1 }, 'tags are counted by spelling');
+    eq(S.tagged({ tags: ['SIGNED', 'gift', 'Kids'] }, S.tagCounts(lib)).tags, ['signed', 'gift', 'Kids'], 'a tag typed with other capitals is saved as most books spell it, and a new one as typed');
+    const o = S.nextOffers(lib, S.cleanNext({}));
+    eq(Object.keys(o.tags).sort(), ['gift', 'signed'], 'What to read next offers each tag once, as most books spell it');
+    eq(S.nextPool(lib, S.cleanNext({ tag: 'Signed' })).map(b => b.id).sort(), ['m', 'p', 'w'], 'and a tag chosen there finds every book with it');
+    eq(S.fitNext(S.cleanNext({ tag: 'GIFT' }), o).tag, 'gift', 'a tag chosen before with other capitals stays chosen');
   }
   // Books saved before with another spelling sort together, so the list shows them as one shelf.
   {

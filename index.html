@@ -1128,6 +1128,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     for (k in by) out[k] = most(by[k]);
     return out;
   }
+  // A tag, like a place, is one tag however it's capitalised: "Signed" (a phone capitalises the first word typed) and
+  // "signed" (typed on a laptop) count, show and filter as one, under the spelling most books use.
+  function hasTag(b, tag) { var k = placeKey(tag); return (b.tags || []).some(function (t) { return placeKey(t) === k; }); }
+  // How many books have each spelling of a tag, {spelling: books}, for placeNames() and tagged().
+  function tagCounts(books) { var c = Object.create(null); books.forEach(function (b) { (b.tags || []).forEach(function (t) { c[t] = (c[t] || 0) + 1; }); }); return c; }
+  // A book with its tags as they're saved: each spelled the way the library already spells it, as place() does a room.
+  function tagged(b, counts) { if (b.tags) b.tags = list(b.tags, 20, 40).map(function (t) { return place(t, counts); }); return b; }
 
   function fmtDay(s) {
     if (!(s = day(s))) return '';
@@ -1353,7 +1360,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function narrowed(c) { return !!(c.len || c.tag || c.room || picky(c)); }
   function moodsMet(b, c) { return (b.moods || []).filter(function (m) { return c.moods.indexOf(m) >= 0; }).length; }
   function fits(b, c) {
-    return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
+    return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || hasTag(b, c.tag)) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
       (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
       (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
   }
@@ -1461,7 +1468,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // A book that could match the choices once it has the reading details and page count it hasn't got yet: a choice it
   // has the detail for has to match, one it hasn't is let by. Which chosen details it hasn't got (lacks).
   function couldMatch(b, c) {
-    return (!c.len || !b.pages || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
+    return (!c.len || !b.pages || lengthOf(b.pages) === c.len) && (!c.tag || hasTag(b, c.tag)) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
       (!c.kind || !b.kind || b.kind === c.kind) && (!c.moods.length || !b.moods || moodsMet(b, c)) && (!c.genre || !b.genres || b.genres.indexOf(c.genre) >= 0) &&
       (!c.pace || !b.pace || b.pace === c.pace) && (!c.short || !b.chapters || b.chapters === 'short' || b.way === 'dip');
   }
@@ -1659,10 +1666,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       kinds: Object.create(null), paces: Object.create(null), lens: Object.create(null) };
     var fit = o.fit = { kinds: Object.create(null), moods: Object.create(null), genres: Object.create(null), paces: Object.create(null), lens: Object.create(null), rooms: Object.create(null), tags: Object.create(null), short: false };
     var base = nextBooks(all, { reread: true, browse: true }, function () { return true; }, kin), kind, dip = 0, not = 0;
-    // Each room once, as most of the library's books spell it.
-    var rooms = placeNames(placeIndex(all).rooms);
+    // Each room and each tag once, as most of the library's books spell it.
+    var rooms = placeNames(placeIndex(all).rooms), tags = placeNames(tagCounts(all));
     base.forEach(function (b) {
-      (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[rooms[placeKey(b.room)]] = 1;
+      (b.tags || []).forEach(function (t) { o.tags[tags[placeKey(t)]] = 1; }); if (b.room) o.rooms[rooms[placeKey(b.room)]] = 1;
       if (b.kind) o.kind = o.kinds[b.kind] = 1; if (b.pace) o.pace = o.paces[b.pace] = 1; if (b.pages) o.len = o.lens[lengthOf(b.pages)] = 1; if (b.added) days[b.added] = 1;
       (b.moods || []).forEach(function (m) { o.moods[m] = 1; }); (b.genres || []).forEach(function (g) { o.genres[g] = 1; });
       if (b.chapters === 'short' || b.way === 'dip') o.short = 1;
@@ -1675,7 +1682,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (b.kind) fit.kinds[b.kind] = 1;
       if (kind && b.kind !== kind) return;
       (b.moods || []).forEach(function (m) { fit.moods[m] = 1; }); (b.genres || []).forEach(function (g) { fit.genres[g] = 1; });
-      (b.tags || []).forEach(function (t) { fit.tags[t] = 1; }); if (b.room) fit.rooms[rooms[placeKey(b.room)]] = 1;
+      (b.tags || []).forEach(function (t) { fit.tags[tags[placeKey(t)]] = 1; }); if (b.room) fit.rooms[rooms[placeKey(b.room)]] = 1;
       if (b.pace) fit.paces[b.pace] = 1; if (b.pages) fit.lens[lengthOf(b.pages)] = 1;
       if (b.chapters === 'short' || b.way === 'dip') dip++; else not++;
     });
@@ -1686,7 +1693,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (o.paces[c.pace]) fit.paces[c.pace] = 1;
     if (o.lens[c.len]) fit.lens[c.len] = 1;
     if (c.short && o.short) fit.short = true;
-    if (c.tag && o.tags[c.tag]) fit.tags[c.tag] = 1;
+    if (c.tag) Object.keys(o.tags).forEach(function (t) { if (placeKey(t) === placeKey(c.tag)) fit.tags[t] = 1; });
     if (c.room) Object.keys(o.rooms).forEach(function (r) { if (placeKey(r) === placeKey(c.room)) fit.rooms[r] = 1; });
     var many = Object.keys(days).length > 1;
     o.leans = LEANS.filter(function (l) { return !l[0] || (l[0] === 'loved' ? o.loved : many); });
@@ -1695,7 +1702,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   // A choice saved before that's no longer offered goes back to Any, so it can't narrow the pick out of sight.
   function fitNext(c, o) {
-    if (c.tag && !o.tags[c.tag]) c.tag = '';
+    if (c.tag) c.tag = Object.keys(o.tags).filter(function (t) { return placeKey(t) === placeKey(c.tag); })[0] || '';
     if (c.room) c.room = Object.keys(o.rooms).filter(function (r) { return placeKey(r) === placeKey(c.room); })[0] || '';
     if (c.genre && !o.genres[c.genre]) c.genre = '';
     if (!o.kinds[c.kind]) c.kind = ''; if (!o.paces[c.pace]) c.pace = ''; if (!o.short) c.short = false; if (!o.lens[c.len]) c.len = '';
@@ -1931,7 +1938,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function hiddenBy(b, q, rk) {
     if (b.wanted ? UI.status !== 'wanted' && (UI.status || !q.length) : UI.status === 'wanted' || (UI.status === 'lent' ? !b.loan : UI.status === 'check' ? !b.check : UI.status && statusOf(b) !== UI.status)) return 'status';
     if (UI.room && (UI.room === NOROOM ? !!b.room : keys(b).rk !== rk)) return 'room';
-    if (UI.tag && (b.tags || []).indexOf(UI.tag) < 0) return 'tag';
+    if (UI.tag && !hasTag(b, UI.tag)) return 'tag';
     if (UI.facet && !facetHit(b, UI.facet)) return 'facet';
     if (q.length && !searchHit(b, q)) return 'q';
     return '';
@@ -2000,13 +2007,14 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // The books in the house (all) are counted; those on the wishlist have a chip of their own, and show elsewhere only in
     // a search, so one search in a shop answers both "do I have it?" and "did I mean to buy it?". The tag menu has the tags
     // of the books the chip shows.
-    var every = live(DOC), all = every.filter(function (b) { return !b.wanted; }), noRoom = 0, tags = Object.create(null);
+    var every = live(DOC), all = every.filter(function (b) { return !b.wanted; }), noRoom = 0;
     var counts = { '': all.length, unread: 0, reading: 0, read: 0, aside: 0, lent: 0, check: 0, wanted: every.length - all.length };
     all.forEach(function (b) {
       counts[statusOf(b)]++; if (b.loan) counts.lent++; if (b.check) counts.check++;
       if (!b.room) noRoom++;
     });
-    (UI.status === 'wanted' ? every.filter(function (b) { return b.wanted; }) : all).forEach(function (b) { (b.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; }); });
+    // Each tag once, however its books spell it, under the spelling most of them use (see hasTag()).
+    var tags = placeNames(tagCounts(UI.status === 'wanted' ? every.filter(function (b) { return b.wanted; }) : all));
     // Each room once, however its books spell it, under the spelling most of them use (see place()).
     var at = placeIndex(all), rooms = placeNames(at.rooms);
     if (UI.status === 'lent' && !counts.lent || UI.status === 'check' && !counts.check || UI.status === 'wanted' && !counts.wanted) UI.status = '';
@@ -2014,7 +2022,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (UI.status !== 'lent' && UI.sort === 'lent') UI.sort = '';
     if (UI.room && UI.room !== NOROOM) UI.room = rooms[placeKey(UI.room)] || '';
     if (UI.room === NOROOM && !noRoom) UI.room = '';
-    if (UI.tag && !tags[UI.tag]) UI.tag = '';
+    if (UI.tag) UI.tag = tags[placeKey(UI.tag)] || '';
     // The summary's filter goes once no book has what it's for (the last book given an author, say).
     if (UI.facet && (!facetName(UI.facet) || !every.some(function (b) { return facetHit(b, UI.facet); }))) UI.facet = '';
     // Reading, Read and Set aside show once a book is (or while their chip is chosen), Lent out and To check once one is, so on a
@@ -2028,7 +2036,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (counts.wanted) chipDefs.push(['wanted', 'Wishlist']);
     // The summary's filter comes first, chosen, with its × to take it off.
     $('chips').innerHTML = (UI.facet ? '<button class="chip" type="button" data-facet="1" aria-pressed="true" aria-label="' + esc(facetName(UI.facet)) + ', take this filter off">' + esc(facetName(UI.facet)) + '<span class="x" aria-hidden="true">×</span></button>' : '') + chipDefs.map(function (c) { return '<button class="chip" type="button" data-s="' + c[0] + '" aria-pressed="' + (UI.status === c[0]) + '" aria-label="' + c[1] + ', ' + counts[c[0]] + '">' + c[1] + '<span class="n">' + counts[c[0]] + '</span></button>'; }).join('');
-    var rk = Object.keys(rooms).map(function (k) { return rooms[k]; }).sort(COLL.compare), tk = Object.keys(tags).sort(COLL.compare);
+    var rk = Object.keys(rooms).map(function (k) { return rooms[k]; }).sort(COLL.compare), tk = Object.keys(tags).map(function (k) { return tags[k]; }).sort(COLL.compare);
     $('roomSel').innerHTML = '<option value="">All rooms</option>' + rk.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + (noRoom && rk.length ? '<option value="' + NOROOM + '">No room yet</option>' : '');
     $('roomSel').value = UI.room; $('roomSel').hidden = !rk.length;
     $('tagSel').innerHTML = '<option value="">All tags</option>' + tk.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('');
@@ -2258,8 +2266,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     function seg(k, name, from, note) {
       return '<div class="fl"><span>' + name + '</span><div class="seg" id="f-' + k + '" role="group" aria-label="' + name + '">' + from.map(function (o) { return '<button type="button" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' + (note || '') + '</div>';
     }
-    // Tags used on other books, to add with a tap; those this book has already aren't offered.
-    var own = (b.tags || []).map(fold), tagList = distinct(function (x) { return x.tags; }).filter(function (t) { return own.indexOf(fold(t)) < 0; });
+    // Tags used on other books, to add with a tap, each once as most books spell it; those this book has already aren't offered.
+    var own = (b.tags || []).map(placeKey), tagNames = placeNames(tagCounts(live(DOC))),
+      tagList = Object.keys(tagNames).filter(function (k) { return own.indexOf(k) < 0; }).map(function (k) { return tagNames[k]; }).sort(COLL.compare);
     // What the list showed, and what the book had, as the card opened (see settled()); backTold is It's back's toast.
     var view = UI.status, had = { check: !!b.check, loan: b.loan ? b.loan.to : '' }, backTold = null;
     var panel = openSheet(
@@ -2282,7 +2291,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="loan" id="f-loanrow"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
       '<label class="fl"><span>Since</span><input id="f-since" type="date" value="' + esc(b.loan ? b.loan.since || '' : '') + '"></label></div>' +
       '<button class="btn sm" type="button" id="f-back"' + (b.loan ? '' : ' hidden') + '>It’s back</button>' +
-      '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="none" autocomplete="off">' +
+      '<label class="fl"><span>Tags</span><input id="f-tags" value="' + esc((b.tags || []).join(', ')) + '" placeholder="Separate with commas" enterkeyhint="next" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off">' +
       (tagList.length ? '<span class="tagpicks" id="f-tagpicks">' + tagList.slice(0, 24).map(function (t) { return '<button type="button" data-t="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') + '</span>' : '') + '</label>' +
       '<div class="fl"><label class="fl"><span>Notes</span><textarea id="f-notes" rows="3" maxlength="4000" aria-describedby="f-notes-n">' + esc(b.notes) + '</textarea></label><span class="note" id="f-notes-n" hidden></span></div>' +
       '<details class="more"><summary><span class="sum-l">Reading details</span><span class="sum-v" id="f-rdsum"></span></summary><div class="fs">' +
@@ -2348,6 +2357,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       });
       // A room or shelf typed in is saved as the other books spell that place (the field keeps what was typed).
       if (n.room !== shown.room || n.shelf !== shown.shelf) placed(next, placeIndex(home(DOC).filter(function (x) { return x.id !== b.id; })));
+      // And a tag typed in as the other books spell it ("Signed" joins "signed").
+      if (JSON.stringify(n.tags) !== JSON.stringify(shown.tags)) tagged(next, tagCounts(live(DOC).filter(function (x) { return x.id !== b.id; })));
       if (changed) { b = putBook(next) || b; shown = n; }
     }
     // Another tab or a sync changed the book while its card is open: show the new values in every field the person
@@ -2506,13 +2517,13 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // it be, so a phone's keyboard doesn't come up over the card.
     if ($('f-tagpicks')) $('f-tagpicks').addEventListener('click', function (e) {
       var t = e.target.closest('button'); if (!t) return;
-      var cur = list(v('f-tags'), 20, 40); if (cur.map(fold).indexOf(fold(t.dataset.t)) < 0) cur.push(t.dataset.t);
+      var cur = list(v('f-tags'), 20, 40); if (cur.map(placeKey).indexOf(placeKey(t.dataset.t)) < 0) cur.push(t.dataset.t);
       $('f-tags').value = cur.join(', '); drawPicks(); later();
       if (!e.detail) refocus($('f-tags'));
     });
     function drawPicks() {
-      var box = $('f-tagpicks'), cur = list(v('f-tags'), 20, 40).map(fold), any = false; if (!box) return;
-      box.querySelectorAll('button').forEach(function (x) { x.hidden = cur.indexOf(fold(x.dataset.t)) >= 0; any = any || !x.hidden; });
+      var box = $('f-tagpicks'), cur = list(v('f-tags'), 20, 40).map(placeKey), any = false; if (!box) return;
+      box.querySelectorAll('button').forEach(function (x) { x.hidden = cur.indexOf(placeKey(x.dataset.t)) >= 0; any = any || !x.hidden; });
       box.hidden = !any;
     }
     // Look it up fills in the fields that are blank, and says which. An answer that comes once its card has closed goes
@@ -2555,6 +2566,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       if (!n) { $('f-title').focus(); toast('A book needs a title'); return; }
       if (!n.added) n.added = today();
       if (n.wanted) { delete n.room; delete n.shelf; delete n.loan; } else placed(n, placeIndex(home(DOC)));
+      tagged(n, tagCounts(live(DOC)));
       var dup = findDup(dupIndex(DOC, false), n), wish = !n.wanted && !dup && findDup(dupIndex(DOC, true), n), was = {};
       if (wish) { was[wish.id] = wish; n = Object.assign({}, wish, n, { id: wish.id, wanted: false }); }
       done = true; draft = null;
@@ -2891,7 +2903,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     });
     $('rvx').addEventListener('click', closeSheet);
     $('rv-add').addEventListener('click', function (e) {
-      var now = Date.now(), on = today(), n = 0, w = 0, ids = [], was = {}, checks = 0, ix = placeIndex(home(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
+      var now = Date.now(), on = today(), n = 0, w = 0, ids = [], was = {}, checks = 0, ix = placeIndex(home(DOC)), tc = tagCounts(live(DOC)), seen = got(DOC.seen, batch.id) ? '' : batch.id, read = $('rv-read').checked;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         // Each a moment older than the one before it, so Newest first lists them in the batch's own (shelf) order. Each
@@ -2901,8 +2913,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         // takes the batch's (keeping its notes and tags), added today, and comes off the list.
         var t = now - i, wish = !r.b.wanted && r.wish && DOC.books[r.wish.id], b;
         if (wish && (wish.del || !wish.wanted)) wish = null;
-        if (r.b.wanted) b = cleanBook(Object.assign({}, r.b, { id: uid(), t: t, added: r.b.added || on }));
-        else b = cleanBook(placed(shelve(Object.assign({}, wish, r.b, { id: wish ? wish.id : uid(), t: wish ? Math.max(t, wish.t + 1) : t, added: r.b.added || on, wanted: false }, read && !r.b.status && !r.b.aside ? { status: 'read' } : null), bulk, batch), ix));
+        if (r.b.wanted) b = cleanBook(tagged(Object.assign({}, r.b, { id: uid(), t: t, added: r.b.added || on }), tc));
+        else b = cleanBook(tagged(placed(shelve(Object.assign({}, wish, r.b, { id: wish ? wish.id : uid(), t: wish ? Math.max(t, wish.t + 1) : t, added: r.b.added || on, wanted: false }, read && !r.b.status && !r.b.aside ? { status: 'read' } : null), bulk, batch), ix), tc));
         if (!b) return;
         if (wish) was[wish.id] = wish; else ids.push(b.id);
         DOC.books[b.id] = b; if (b.wanted) w++; else { n++; countPlace(ix, b); } if (b.check) checks++;

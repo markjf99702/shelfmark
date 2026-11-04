@@ -2008,6 +2008,31 @@ step('a tag typed with an & in it stays one tag', async () => {
   } finally { await ctx.close(); }
 });
 
+step('a tag typed with other capitals is one tag: one Tag option that finds every book, one + on a card, saved as the library spells it', async () => {
+  const ctx = await context();
+  try {
+    const page = await open(ctx);
+    await seed(page, [{ ...PIRANESI, tags: ['Signed'] }, { ...MIDDLEMARCH, tags: ['signed'] }, { ...CRADLE, tags: ['signed', 'sf'] }, WALDEN]);
+    assert.deepEqual(await page.$$eval('#tagSel option', els => els.map(e => e.textContent)), ['All tags', 'sf', 'signed']);
+    await page.selectOption('#tagSel', 'signed');
+    assert.deepEqual((await titles(page)).sort(), ['Cat\u2019s Cradle', 'Middlemarch', 'Piranesi'], 'the Tag menu leaves out a book saved with other capitals');
+    await page.selectOption('#tagSel', '');
+    // A card offers it once, and a tag typed with other capitals is saved as most books spell it.
+    await page.click('#list .bk[data-id="w1"]');
+    assert.deepEqual(await page.$$eval('#f-tagpicks button', els => els.map(e => e.textContent)), ['+ sf', '+ signed']);
+    assert.deepEqual(await page.$eval('#f-tags', el => [el.autocapitalize, el.getAttribute('autocorrect')]), ['none', 'off'], 'a phone doesn\'t capitalise or correct a tag');
+    await page.fill('#f-tags', 'SIGNED, gift');
+    await page.click('#bkx2');
+    assert.deepEqual((await storedBook(page, 'w1')).tags, ['signed', 'gift']);
+    assert.deepEqual((await storedBook(page, 'b03')).tags, ['Signed'], 'a book saved before was rewritten');
+    // What to read next's Tag menu has it once too, and it finds every book with it.
+    await page.click('#nextBtn');
+    await page.click('#nxMore summary');
+    assert.deepEqual(await page.$$eval('#nxTag option', els => els.map(e => e.textContent)), ['Any tag', 'gift', 'sf', 'signed']);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('an author typed with a "Jr." stays one author', async () => {
   const ctx = await context();
   try {
@@ -2078,7 +2103,7 @@ step('a phone keyboard\'s Search puts it away over the results, and Next goes th
     assert.equal(await page.inputValue('#f-notes'), 'one\ntwo');
     const keys = await page.evaluate(() => Object.fromEntries(['f-authors', 'f-room', 'f-shelf', 'f-lent', 'f-tags', 'f-sub', 'f-publisher', 'f-year', 'f-pages', 'f-edition']
       .map(id => { const e = document.getElementById(id); return [id, [e.getAttribute('enterkeyhint'), e.getAttribute('autocapitalize'), e.getAttribute('autocorrect')].join(' ').trim()]; })));
-    assert.deepEqual(keys, { 'f-authors': 'next words off', 'f-room': 'next', 'f-shelf': 'next', 'f-lent': 'next words off', 'f-tags': 'next none', 'f-sub': 'next', 'f-publisher': 'next  off', 'f-year': 'next', 'f-pages': 'next', 'f-edition': 'done' });
+    assert.deepEqual(keys, { 'f-authors': 'next words off', 'f-room': 'next', 'f-shelf': 'next', 'f-lent': 'next words off', 'f-tags': 'next none off', 'f-sub': 'next', 'f-publisher': 'next  off', 'f-year': 'next', 'f-pages': 'next', 'f-edition': 'done' });
     // A name on the review screen isn't "corrected" either.
     await page.goto(linkTo({ name: 'Hall', books: [{ title: 'Cranford', authors: ['Elizabeth Gaskell'] }] }));
     await page.waitForSelector('#rv-add');
