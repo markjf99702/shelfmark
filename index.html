@@ -94,6 +94,8 @@ select{appearance:none;-webkit-appearance:none;padding-right:28px;background-ima
 input[type=date]{min-height:calc(1.45em + 18px)}
 input[type=date]::-webkit-datetime-edit-fields-wrapper{padding:0}
 input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:0;flex:none}
+/* a field's example words read (4.5:1), and still look like an example beside what's typed */
+::placeholder{color:var(--ink3);opacity:1}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0}
 a{color:var(--accent)}
@@ -143,7 +145,9 @@ a{color:var(--accent)}
 .chip{flex:none;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 13px var(--sans);color:var(--ink2);white-space:nowrap}
 @media (hover:hover){.chip:hover{color:var(--ink);border-color:var(--ink3)}}
 .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
-.chip .n{font:500 11.5px var(--mono);opacity:.7;margin-left:3px}
+/* a chip's count is quieter than its word, and still reads (WCAG 2.2 SC 1.4.3, 4.5:1); on the chosen chip, it's as clear */
+.chip .n{font:500 11.5px var(--mono);color:var(--ink3);margin-left:3px}
+.chip[aria-pressed="true"] .n{color:var(--ground)}
 .selects{display:flex;gap:6px;flex:0 1 auto;min-width:0}
 .selects select{width:auto;max-width:190px;padding:6px 28px 6px 10px;font-size:14px;border-radius:999px}
 .count{margin:14px 2px 10px;font:500 12.5px var(--mono);color:var(--ink3);letter-spacing:.02em}
@@ -281,8 +285,9 @@ html:has(#list .shelf){scroll-padding-top:calc(var(--toph,calc(env(safe-area-ins
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
 .stat-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .stars{display:inline-flex;gap:0}
-/* each star answers a tap about 39px square; the negative margins keep them where they were */
-.stars button{background:none;border:0;padding:8px;margin:-6px -5px;font-size:23px;line-height:1;color:var(--line2)}
+/* each star answers a tap about 39px square; the negative margins keep them where they were. A star not given is an
+   outline as clear as small grey text (WCAG 2.2 SC 1.4.11 asks 3:1 of a control's look), one given is filled in brass. */
+.stars button{background:none;border:0;padding:8px;margin:-6px -5px;font-size:23px;line-height:1;color:var(--ink3)}
 .stars button.on{color:var(--brass)}
 .loan{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;align-items:end}
 #f-back{justify-self:start}
@@ -1806,7 +1811,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       '<div class="flag" id="f-flag"' + (st.check ? '' : ' hidden') + '><span><b>Check this one:</b> ' + esc(st.check) + '</span><button class="btn sm" type="button" id="f-ok">It’s right</button></div>' +
       '<div class="fs">' +
       '<div class="stat-row"><div class="seg" id="f-status" role="group" aria-label="Status">' + STATUSES.map(function (s) { return '<button type="button" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">★</button>'; }).join('') + '</div></div>' +
+      '<div class="stars" id="f-rating" role="group" aria-label="Rating">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-v="' + n + '" aria-label="' + plural(n, 'star') + '">☆</button>'; }).join('') + '</div></div>' +
       '<div class="two"><label class="fl"><span>Room</span><input id="f-room" list="dl-room" value="' + esc(b.room) + '" maxlength="60" placeholder="Living room" enterkeyhint="next" autocomplete="off"></label>' +
       '<label class="fl"><span>Shelf</span><input id="f-shelf" list="dl-shelf" value="' + esc(b.shelf) + '" maxlength="60" placeholder="Tall bookcase, top" enterkeyhint="next" autocomplete="off"></label></div>' +
       '<div class="loan"><label class="fl"><span>Lent to</span><input id="f-lent" list="dl-lent" value="' + esc(b.loan ? b.loan.to : '') + '" maxlength="80" placeholder="On the shelf" enterkeyhint="next" autocapitalize="words" autocorrect="off" autocomplete="off"></label>' +
@@ -1917,7 +1922,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     function drawState() {
       panel.querySelectorAll('#f-status button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st.status)); });
-      panel.querySelectorAll('#f-rating button').forEach(function (x) { x.classList.toggle('on', +x.dataset.v <= st.rating); x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
+      panel.querySelectorAll('#f-rating button').forEach(function (x) { var on = +x.dataset.v <= st.rating; x.classList.toggle('on', on); x.textContent = on ? '★' : '☆'; x.setAttribute('aria-pressed', String(+x.dataset.v === st.rating)); });
       $('f-flag').hidden = !st.check; $('f-back').hidden = !v('f-lent').trim(); drawCount();
       ['kind', 'way', 'pace', 'chapters'].forEach(function (k) { panel.querySelectorAll('#f-' + k + ' button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === st[k])); }); });
       panel.querySelectorAll('#f-moods button').forEach(function (x) { x.setAttribute('aria-pressed', String(st.moods.indexOf(x.dataset.m) >= 0)); });

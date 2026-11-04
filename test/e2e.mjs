@@ -1432,7 +1432,7 @@ step('filter chips read their counts apart, and a card offers only tags the book
   } finally { await ctx.close(); }
 });
 
-step('small grey text and the Reading badge reach WCAG AA contrast, light and dark', async () => {
+step('small grey text, the Reading badge, chip counts, placeholders and stars reach WCAG AA contrast, light and dark', async () => {
   for (const colorScheme of ['light', 'dark']) {
     const ctx = await context({ ...PHONE, colorScheme });
     try {
@@ -1447,6 +1447,34 @@ step('small grey text and the Reading badge reach WCAG AA contrast, light and da
         assert.deepEqual(page.problems, []);
         await page.close();
       }
+      // As drawn: a chip's count, chosen or not, and a field's placeholder are text (4.5:1, WCAG 2.2 SC 1.4.3); a star
+      // not given is a control's look (3:1, SC 1.4.11 Non-text Contrast).
+      const page = await open(ctx);
+      await seed(page, [WALDEN, { ...KARAMAZOV, status: 'read', rating: 2 }]);
+      const drawn = () => page.evaluate(() => {
+        const rgb = s => s.match(/[\d.]+/g).slice(0, 3).map(Number), lum = c => { const l = c.map(x => x / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+        const ratio = (fg, bg) => { const [a, b] = [lum(rgb(fg)), lum(rgb(bg))].sort((x, y) => y - x); return +((a + 0.05) / (b + 0.05)).toFixed(2); };
+        const css = (q, pseudo) => { const e = document.querySelector(q); return e && getComputedStyle(e, pseudo); }, bg = q => css(q).backgroundColor, out = {};
+        const n = css('#chips .chip[aria-pressed="false"] .n'), on = css('#chips .chip[aria-pressed="true"] .n');
+        out.count = [ratio(n.color, bg('#chips .chip[aria-pressed="false"]')), n.opacity];
+        out.chosenCount = [ratio(on.color, bg('#chips .chip[aria-pressed="true"]')), on.opacity];
+        if (css('#f-room')) {
+          const ph = css('#f-room', '::placeholder');
+          out.placeholder = [ratio(ph.color, bg('#f-room')), ph.opacity];
+          out.star = [ratio(css('#f-rating button:not(.on)').color, bg('.panel')), document.querySelector('#f-rating button:not(.on)').textContent, document.querySelector('#f-rating button.on').textContent];
+        }
+        return out;
+      });
+      const list = await drawn();
+      await page.click('#list .bk[data-id="k1"]');
+      const card = await drawn();
+      const what = colorScheme + ': ';
+      assert.ok(list.count[0] >= 4.5 && list.count[1] === '1', what + 'a chip\'s count is ' + list.count);
+      assert.ok(list.chosenCount[0] >= 4.5 && list.chosenCount[1] === '1', what + 'the chosen chip\'s count is ' + list.chosenCount);
+      assert.ok(card.placeholder[0] >= 4.5 && card.placeholder[1] === '1', what + 'a placeholder is ' + card.placeholder);
+      assert.ok(card.star[0] >= 3, what + 'a star not given is ' + card.star[0] + ':1 against the card');
+      assert.deepEqual(card.star.slice(1), ['☆', '★'], what + 'a star not given looks like one given');
+      assert.deepEqual(page.problems, []);
     } finally { await ctx.close(); }
   }
 });
