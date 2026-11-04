@@ -162,6 +162,7 @@ It reads CSV or tab-separated files in any of the encodings these exports and sp
 - **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned").
 - **Takes the series off Goodreads titles,** so "The Name of the Wind (The Kingkiller Chronicle, #1)" matches the same book read from a spine.
 - **Turns `<br/>` in reviews into line breaks,** and keeps both the review and any private notes.
+- **Keeps the day each book was read:** Goodreads's and LibraryThing's `Date Read` become `finished`, and a LibraryThing book with one is read.
 - **Keeps reading shelves out of tags:** read, currently-reading and to-read (and LibraryThing's Your library, Wishlist and the like) become the book's status or nothing. Shelves and collections the person made become tags.
 - **Turns LibraryThing's names round:** "Le Guin, Ursula K." becomes "Ursula K. Le Guin".
 
@@ -170,5 +171,5 @@ If it left books out, ask once, with the count: "212 are on your to-read shelf w
 Exports are usually large, so hand over the file rather than the link, and say how many books came through. Over 3,000, the script writes numbered files.
 
 Without code tools, map the columns by hand the same way:
-- **Goodreads:** `Title` (without the series in brackets), `Author` and `Additional Authors`, `ISBN13` or `ISBN` (strip the `="…"` wrapper), `Publisher`, `Year Published`, `Number of Pages`, `My Rating` → `rating` (0 means none), `Exclusive Shelf` → `status`, `Bookshelves` (less the reading shelves) → `tags`, `My Review` and `Private Notes` → `notes`.
-- **LibraryThing:** `Title`, `Primary Author` (turned round), `ISBN` (pass it as it is), `Publication` (the publisher before the bracket), `Date`, `Rating`, `Tags` plus the person's own `Collections` → `tags`, `Review`, `Comment` and `Private Comment` → `notes`.
+- **Goodreads:** `Title` (without the series in brackets), `Author` and `Additional Authors`, `ISBN13` or `ISBN` (strip the `="…"` wrapper), `Publisher`, `Year Published`, `Number of Pages`, `My Rating` → `rating` (0 means none), `Exclusive Shelf` → `status`, `Date Read` (2023/04/15) → `finished` (2023-04-15), `Bookshelves` (less the reading shelves) → `tags`, `My Review` and `Private Notes` → `notes`.
+- **LibraryThing:** `Title`, `Primary Author` (turned round), `ISBN` (pass it as it is), `Publication` (the publisher before the bracket), `Date`, `Rating`, `Date Read` → `finished`, with `status` `read`, `Tags` plus the person's own `Collections` → `tags`, `Review`, `Comment` and `Private Comment` → `notes`.

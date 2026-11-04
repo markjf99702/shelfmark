@@ -342,7 +342,7 @@ def clean(b, i, warn):
 # ---------- Goodreads and LibraryThing exports ----------
 # --import reads the export itself and does the mechanical part here rather than by hand: it leaves out books that
 # aren't in the house (on the to-read shelf with no copy owned, or only wished for), takes "(Series, #2)" off titles
-# so they match the same book read from a spine, turns <br/> into line breaks, keeps reading shelves out of tags and
+# so they match the same book read from a spine, keeps the day each was read (Date Read, as finished), turns <br/> into line breaks, keeps reading shelves out of tags and
 # turns LibraryThing's "Le Guin, Ursula K." round.
 
 SUFFIX = re.compile(r'^(jr|sr|ii|iii|iv|ph\.?d|m\.?d)\.?$', re.I)
@@ -415,6 +415,12 @@ def lines(*texts):
     return '\n\n'.join(t for t in (re.sub(r'<br\s*/?>', '\n', x, flags=re.I).strip() for x in texts) if t)
 
 
+def when(v):
+    """A day as an export writes it, Goodreads's "2023/04/15" or LibraryThing's "2023-04-15", as Shelfmark keeps it."""
+    m = re.match(r'\s*(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})', v or '')
+    return day(f'{m[1]}-{int(m[2]):02d}-{int(m[3]):02d}') if m else ''
+
+
 def stars(v):
     try:
         return int(float(v) + 0.5)  # LibraryThing gives half stars; 3.5 → 4, as Shelfmark rounds
@@ -436,6 +442,7 @@ def from_goodreads(rows, keep):
             'publisher': cell(r, 'publisher'), 'year': cell(r, 'year published'), 'pages': cell(r, 'number of pages'),
             'rating': stars(cell(r, 'my rating')),
             'status': {'read': 'read', 'currently-reading': 'reading'}.get(shelf, ''),
+            'finished': when(cell(r, 'date read')),
             'tags': [t for t in (x.strip() for x in cell(r, 'bookshelves').split(',')) if t and t.lower() not in GR_SHELVES],
             'notes': lines(cell(r, 'my review'), cell(r, 'private notes')),
         })
@@ -463,7 +470,8 @@ def from_librarything(rows, keep):
             'isbn': ', '.join(x for x in (cell(r, 'isbn'), cell(r, 'isbns')) if x),
             'publisher': publisher(cell(r, 'publication')), 'year': cell(r, 'date'), 'pages': cell(r, 'page count'),
             'rating': stars(cell(r, 'rating')),
-            'status': 'reading' if 'currently reading' in low else '',
+            'status': 'reading' if 'currently reading' in low else 'read' if when(cell(r, 'date read')) else '',
+            'finished': when(cell(r, 'date read')),
             'tags': [t for t in (x.strip() for x in cell(r, 'tags').split(',')) if t] + [x for x in held if x.lower() not in LT_SHELVES],
             'notes': lines(cell(r, 'review'), cell(r, 'comment', 'comments'), cell(r, 'private comment', 'private comments')),
         })
