@@ -2311,6 +2311,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   }
   function renderDrive() {
     var s = $('driveSect'); if (!s) return;
+    // Drawn again as each sync starts and ends: the keyboard stays on its button, or goes to the sheet's heading.
+    var a = document.activeElement, keep = a && s.contains(a) ? a.id || 'sheetTitle' : '';
     var g = readShared(), email = g && g.email || '';
     var html = '<h3>Sync with Google Drive</h3>';
     if (!clientId()) {
@@ -2348,6 +2350,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var cid = D.clientId; D = freshDrive(); D.clientId = cid; saveDrive(); renderSync(); renderDrive(); render();
       toast('Drive disconnected on this device. Your library is still here and in Drive.');
     });
+    if (keep) refocus($(keep) || $('sheetTitle'));
   }
   // Erase this device's copy, once tapped: what a second tap erases.
   function eraseLabel() {

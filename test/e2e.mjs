@@ -1823,6 +1823,23 @@ step('Drive on a second device: the page shows it working, never says the shelve
   } finally { await c.close(); }
 });
 
+step('Sync now pressed from the keyboard keeps the keyboard on it while Settings is drawn again', async () => {
+  const g = fakeGoogle();
+  const ctx = await context(DESK);
+  await g.install(ctx);
+  try {
+    const page = await open(ctx);
+    await seed(page, [PIRANESI]);
+    await connectDrive(page);
+    await page.click('#setBtn');
+    await page.focus('#dvSync');
+    await page.keyboard.press('Enter');
+    await until(async () => /Last synced/.test(await page.textContent('#driveSect')), 'the sync to end');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'dvSync', 'Settings drawn again loses the keyboard');
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 step('a link opened on a device behind Drive checks its books against Drive, and the sheet catches up as a sync lands', async () => {
   // A laptop and a phone share a Drive. The phone falls behind (its tab closed, then Google's hour up), and opens
   // links for books the laptop has added meanwhile.
