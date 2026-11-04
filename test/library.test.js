@@ -1196,6 +1196,7 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
           Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300' }),
         row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading' }),
         row(LT, { Title: 'Le Petit Prince', 'Primary Author': 'Saint-Exupéry, Antoine de', Collections: 'Wishlist' }),
+        row(LT, { Title: 'Walden', 'Primary Author': 'Thoreau, Henry David', Collections: 'Read but unowned', 'Date Read': '2021-05-05' }),
       ], '\t'), 'utf16le')]));
       const imported = async (file, kind, ...more) => {
         const dir = fs.mkdtempSync(path.join(tmp, 'import-'));
@@ -1220,8 +1221,11 @@ eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 
         { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, status: 'read', rating: 5, finished: '2024-12-01', tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice' },
         { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', status: 'reading' },
       ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist, keeps its own collections out of tags, and a Date Read makes a book read on that day');
-      check(/Left out: 1 in Wishlist or Read but unowned and not in Your library/.test(ltOut.said), 'and says what it left out');
-      eq((await imported(ltIn, 'librarything', '--keep-unowned')).batch.books.map(b => [b.title, !!b.wanted]), [['The Hobbit', false], ['Slaughterhouse-Five', false], ['Le Petit Prince', true]], 'and with --keep-unowned, its Wishlist is the wishlist');
+      check(/Left out: 2 in Wishlist or Read but unowned and not in Your library\. To put the 1 in Wishlist on the wishlist, run again with --keep-unowned\./.test(ltOut.said), 'and says what it left out, and what --keep-unowned would do: ' + ltOut.said);
+      // A book read but never owned (Read but unowned) isn't one to buy: it stays out of the wishlist too.
+      const ltAll = await imported(ltIn, 'librarything', '--keep-unowned');
+      eq(ltAll.batch.books.map(b => [b.title, !!b.wanted]), [['The Hobbit', false], ['Slaughterhouse-Five', false], ['Le Petit Prince', true]], 'and with --keep-unowned, its Wishlist is the wishlist, and Read but unowned stays out');
+      check(/On the wishlist: 1 in Wishlist and not in Your library\./.test(ltAll.said) && /Left out: 1 in Read but unowned/.test(ltAll.said) && !/run again/.test(ltAll.said), 'and it says which went where: ' + ltAll.said);
       // The point of it all: imported books are found as books already on the shelves.
       const shelves = S.dupIndex(S.cleanDoc({ books: [{ id: 'w', t: 1, title: 'The Name of the Wind', authors: ['Patrick Rothfuss'] }, { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] }] }));
       eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');

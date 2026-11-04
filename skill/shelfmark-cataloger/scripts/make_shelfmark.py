@@ -28,7 +28,8 @@ longer list is written as numbered files of up to 3,000 each, to open one after 
 
 With --import it reads a Goodreads or LibraryThing export (CSV) instead, and leaves out books that
 aren't in the house (on the to-read shelf with no copy owned, or only on the Wishlist) unless it's
-given --keep-unowned, which puts them on Shelfmark's wishlist. It says how many.
+given --keep-unowned, which puts them on Shelfmark's wishlist. Books LibraryThing has only as Read but
+unowned stay out either way: read, but neither in the house nor wished for. It says how many.
 
 A batch with "wanted": true (books from a shop's table, or a list of books to buy) goes on the wishlist,
 as does a book with "wanted": true.
@@ -453,7 +454,8 @@ def from_goodreads(rows, keep):
             'tags': [t for t in (x.strip() for x in cell(r, 'bookshelves').split(',')) if t and t.lower() not in GR_SHELVES],
             'notes': lines(cell(r, 'my review'), cell(r, 'private notes')),
         })
-    return books, (f'{left:,} on the to-read shelf with no copy owned' if left else '')
+    said = f'{left:,} on the to-read shelf with no copy owned' if left else ''
+    return books, {'wished': said if keep else '', 'left': '' if keep else said, 'hint': '' if keep or not left else 'To put them on the wishlist, run again with --keep-unowned.'}
 
 
 def publisher(v):
@@ -464,17 +466,20 @@ def publisher(v):
 
 
 def from_librarything(rows, keep):
-    books, left = [], 0
+    books, wished, read = [], 0, 0
     for r in rows:
         held = [x.strip() for x in cell(r, 'collections').split(',') if x.strip()]
         low = {x.lower() for x in held}
         away = bool(low & LT_UNOWNED) and 'your library' not in low  # not in the house
+        wish = away and 'wishlist' in low  # wished for: with --keep-unowned, on Shelfmark's wishlist
         if away:
-            left += 1
-            if not keep:
+            wished += wish
+            read += not wish
+            # A book only read, not owned (Read but unowned), isn't one to buy, so it stays out either way.
+            if not (keep and wish):
                 continue
         books.append({
-            'wanted': away,
+            'wanted': wish,
             'title': cell(r, 'title'),
             'authors': [cell(r, 'author (first, last)') or turned(cell(r, 'primary author', 'author (last, first)'))],
             'isbn': ', '.join(x for x in (cell(r, 'isbn'), cell(r, 'isbns')) if x),
@@ -485,7 +490,12 @@ def from_librarything(rows, keep):
             'tags': [t for t in (x.strip() for x in cell(r, 'tags').split(',')) if t] + [x for x in held if x.lower() not in LT_SHELVES],
             'notes': lines(cell(r, 'review'), cell(r, 'comment', 'comments'), cell(r, 'private comment', 'private comments')),
         })
-    return books, (f'{left:,} in Wishlist or Read but unowned and not in Your library' if left else '')
+    if not keep:
+        return books, {'wished': '', 'left': f'{wished + read:,} in Wishlist or Read but unowned and not in Your library' if wished + read else '',
+                       'hint': '' if not wished else 'To put them on the wishlist, run again with --keep-unowned.' if not read else
+                       f'To put the {wished:,} in Wishlist on the wishlist, run again with --keep-unowned.'}
+    return books, {'wished': f'{wished:,} in Wishlist and not in Your library' if wished else '', 'hint': '',
+                   'left': f'{read:,} in Read but unowned and not in Your library (read, but neither in the house nor wished for)' if read else ''}
 
 
 IMPORTS = {  # name, a column only that export has (any one of them), and how to read its rows
@@ -495,15 +505,15 @@ IMPORTS = {  # name, a column only that export has (any one of them), and how to
 
 
 def from_export(path, kind, keep):
-    """A Goodreads or LibraryThing export → the same {name, books} a list of books from photos is, plus what was
-    left out and why."""
+    """A Goodreads or LibraryThing export → the same {name, books} a list of books from photos is, plus what went on
+    the wishlist (wished), what was left out (left) and what --keep-unowned would do with it (hint)."""
     name, marks, convert = IMPORTS[kind]
     header, rows = read_table(path)
     if 'title' not in header or not set(marks) & set(header):
         other = next((k for k, (_, m, _) in IMPORTS.items() if k != kind and set(m) & set(header) and 'title' in header), None)
         raise SystemExit(f'error: {path} isn’t a {name.split()[0]} export' + (f'; it looks like a {IMPORTS[other][0].split()[0]} one, so use --import {other}' if other else f' (it has no "Title" and "{marks[0].title()}" columns)'))
-    books, left = convert(rows, keep)
-    return {'name': name, 'books': books}, left
+    books, said = convert(rows, keep)
+    return {'name': name, 'books': books}, said
 
 
 PARTICLES = re.compile(r'^(de|da|di|du|del|della|der|den|van|von|le|la|st\.?|al|el|bin|ibn|ten|ter)$', re.I)
@@ -678,11 +688,11 @@ def main():
         except (OSError, json.JSONDecodeError) as e:
             raise SystemExit(f'error: can’t read {a.books}: {e}')
         return details_main(doc, a)
-    left = ''
+    said = {}
     if a.kind:
-        doc, left = from_export(a.books, a.kind, a.keep_unowned)
-        if left and not doc['books']:
-            raise SystemExit(f'error: every book was left out: {left}. To put them on the wishlist, run again with --keep-unowned.')
+        doc, said = from_export(a.books, a.kind, a.keep_unowned)
+        if said['left'] and not doc['books']:
+            raise SystemExit(f'error: every book was left out: {said["left"]}.' + (' ' + said['hint'] if said['hint'] else ''))
     else:
         try:
             doc = json.loads(Path(a.books).read_text(encoding='utf-8'))
@@ -694,10 +704,10 @@ def main():
     books = [x for o in outs for x in o['batch']['books']]
     place = ' › '.join(x for x in (b.get('room'), b.get('shelf')) if x)
     print(f'{name or "Books"}: {len(books):,} book{"s" if len(books) != 1 else ""}' + (f', shelved in {place} unless they say otherwise' if place else ''))
-    if left and a.keep_unowned:
-        print(f'On the wishlist: {left}, not in the house.')
-    elif left:
-        print(f'Left out: {left}. To put them on the wishlist, run again with --keep-unowned.')
+    if said.get('wished'):
+        print(f'On the wishlist: {said["wished"]}.')
+    if said.get('left'):
+        print(f'Left out: {said["left"]}.' + (' ' + said['hint'] if said['hint'] else ''))
     shown = books[:20] if a.kind else books  # an export's whole list is in the file; here it would only be long
     for x in shown:
         by = ', '.join(x.get('authors', [])) or 'author unknown'

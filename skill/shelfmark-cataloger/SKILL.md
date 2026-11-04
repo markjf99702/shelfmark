@@ -162,7 +162,7 @@ python3 scripts/make_shelfmark.py librarything_export.tsv --import librarything 
 ```
 
 It reads CSV or tab-separated files in any of the encodings these exports and spreadsheets save in, and does the mechanical part:
-- **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned"). With `--keep-unowned` they come in on Shelfmark's wishlist instead.
+- **Leaves out books that aren't in the house:** on the Goodreads to-read shelf with no copy owned, or only on LibraryThing's Wishlist or Read but unowned. It prints how many ("Left out: 212 on the to-read shelf with no copy owned"). With `--keep-unowned` the to-read shelf's and the Wishlist's come in on Shelfmark's wishlist instead; LibraryThing's Read but unowned stay out either way (read, but neither in the house nor wished for).
 - **Takes the series off Goodreads titles,** so "The Name of the Wind (The Kingkiller Chronicle, #1)" matches the same book read from a spine.
 - **Turns `<br/>` in reviews into line breaks,** and keeps both the review and any private notes.
 - **Keeps the day each book was read:** Goodreads's and LibraryThing's `Date Read` become `finished`, and a LibraryThing book with one is read.
