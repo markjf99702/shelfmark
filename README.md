@@ -9,7 +9,7 @@
   &nbsp;
   <img src="docs/phone-review.png" alt="Add books from Claude: five books from a photo of the hall console table, to be shelved in Hall › Console table, with The Overstory flagged to check for glare over the author and Piranesi unticked because it's already in the library" width="250">
   &nbsp;
-  <img src="docs/phone-next.png" alt="What to read next, for fiction in a reflective mood, leaning toward favorite authors: try Gilead by Marilynne Robinson, an old preacher in 1950s Iowa writing a long letter to his young son; literary fiction, reflective and hopeful, slow, with short chapters; because you gave Housekeeping 5 stars and your note says to read it slowly. Or War and Peace." width="250">
+  <img src="docs/phone-next.png" alt="What to read next, for fiction in a reflective mood, leaning toward favorite authors: try Gilead by Marilynne Robinson, an old preacher in 1950s Iowa writing a long letter to his young son; literary fiction, reflective and hopeful, slow, with short chapters; because you gave Housekeeping 5 stars and your note says to read it slowly; it's on Study › Desk shelf, with Already read it below. Or War and Peace." width="250">
 </p>
 
 ## How it works
@@ -18,7 +18,7 @@
   - title, subtitle, authors
   - ISBN, publisher, year, pages, format
   - where it is: a room and a shelf, in your own words; one typed with other capitals ("Living Room") goes into the one you have ("Living room")
-  - unread, reading or read, and a rating
+  - unread, reading or read, and a rating (stars given to an unread book mark it read)
   - who you lent it to, and since when
   - tags and notes
   - edition details: signed, first edition, condition, printing
@@ -30,12 +30,13 @@
   - see anything Claude wasn't sure of, marked **Check**.
   Checked books keep a **To check** filter until you say they're right.
 - **Reading details.** Claude can add what each book is like: fiction, nonfiction or poetry; genres; moods (funny, tense, reflective…); pace; chapter length; whether it's read cover to cover, dipped into, or browsed (cookbooks, picture books, reference); a line about it; and a page count where there's none. Ask Claude with the Shelfmark skill, and it reads your library (from Drive, or a backup you send) and hands back a link. Opening it shows the list, then fills in only what each book doesn't have yet. Each book's card has a **Reading details** section to change them by hand.
-- **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books, and books you browse rather than read, are left out), with two more to choose from.
+- **What to read next.** Tap **What to read next?** for a suggestion from the unread books you have on hand (lent-out books, and books you browse rather than read, are left out), with two more to choose from. Each book counts once, however many copies you have, and a copy of one you've read or are reading doesn't come up; the volumes of a set come in order, the next one once you've read the one before ("Next in the set: you've read Book 1").
   - With reading details, choose fiction, nonfiction or poetry, the moods you're in for (any of those picked), and short chapters or something to dip into. **More choices** has genre, pace, tag, room, and books you browse.
   - Narrow it by length (short is under 250 pages, long over 450), once some of your books have a page count.
-  - Lean it toward books **waiting longest** or the **newest arrivals**, once books were added on different days, or toward **favorite authors** (ones whose books you've read and rated highly), once one of theirs is waiting unread. **Surprise me** is a plain random pick. Only the choices that would change something are offered.
-  - Tick **Include rereads** to bring back books you gave four or five stars.
-  - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and **Start reading** marks it Reading.
+  - Lean it toward books **waiting longest** or the **newest arrivals**, once books were added on different days, or toward **favorite authors** (ones whose books you've read and rated highly), once one of theirs is waiting unread. **Surprise me** is a plain random pick. Only the choices that would bring a pick are offered: with Poetry chosen, only the moods, paces, lengths, rooms and tags your poems have.
+  - Tick **Include rereads** to bring back books you gave four or five stars; the notes say when one of them would match.
+  - When nothing matches, a button puts the choice in the way back to Any ("Any length · 14 books"), or **Clear these choices** starts over.
+  - Each suggestion has its line and details, says why in plain words ("You gave “Housekeeping” 5 stars", "Your note: …"), and which shelf it's on. **Pick again** works through every match before repeating one, and never shows the same pick twice running. **Already read it** marks it Read and picks again, and **Start reading** marks it Reading and says where it is.
   - Your choices are remembered on each device.
 - **Covers and lookups** from Open Library, only if you turn them on in Settings. Covers are found by ISBN, or by title and author for a book without one (so a cover may show another edition), and each cover's id is remembered in the browser. Lookups send the ISBN, title and author, nothing else.
 - **Backups.** Download the whole library as a file, and open it on any device (it merges, after saying how many books it would add, change or remove). There's a spreadsheet (CSV) too, to read or print; it doesn't open back in Shelfmark.
@@ -146,12 +147,12 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - **ISBNs:** ISBN-10 to ISBN-13 conversion, and check digits.
 - **Cleaning:** every field is trimmed, clamped and mapped, and a book cleaned again comes out the same (text cut at its limit, emoji, a "Jr." after an empty name, long ids, ids like `constructor`).
 - **Merging:** hundreds of random libraries merge the same whatever the order, and a later removal or edit wins.
-- **Random books:** a seeded run over thousands of random books, with text at its limits, emoji, odd white space and names with a "Jr.", checks in about half a second that cleaning a book twice gives the same book, that merging rich books is order-free, that reading details change only the details (and a blank page count) and find every copy and never a removed book, and that What to read next, dealt again and again, shows every match before repeating one and never suggests a book lent out, being read or browsed.
+- **Random books:** a seeded run over thousands of random books, with text at its limits, emoji, odd white space and names with a "Jr.", checks in about half a second that cleaning a book twice gives the same book, that merging rich books is order-free, that reading details change only the details (and a blank page count) and find every copy and never a removed book, and that What to read next, dealt again and again, shows every match before repeating one and never suggests two copies of a book, a later volume before an earlier one, or a book lent out, being read or browsed.
 - **Duplicates:** matched by ISBN, and by title and author surname.
 - **Links:** compressed, uncompressed, hand-written and pasted links all open, and so does JSON pasted with Claude's words around it (in a code block, or after a line of text).
 - **The skill's script:** it reads numbers as printed ("2 vols, 880", "2nd ed. 1999"), yes or no, authors and tags just as the page does, its link and file open in the page with every field intact, a list of over 3,000 books comes out as numbered files, and Goodreads and LibraryThing exports come in cleaned up. This runs when `python3` is available.
 - **Spreadsheet export:** quoting, and defusing cells that would otherwise run as formulas (those starting with = + - @, a tab or a line break, or a full-width ＝ ＋ － ＠, as OWASP's CSV Injection page lists them), leaving plain numbers alone.
-- **What to read next:** which books can be suggested, that each lean and each mood picked pulls the way it says, the reasons given, and that every match comes up before any repeats.
+- **What to read next:** which books can be suggested (one copy of each, the first unread volume of a set), that each lean and each mood picked pulls the way it says, the reasons given, that every match comes up before any repeats, that each choice offered brings a pick or says what would, and the choices to put back to Any when nothing matches.
 - **Reading details:** words and labels are mapped onto Shelfmark's, details find their book by id, or else every copy with its ISBN or title and author (two translations each get their own), count each book once, fill only blanks (or replace when asked) and never a page count already there, and the skill's script and the page know the same words.
 
 ### Files
