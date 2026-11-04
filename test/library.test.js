@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
+  'return { coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -143,6 +143,28 @@ eq(S.live(S.cleanDoc({ books: [{ id: 'la', t: 1, title: 'Emma', authors: ['Jane 
   eq([{ to: 'Sam', since: '2025-03-04' }, { to: 'Sam', since: '2026-09-30' }, { to: 'Sam', since: '2024-11-04' }, { to: 'Sam', since: '2021-01-31' }, { to: 'Sam' }].map(l => S.loanLine(l, now)),
     ['Lent to Sam · 20 months', 'Lent to Sam · 1 month', 'Lent to Sam · 2 years', 'Lent to Sam · 5 years', 'Lent to Sam'], 'a loan of a month or more says how long it\'s been out, from two years in years');
   check(/^Lent to Sam · \D+ \d+$/.test(S.loanLine({ to: 'Sam', since: '2026-10-20' }, now)), 'a loan under a month old says the day it was lent');
+}
+
+// ---------- the list as text ----------
+{
+  const lib = S.live(S.cleanDoc({ books: [
+    { id: 'ta', t: 1, title: 'The Dispossessed', sub: 'An Ambiguous Utopia', authors: ['Ursula K. Le Guin'], room: 'Study', shelf: 'Desk shelf', loan: { to: 'Sam', since: '2026-10-02' } },
+    { id: 'tb', t: 1, title: 'Middlemarch', authors: ['George Eliot'], room: 'Living room', shelf: 'Tall bookcase' },
+    { id: 'tc', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], room: 'study', shelf: 'desk shelf' },
+    { id: 'td', t: 1, title: 'Emma' },
+    { id: 'te', t: 1, title: 'The Lathe of Heaven', authors: ['Ursula K. Le Guin'], wanted: true }] }));
+  const house = lib.filter(b => !b.wanted), at = S.placeIndex(house);
+  const groups = S.shelfGroups(lib.slice().sort(S.shelfOrder), at);
+  eq(groups.map(g => [g.name, g.bs.map(b => b.id)]), [['Living room › Tall bookcase', ['tb']], ['Study › Desk shelf', ['ta', 'tc']], ['Not shelved yet', ['td']], ['On your wishlist', ['te']]],
+    'shelf groups put a place\'s spellings under one heading, spelled as most books spell it, and the wishlist last');
+  eq(S.listText({ head: [] }, lib.slice().sort(S.authorOrder)),
+    '5 books\n\nMiddlemarch — George Eliot · Living room › Tall bookcase\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin · Study › Desk shelf\nThe Lathe of Heaven — Ursula K. Le Guin · wanted\nGilead — Marilynne Robinson · study › desk shelf\nEmma\n',
+    'the list as text is a line a book, with its subtitle, authors and place, and "wanted" for a book on the wishlist');
+  eq(S.listText({ head: ['Lent out'], lent: true }, [lib[0]]), 'Lent out · 1 book\n\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin · Study › Desk shelf · lent to Sam\n', 'in the Lent out view a line says who has the book');
+  eq(S.listText({ head: ['Search: le guin'] }, [lib[0], lib[4]], S.shelfGroups([lib[0], lib[4]], at)),
+    'Search: le guin · 2 books\n\nStudy › Desk shelf\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin\n\nOn your wishlist\nThe Lathe of Heaven — Ursula K. Le Guin\n',
+    'sorted by shelf, the books go under their shelves\' headings, which say the place');
+  eq(S.listText({ head: ['Wishlist'], wish: true }, [lib[4]]), 'Wishlist · 1 book\n\nThe Lathe of Heaven — Ursula K. Le Guin\n', 'the wishlist doesn\'t say each book is wanted');
 }
 
 // ---------- searching ----------

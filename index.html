@@ -456,6 +456,10 @@ details.more .fs{padding:2px 12px 12px}
 .nx-ease{margin-bottom:10px}
 @keyframes deal{from{opacity:0;transform:translateY(6px)}}
 
+/* Share this list, after the last book */
+.sharerow{display:flex;justify-content:center;margin-top:18px}
+.sharerow .btn{color:var(--ink2)}
+
 /* footer */
 .foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:40px;font:500 12px var(--mono);letter-spacing:.04em;color:var(--ink2)}
 .foot a{color:var(--ink2);text-decoration:none}
@@ -561,6 +565,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   .tbtn::after{content:"";position:absolute;inset:-6px 0}
   .nextbtn{position:relative}
   .nextbtn::after{content:"";position:absolute;inset:-8px 0}
+  .sharerow .btn{position:relative}
+  .sharerow .btn::after{content:"";position:absolute;inset:-8px 0}
   .now-acts .btn{position:relative}
   .now-acts .btn::after{content:"";position:absolute;inset:-8px 0}
 }
@@ -601,6 +607,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   </div>
   <div class="countrow"><p class="count" id="count" aria-live="polite"></p><button class="nextbtn" id="nextBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>What to read next?</button></div>
   <div class="list" id="list"></div>
+  <div class="sharerow"><button class="btn sm quiet" id="shareBtn" type="button" hidden>Share this list</button></div>
   <footer class="foot"><a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://shelfmark.junkdrawer.works/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="https://github.com/markjf99702/shelfmark">Source</a></footer>
 </main>
 <div id="sheet" hidden></div>
@@ -1110,6 +1117,34 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // Longest out first: books lent out by the day they were lent, the earliest first (a loan with no day after those),
   // then the rest by author.
   function lentOrder(x, y) { var a = x.loan ? x.loan.since || '~' : '~~', b = y.loan ? y.loan.since || '~' : '~~'; return a < b ? -1 : a > b ? 1 : authorOrder(x, y); }
+
+  // Books sorted by shelf, under each shelf's heading: [{k, name, bs}]. A shelf is one heading however its books spell it
+  // (they sort together), spelled as most of the house's books do (at: their placeIndex). Books on the wishlist that a
+  // search finds come last, under a heading of their own.
+  var WISHK = '\u0002';
+  function shelfKey(b) { return keys(b).rk + '\u0001' + keys(b).sk; }
+  function shelfGroups(books, at) {
+    var groups = [], g = null;
+    books.filter(function (b) { return !b.wanted; }).concat(books.filter(function (b) { return b.wanted; })).forEach(function (b) {
+      var k = b.wanted ? WISHK : shelfKey(b);
+      if (!g || g.k !== k) groups.push(g = { k: k, name: b.wanted ? 'On your wishlist' : [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
+      g.bs.push(b);
+    });
+    return groups;
+  }
+  // The list as plain text, to share or copy: a heading that says what the list is and how many books, then a line a
+  // book, "Title: Subtitle — Author · Room › Shelf", under the shelves' headings when it's sorted by shelf (which say the
+  // place instead). In the Lent out view a line says who has the book; a book on the wishlist that a search found says
+  // it's wanted (or is under the wishlist's heading). view: {head: ['Lent out', …], lent, wish}; groups, from shelfGroups, or null.
+  function listText(view, books, groups) {
+    function line(b, grouped) {
+      return [b.title + (b.sub ? ': ' + b.sub : '') + (byLine(b) ? ' — ' + byLine(b) : ''), grouped || b.wanted ? '' : where(b), view.lent && b.loan ? 'lent to ' + b.loan.to : '', b.wanted && !view.wish && !grouped ? 'wanted' : ''].filter(Boolean).join(' · ');
+    }
+    var out = [view.head.concat(plural(books.length, 'book')).join(' · ')];
+    if (groups) groups.forEach(function (g) { out.push('', g.name); g.bs.forEach(function (b) { out.push(line(b, true)); }); });
+    else { out.push(''); books.forEach(function (b) { out.push(line(b)); }); }
+    return out.join('\n') + '\n';
+  }
 
   // ---------- what to read next ----------
   // Suggestions come from the books on hand that you haven't read: not lent out, not already being read, plus
@@ -1754,8 +1789,11 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     if (was && (!document.activeElement || document.activeElement === document.body))
       refocus(was.id ? rowOf(was.id, was.now) : was.fin ? nowBtn(was.fin, 'fin') : was.aside ? nowBtn(was.aside, 'aside') : [].filter.call($('chips').children, function (c) { return c.dataset.s === was.s; })[0]);
   }
+  // What the list shows, for Share this list: {books, groups}, or null when it shows no books.
+  var onList = null;
   function drawList() {
     showStore();
+    onList = null; $('shareBtn').hidden = true;
     // The books in the house (all) are counted; those on the wishlist have a chip of their own, and show elsewhere only in
     // a search, so one search in a shop answers both "do I have it?" and "did I mean to buy it?". The tag menu has the tags
     // of the books the chip shows.
@@ -1857,15 +1895,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     // in the list below as well, in their place, which then has a heading of its own (or its shelves' headings).
     var html = '', reading = !UI.q.trim() && !UI.status && !UI.room && !UI.tag ? vis.filter(function (b) { return statusOf(b) === 'reading'; }) : [];
     if (reading.length) html = '<section class="shelf now"><h3 class="grp">Reading now' + headCount(reading.length) + '</h3><div class="shelf-bks">' + reading.map(nowRow).join('') + '</div></section>';
-    if (sort === 'shelf') {
-      var groups = [], g = null;
-      // A shelf is one heading however its books spell it (they sort together), spelled as most of the library's books do.
-      // Books on the wishlist that a search finds come last, under a heading of their own.
-      vis.filter(function (b) { return !b.wanted; }).concat(vis.filter(function (b) { return b.wanted; })).forEach(function (b) {
-        var k = b.wanted ? '\u0002' : keys(b).rk + '\u0001' + keys(b).sk;
-        if (!g || g.k !== k) groups.push(g = { k: k, name: b.wanted ? 'On your wishlist' : [place(b.room, at.rooms), place(b.shelf, at.shelves[keys(b).rk])].filter(Boolean).join(' › ') || 'Not shelved yet', bs: [] });
-        g.bs.push(b);
-      });
+    var groups = sort === 'shelf' ? shelfGroups(vis, at) : null;
+    onList = { books: vis, groups: groups };
+    $('shareBtn').hidden = false;
+    if (groups) {
       groups.forEach(function (g) {
         html += '<section class="shelf"><h3 class="grp">' + esc(g.name) + headCount(g.bs.length) + '</h3>' +
           '<div class="shelf-bks">' + g.bs.map(function (b) { return row(b, true); }).join('') + '</div></section>';
@@ -3313,6 +3346,30 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     b.textContent = unsent() ? 'Tap again to erase, changes not in Drive included' : 'Tap again to erase ' + plural(live(DOC).length, 'book');
   }
   function syncNow() { if (hasToken()) { D.err = ''; sync(); } else askToken(); renderDrive(); }
+
+  // ---------- sharing the list ----------
+  // Share this list gives the list on screen as plain text: on a phone (a touch screen with a share sheet) to the share
+  // sheet, and elsewhere to the clipboard, saying how many books. Nothing leaves the device unless it's shared from there.
+  function viewHead() {
+    var chip = { unread: 'Unread', reading: 'Reading', read: 'Read', aside: 'Set aside', lent: 'Lent out', check: 'To check', wanted: 'Wishlist' }[UI.status];
+    return [chip, UI.room === NOROOM ? 'No room yet' : UI.room, UI.tag ? 'Tag: ' + UI.tag : '', UI.q.trim() ? 'Search: ' + str(UI.q, 300) : ''].filter(Boolean);
+  }
+  function shareList(e) {
+    if (!onList) return;
+    var n = onList.books.length, text = listText({ head: viewHead(), lent: UI.status === 'lent', wish: UI.status === 'wanted' }, onList.books, onList.groups), btn = $('shareBtn');
+    function copied() { toast('Copied ' + plural(n, 'book')); }
+    function failed() { toast('Couldn’t copy the list. Try again.'); }
+    // The old way, for a browser without the clipboard's own: the text selected in a box of its own, and copied.
+    function oldCopy() {
+      var a = document.createElement('textarea'), ok = false; a.value = text; a.setAttribute('readonly', ''); a.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(a); a.select(); try { ok = document.execCommand('copy'); } catch (x) { } a.remove(); refocus(btn);
+      return ok;
+    }
+    function copy() { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, function () { if (oldCopy()) copied(); else failed(); }); else if (oldCopy()) copied(); else failed(); }
+    if (navigator.share && window.matchMedia && matchMedia('(pointer: coarse)').matches) navigator.share({ text: text }).catch(function (x) { if (!x || x.name !== 'AbortError') copy(); });
+    else copy();
+  }
+  $('shareBtn').addEventListener('click', shareList);
 
   // ---------- wiring ----------
   $('addBtn').addEventListener('click', function () { openNew(''); });

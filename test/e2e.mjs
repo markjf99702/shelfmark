@@ -1590,6 +1590,55 @@ step('Lent out lists the longest out first, and a loan out a month or more says 
   } finally { await ctx.close(); }
 });
 
+step('Share this list copies the list on screen on a computer, and hands it to the share sheet on a phone', async () => {
+  const books = [{ ...PIRANESI, shelf: 'Console table' }, { ...MIDDLEMARCH, loan: { to: 'Sam', since: '2026-10-02' } }, { ...CRADLE, status: 'reading' }];
+  // A computer: the clipboard, faked, keeps what's copied.
+  {
+    const ctx = await context(DESK);
+    await ctx.addInitScript(() => { window.copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.copied.push(t); return Promise.resolve(); } } }); });
+    try {
+      const page = await open(ctx);
+      await seed(page, books);
+      const copy = async () => { await page.evaluate(() => { window.copied = []; }); await page.click('#shareBtn'); await until(() => page.evaluate(() => window.copied.length), 'the list to be copied'); return page.evaluate(() => window.copied[0]); };
+      // Each book once, though Cat's Cradle is in Reading now too.
+      assert.equal(await copy(), '3 books\n\nPiranesi — Susanna Clarke · Hall › Console table\nMiddlemarch — George Eliot · Den\nCat’s Cradle — Kurt Vonnegut, Jr.\n');
+      assert.equal(await page.textContent('#toastTx'), 'Copied 3 books');
+      await page.click('#chips .chip[data-s="lent"]');
+      assert.equal(await copy(), 'Lent out · 1 book\n\nMiddlemarch — George Eliot · Den · lent to Sam\n', 'the Lent out view doesn\'t say who has the book');
+      assert.equal(await page.textContent('#toastTx'), 'Copied 1 book');
+      await page.click('#chips .chip[data-s=""]');
+      await page.selectOption('#sortSel', 'shelf');
+      assert.equal(await copy(), '3 books\n\nDen\nMiddlemarch — George Eliot\n\nHall › Console table\nPiranesi — Susanna Clarke\n\nNot shelved yet\nCat’s Cradle — Kurt Vonnegut, Jr.\n', 'sorted by shelf, the books aren\'t under their shelves');
+      await page.fill('#q', 'clarke');
+      await until(async () => (await titles(page)).length === 1, 'the search');
+      assert.equal(await copy(), 'Search: clarke · 1 book\n\nHall › Console table\nPiranesi — Susanna Clarke\n');
+      // Nothing found, nothing to share.
+      await page.fill('#q', 'zzz');
+      await until(async () => !(await page.isVisible('#shareBtn')), 'Share this list to go with nothing found');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+  // A phone: the share sheet, faked, keeps what it's given; closing it copies nothing and says nothing.
+  {
+    const ctx = await context(PHONE);
+    await ctx.addInitScript(() => { window.shared = []; window.copied = []; navigator.share = d => { window.shared.push(d); return window.cancel ? Promise.reject(new DOMException('Share canceled', 'AbortError')) : Promise.resolve(); };
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.copied.push(t); return Promise.resolve(); } } }); });
+    try {
+      const page = await open(ctx);
+      await seed(page, books);
+      await page.click('#chips .chip[data-s="unread"]');
+      await page.click('#shareBtn');
+      await until(() => page.evaluate(() => window.shared.length), 'the share sheet');
+      assert.deepEqual(await page.evaluate(() => window.shared), [{ text: 'Unread · 2 books\n\nPiranesi — Susanna Clarke · Hall › Console table\nMiddlemarch — George Eliot · Den\n' }]);
+      await page.evaluate(() => { window.cancel = true; });
+      await page.click('#shareBtn');
+      await wait(300);
+      assert.deepEqual([await page.evaluate(() => window.copied.length), await page.evaluate(() => document.getElementById('toast').classList.contains('show'))], [0, false], 'a share sheet closed copied the list, or said so');
+      assert.deepEqual(page.problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
 step('a tag typed with an & in it stays one tag', async () => {
   const ctx = await context();
   try {
@@ -2083,7 +2132,7 @@ step('on a phone the small controls answer a tap 44px tall, and none takes anoth
       const w = viewport.width + 'px: ';
       const size = q => page.$eval(q, e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
       // The list: its chips, menus, What to read next and the top bar's buttons.
-      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])', '.now-acts .btn']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
+      for (const q of ['#chips .chip', '.selects select:not([hidden])', '#nextBtn', '.top .tbtn:not([hidden])', '.now-acts .btn', '#shareBtn']) assert.deepEqual(await tapBoxes(page, q), [], w + q);
       await page.click('#list .bk[data-id="b03"]');
       // The card: status, stars, tag picks; with its sections open, the reading details, genres, Signed and First edition.
       await page.evaluate(() => document.querySelectorAll('.panel details').forEach(d => d.open = true));
