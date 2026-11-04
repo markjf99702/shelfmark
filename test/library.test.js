@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, DETAILS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -352,7 +352,67 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
   check(S.dealNext(two, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).even, 'books all added the same day weigh the same');
   eq(S.dealNext(two, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).fans, 0, 'and none by authors you have read is reported');
-}
+
+  // Copies of one book, and the volumes of a set: one copy is offered, none of a book you've read or are reading, and
+  // a later volume waits for the one before it.
+  {
+    const lib = books => S.live(S.cleanDoc({ books: books.map((b, i) => Object.assign({ id: 'x' + i, t: 1 }, b)) }));
+    const deals = (l, c = {}, n = 1000) => Array.from({ length: n }, (_, k) => S.dealNext(l, S.cleanNext(c), rng(4000 + k), {}, now).picks.map(p => p.b.title + (p.b.room ? ' @ ' + p.b.room : '')));
+    const twoCopies = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], room: 'Den' }, { title: 'Ivanhoe: A Romance', authors: ['Walter Scott'], room: 'Hall' }, { title: 'Emma', authors: ['Jane Austen'] }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    check(deals(twoCopies).every(d => d.filter(t => /^Ivanhoe/.test(t)).length <= 1), 'two unread copies of a book never come up in one deal');
+    eq(S.dealNext(twoCopies, S.cleanNext({}), rng(1), {}, now).pool, 3, 'and count as one book');
+    eq(S.nextNotes(S.dealNext(twoCopies, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), false), ['From 3 unread books on hand.'], 'so the note counts books, not copies');
+    const oneRead = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read' }, { title: 'Ivanhoe', authors: ['Walter Scott'], isbn: '9780140436587' }, { title: 'Emma', authors: ['Jane Austen'] }]);
+    check(deals(oneRead).every(d => d.every(t => !/^Ivanhoe/.test(t))), 'neither copy of a book you’ve read is offered');
+    eq(S.dealNext(lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'reading' }, { title: 'Emma', authors: ['Jane Austen'] }]), S.cleanNext({}), rng(1), {}, now).pool, 0, 'nor of one you’re reading');
+    const reread = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read', rating: 5, room: 'Den' }, { title: 'Ivanhoe', authors: ['Walter Scott'], room: 'Hall' }]);
+    eq(deals(reread, { reread: true }, 50).map(d => d.join()).filter((x, i, a) => a.indexOf(x) === i), ['Ivanhoe @ Den'], 'with rereads, the five-star copy comes back, and only it');
+    const lent = lib([{ title: 'Emma', authors: ['Jane Austen'], room: 'Den', loan: { to: 'Sam' } }, { title: 'Emma', authors: ['Jane Austen'], room: 'Hall' }]);
+    eq(deals(lent, {}, 50).map(d => d.join()).filter((x, i, a) => a.indexOf(x) === i), ['Emma @ Hall'], 'of a copy lent out and one on hand, the one on hand is offered');
+    const detailed = lib([{ title: 'Emma', authors: ['Jane Austen'], room: 'Den' }, { title: 'Emma', authors: ['Jane Austen'], room: 'Hall', kind: 'fiction', moods: ['funny'] }]);
+    eq(S.nextPool(detailed, S.cleanNext({})).map(b => b.room), ['Hall'], 'and of two on hand, the one with reading details');
+    // The Example Saga, by the numbers: Book 2 waits until Book 1 is read, in any of the ways a title gives its number.
+    const saga = (read1, read2) => lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Ada Quill'], status: read1 ? 'read' : '' },
+      { title: 'The Example Saga: Book Three', authors: ['Ada Quill'], status: read2 ? 'read' : '' }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    eq(S.nextPool(saga(false), S.cleanNext({})).map(b => b.title).sort(), ['The Example Saga, Book 1', 'Walden'], 'a later volume is held back while the first is unread');
+    check(deals(saga(false)).every(d => d.every(t => !/Book (2|Three)/.test(t))), 'and never comes up, over 1,000 deals');
+    eq(S.nextPool(saga(true), S.cleanNext({})).map(b => b.title).sort(), ['The Example Saga, Book 2', 'Walden'], 'once Book 1 is read, Book 2 comes up, and Book 3 still waits');
+    const next = S.dealNext(saga(true), S.cleanNext({}), rng(1), { x3: 1 }, now).picks.find(p => /Book 2/.test(p.b.title));
+    eq(next.why, ['Next in the set: you’ve read Book 1'], 'saying it’s next in the set');
+    eq(S.nextPool(lib([{ title: 'Tidewater: Volume 3', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume II', authors: ['Ben Marsh'], loan: { to: 'Sam' } }]), S.cleanNext({})).length, 0, 'a volume before it that’s lent out and unread holds it back too');
+    eq(S.nextPool(lib([{ title: 'Tidewater: Volume 3', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume II', authors: ['Ben Marsh'], status: 'read' }, { title: 'Tidewater, Vol. 1', authors: ['Ben Marsh'] }]), S.cleanNext({})).map(b => b.title), ['Tidewater, Vol. 1'],
+      'volumes numbered in digits, roman numerals or words count, whatever the earlier ones are');
+    eq(S.nextPool(lib([{ title: 'Annals of Ostrava', sub: 'Volume Two', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava', sub: 'Volume One', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava #3', authors: ['Cy Dorn'] }]), S.cleanNext({})).map(b => b.sub || b.title), ['Volume One'],
+      'and so do a volume in the subtitle and a #3');
+    eq(S.nextPool(lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Bo Chen'] }]), S.cleanNext({})).length, 2, 'a set by another author is another set');
+    // Ordinary titles aren't volumes: a number word inside a title, or "Part" and "Book" as words.
+    const plain = ['The Book of One Thousand Nights', 'Part of the Furniture', 'Book Two of the Gods, Revised', 'Twelve Angry Men', 'The Fourth Part', 'Catch-22', 'Book 2 Remembered', 'The Notebook, Volume of Poems',
+      'Seven Pillars of Wisdom', 'Agent #7 Returns', 'One Hundred Years: Part of a Life'];
+    eq(S.nextPool(lib(plain.map(title => ({ title, authors: ['Ann Lee'] })).concat({ title: 'Anything, Book 1', authors: ['Ann Lee'] })), S.cleanNext({})).length, plain.length + 1, 'ordinary titles aren’t taken for later volumes');
+    // Digits can follow the word straight on; a numeral or a number word needs a space.
+    const vol = (title, sub) => { const v = S.volumeOf({ title, sub, authors: ['Ada Quill'] }); return v && v.n; };
+    eq([vol('The Example Saga, Book2'), vol('The Example Saga, Vol.3'), vol('The Example Saga, Book II'), vol('Something, Booki'), vol('Something, Bookone'), vol('Annals', 'Volumeiv'), vol('Annals', 'Volume iv')],
+      [2, 3, 2, null, null, null, 4], 'a volume’s number can follow the word straight on in digits, but not as a numeral or a word');
+    eq(S.volumeOf({ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }).set === S.volumeOf({ title: 'The Example Saga, Book 1', authors: ['Bo Chen'] }).set, false, 'a set is known by its author too');
+    // The choices offered come from the books that can be suggested: not a later volume that waits, nor the unread copy
+    // of a book read, so none of them leads to nothing.
+    const sagaMoods = lib([{ title: 'The Example Saga, Book 1', authors: ['Ada Quill'], kind: 'fiction', moods: ['dark'] }, { title: 'The Example Saga, Book 2', authors: ['Ada Quill'], kind: 'fiction', moods: ['funny'] }]);
+    eq(Object.keys(S.nextOffers(sagaMoods, S.cleanNext({})).moods), ['dark'], 'a mood only a later volume has isn’t offered while it waits');
+    const emmaRead = lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 3 }, { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', moods: ['lighthearted'] }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    const emmaOffers = S.nextOffers(emmaRead, S.cleanNext({}));
+    eq([Object.keys(emmaOffers.moods), emmaOffers.leans.map(l => l[0])], [[], ['']], 'nor a mood, or Favorite authors, that only the unread copy of a book you’ve read would bring');
+    // The notes count books that can be suggested, one copy of each.
+    const ivanhoe = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read' }, { title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction' }, { title: 'Ivanhoe: A Romance', authors: ['Walter Scott'] },
+      { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }]);
+    eq(S.nextNotes(S.dealNext(ivanhoe, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now), S.cleanNext({ kind: 'fiction' }), false), ['From 1 unread book that matches.'],
+      'a copy of a book you’ve read isn’t counted as left out for want of reading details');
+    eq(S.dealNext(lib([{ title: 'Tidewater: Volume 2', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume 1', authors: ['Ben Marsh'], kind: 'fiction', loan: { to: 'Sam' } }, { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }]),
+      S.cleanNext({ kind: 'fiction' }), rng(1), {}, now).bare, 0, 'nor is a later volume that waits for an earlier one');
+    // A book whose title is changed is looked at afresh.
+    const before = lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Ada Quill'] }]);
+    eq(S.nextPool(before, S.cleanNext({})).length, 1, 'the cached volumes start right');
+    eq(S.nextPool(before.map(b => Object.assign({}, b, { title: b.title.replace('Book 2', 'Second Thoughts').replace('Book 1', 'First Light') })), S.cleanNext({})).length, 2, 'and follow a title that changes');
+  }}
 
 // ---------- properties, on thousands of random books ----------
 // Seeded, so a failure comes back the same way each run. Books here have near-limit text, odd white space, emoji,
@@ -471,6 +531,53 @@ eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut in
     }
   }
   check(fair, 'what to read next, dealt six times over 200 random libraries, keeps its promises' + (why ? ': ' + why : ''));
+
+  // One copy of each book, and the volumes of a set in order, over libraries full of copies, subtitles, translations
+  // and sets by two authors of the same name, checked against findDup's own idea of the same book.
+  {
+    const T = [['Ivanhoe', ''], ['Ivanhoe', 'A Romance'], ['Ivanhoe: A Romance', ''], ['Emma', ''], ['The Odyssey', ''], ['The Example Saga, Book 1', ''], ['The Example Saga, Book 2', ''],
+      ['The Example Saga: Book Three', ''], ['Tidewater: Volume 1', ''], ['Tidewater: Volume II', ''], ['Tidewater, Vol. 3', ''], ['Annals', 'Volume One'], ['Annals', 'Volume Two'], ['Walden', '']];
+    const W = [['Ada Quill'], ['Bo Chen'], ['Homer', 'Samuel Butler'], ['Homer', 'Alexander Pope']];
+    const same = (a, b) => !!(S.findDup(S.dupIndex(S.cleanDoc({ books: [a] })), b) || S.findDup(S.dupIndex(S.cleanDoc({ books: [b] })), a));
+    const bad = { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 };
+    for (let k = 0; k < 600; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const [title, sub] = any(T); return { id: 'v' + i, t: 1, title, sub, authors: any(W), isbn: any(['', '', '9780140436587']),
+        status: any(['', '', '', 'read', 'reading']), rating: any([0, 5]), loan: r() < 0.1 ? { to: 'Sam' } : null, kind: any(['', 'fiction']) }; }) }));
+      const c = S.cleanNext({ reread: r() < 0.3, kind: any(['', 'fiction']) }), pool = S.nextPool(all, c);
+      // Copies of copies are copies: two books with one ISBN, and another with the first one's title, are one book.
+      const kin = all.map(a => all.filter(b => same(a, b)));
+      for (let grew = true; grew;) { grew = false; kin.forEach(g => g.slice().forEach(b => kin[all.indexOf(b)].forEach(x => { if (!g.includes(x)) { g.push(x); grew = true; } }))); }
+      const copy = (a, b) => a !== b && kin[all.indexOf(a)].includes(b);
+      for (const a of pool) for (const b of pool) if (copy(a, b)) bad.copies++;
+      for (const a of pool) if (all.some(b => copy(a, b) && (b.status === 'reading' || b.status === 'read' && a.status !== 'read'))) bad.read++;
+      // A set here is the name before the number and the first author, as written.
+      const vol = b => { const w = S.volumeOf(b); return w && { set: w.set.split('|')[0] + '|' + b.authors[0], n: w.n }; };
+      for (const a of pool) {
+        const v = vol(a); if (!v || a.status === 'read') continue;
+        if (all.some(b => { const w = vol(b); return w && w.set === v.set && w.n < v.n && !all.some(x => vol(x) && vol(x).set === v.set && vol(x).n === w.n && x.status === 'read'); })) bad.later++;
+      }
+      // A volume left out only for another author's set of the same name would be held back wrongly.
+      for (const a of all) {
+        const v = vol(a); if (!v || pool.includes(a) || a.status || a.loan || c.kind && a.kind !== c.kind) continue;
+        if (pool.some(b => copy(a, b)) || all.some(b => copy(a, b) && b.status)) continue;
+        const mine = all.filter(b => { const w = vol(b); return w && w.set === v.set && w.n < v.n && b.status !== 'read'; });
+        if (!mine.length) bad.otherAuthor++;
+      }
+      const ids = S.dealNext(all, c, rng(k), {}, now).picks.map(p => p.b);
+      if (ids.some(a => ids.some(b => copy(a, b)))) bad.deal++;
+    }
+    eq(bad, { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 }, 'over 600 random libraries: no two copies of a book, none of one read or being read but as a reread, and a volume waits only for its own set');
+  }
+  {
+    // Offers and a deal, as the sheet works them out after each choice tapped, are quick in a big library.
+    const all = S.live(S.cleanDoc({ books: Array.from({ length: 3000 }, (_, i) => ({ id: 'q' + i, t: 1, title: any(['The Book of ', 'Notes on ', '']) + 'Thing ' + Math.floor(i / 2) + any(['', ', Book 2', ': A Tale', ', Volume III']),
+      authors: [any(['Ann Lee', 'Bo Chen', 'Cy Dee'])], status: any(['', '', 'read', 'reading']), rating: any([0, 5]), kind: any(['', 'fiction', 'nonfiction']), moods: any([undefined, ['funny'], ['dark', 'tense']]),
+      pages: any([0, 120, 600]), room: any(['Den', 'Hall']), added: any(['2026-09-26', '2026-10-01']) })) }));
+    const c = S.cleanNext({ kind: 'fiction', moods: ['dark'] }), ms = [];
+    for (let k = 0; k < 25; k++) { const t = process.hrtime.bigint(), kin = S.kinOf(all); S.nextOffers(all, c, kin); S.dealNext(all, c, rng(k), {}, now, kin); ms.push(Number(process.hrtime.bigint() - t) / 1e6); }
+    const mid = ms.slice(10).sort((a, b) => a - b)[7];
+    check(mid < 20, 'choices and a deal on 3,000 books take under 20 ms (' + mid.toFixed(1) + ' ms)');
+  }
   check(Date.now() - t0 < 5000, 'the random checks run quickly (' + (Date.now() - t0) + ' ms)');
 }
 

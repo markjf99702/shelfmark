@@ -940,12 +940,111 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function picky(c) { return !!(c.kind || c.moods.length || c.genre || c.pace || c.short); }
   function narrowed(c) { return !!(c.len || c.tag || c.room || picky(c)); }
   function moodsMet(b, c) { return (b.moods || []).filter(function (m) { return c.moods.indexOf(m) >= 0; }).length; }
-  function nextPool(all, c) {
-    return onHand(all, c.reread, c.browse).filter(function (b) {
-      return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
-        (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
-        (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
-    });
+  function fits(b, c) {
+    return (!c.len || lengthOf(b.pages) === c.len) && (!c.tag || (b.tags || []).indexOf(c.tag) >= 0) && (!c.room || placeKey(b.room) === placeKey(c.room)) &&
+      (!c.kind || b.kind === c.kind) && (!c.moods.length || moodsMet(b, c)) && (!c.genre || (b.genres || []).indexOf(c.genre) >= 0) &&
+      (!c.pace || b.pace === c.pace) && (!c.short || b.chapters === 'short' || b.way === 'dip');
+  }
+  // The books that match, one copy of each. kin (from kinOf) can be passed in when it's to hand.
+  function nextPool(all, c, kin) { return nextBooks(all, c, function (b) { return fits(b, c); }, kin); }
+  // One copy of each book that can be suggested and that ok() lets by: on hand, as onHand() has it, but none of a book
+  // with a copy being read, or read (but for a four- or five-star copy, when rereads are asked for), and a later
+  // volume of a set waits while an earlier one in the library isn't read. Of the copies, the one with reading details,
+  // else the first.
+  function nextBooks(all, c, ok, kin) {
+    kin = kin || kinOf(all);
+    var out = [], g, b, best, read, i, j;
+    for (i = 0; i < kin.groups.length; i++) {
+      if (kin.reading[i]) continue;
+      g = kin.groups[i]; read = kin.read[i]; best = null;
+      for (j = 0; j < g.length; j++) {
+        b = g[j];
+        if (b.loan || !c.browse && b.way === 'browse' || (read ? !(c.reread && b.status === 'read' && b.rating >= 4) : b.status || kin.waits[b.id]) || !ok(b)) continue;
+        if (hasDetails(b)) { best = b; break; }
+        if (!best) best = b;
+      }
+      if (best) out.push(best);
+    }
+    return out;
+  }
+  // The copies of each book (findDup's rule), and the volumes of each set, of a library's books.
+  // groups: [[copy, …], …], in the order the books come, with whether a copy of each is being read (reading) or read
+  // (read). A book with no rest after its title (see titleParts) is a copy of the first one with its head and a rest,
+  // if there is one, or else of the first with its head alone. sets: {set: {number: {read, word}}}; vol: {id: the
+  // book's volume}; waits: {id: true} for a volume with an earlier one in the library that isn't read. Asked again for
+  // the same books, unchanged (each choice tapped in What to read next), it gives what it gave last time.
+  var KINLAST = { all: [], st: [], t: [], kin: null };
+  function kinOf(all) {
+    var L = KINLAST, n = all.length, i, k;
+    if (L.kin && L.all.length === n) {
+      for (i = 0; i < n && all[i] === L.all[i] && all[i].status === L.st[i] && all[i].t === L.t[i]; i++);
+      if (i === n) return L.kin;
+    }
+    var up = [], first = new Map(), parts = all.map(kinParts), sets = Object.create(null), vol = Object.create(null), waits = Object.create(null);
+    function top(i) { while (up[i] !== i) i = up[i] = up[up[i]]; return i; }
+    function join(i, k) { var f = first.get(k); if (f == null) { first.set(k, i); return; } var a = top(i), b = top(f); if (a !== b) up[Math.max(a, b)] = Math.min(a, b); }
+    for (i = 0; i < n; i++) up.push(i);
+    for (i = 0; i < n; i++) {
+      k = parts[i];
+      if (k.ik) join(i, k.ik);
+      if (k.fk) { join(i, k.fk); if (!first.has(k.rk)) first.set(k.rk, i); }
+    }
+    for (i = 0; i < n; i++) { k = parts[i]; if (!k.fk) join(i, first.has(k.rk) ? k.rk : k.ek); }
+    var groups = [], reading = [], read = [], at = [], r, g, b, v, s, x;
+    for (i = 0; i < n; i++) at.push(-1);
+    for (i = 0; i < n; i++) {
+      b = all[i]; r = top(i); v = parts[i].v;
+      if (at[r] < 0) { at[r] = groups.length; groups.push([]); reading.push(false); read.push(false); }
+      g = at[r]; groups[g].push(b);
+      if (b.status === 'reading') reading[g] = true; else if (b.status === 'read') read[g] = true;
+      if (!v) continue;
+      vol[b.id] = v; s = sets[v.set] || (sets[v.set] = Object.create(null));
+      x = s[v.n] || (s[v.n] = { read: false, word: v.word });
+      if (b.status === 'read') x.read = true;
+    }
+    for (var id in vol) { v = vol[id]; s = sets[v.set]; for (x in s) if (+x < v.n && !s[x].read) { waits[id] = true; break; } }
+    L = { groups: groups, reading: reading, read: read, sets: sets, vol: vol, waits: waits };
+    KINLAST = { all: all.slice(), st: all.map(function (b) { return b.status; }), t: all.map(function (b) { return b.t; }), kin: L };
+    return L;
+  }
+  // A book's ISBN, titleParts and volume, worked out once and kept while its ISBN, title, subtitle and first author
+  // stay the same: What to read next asks for them with every choice tapped, and a library can have thousands.
+  var KIN = Object.create(null);
+  function kinParts(b) {
+    var a = (b.authors || [])[0] || '', k = b.id == null ? null : KIN[b.id];
+    if (k && k.isbn === b.isbn && k.title === b.title && k.sub === b.sub && k.a === a) return k;
+    var i = isbn13(b.isbn), p = titleParts(b);
+    // The keys kinOf files a book under, made once each: ISBN, head and rest, and head with (r:) or without (e:) a rest.
+    k = { isbn: b.isbn, title: b.title, sub: b.sub, a: a, v: volumeOf(b), ik: i ? 'i:' + i : '', fk: p.rest ? 'f:' + p.t + '|' + p.rest : '', rk: 'r:' + p.t, ek: 'e:' + p.t };
+    if (b.id != null) KIN[b.id] = k;
+    return k;
+  }
+  // A numbered volume of a set: a title ending ": Volume 2", ", Book 2", ", Vol. 2", ", Part 2" or " #2" (before any
+  // colon, as in "Series, Volume 2: Its Name", or at the end), or a subtitle "Volume 2"; the number in digits, roman
+  // numerals I to XII or words one to twelve. Digits can follow the word straight on ("Book2"), but a numeral or a
+  // word needs a space, so "Something, Booki" isn't Book 1. {set, n, word: the volume as the title says it, "Book 1"}.
+  // The set is the title before the number, and the first author: another author's set of the same name is another set.
+  var VOLWORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+    i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12 };
+  var VOLNUM = '(?:\\s*([0-9]+)|\\s+([ivx]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))';
+  var VOLEND = new RegExp('^(.*?\\S)(?:\\s*[:,]\\s*(volume|vol\\.?|book|part)|\\s+(#))' + VOLNUM + '$', 'i');
+  var VOLSUB = new RegExp('^(volume|vol\\.?|book|part)' + VOLNUM + '(?:\\s*:.*)?$', 'i');
+  function volumeOf(b) {
+    var t = str(b.title, 300), i = t.indexOf(':'), m = VOLEND.exec(t) || i > 0 && VOLEND.exec(t.slice(0, i).trim()), set, label, num;
+    if (m) { set = m[1]; label = m[3] ? '' : m[2]; num = m[4] || m[5]; }
+    else if (i < 0 && (m = VOLSUB.exec(str(b.sub, 300)))) { set = t; label = m[1]; num = m[2] || m[3]; }
+    else return null;
+    var w = num.toLowerCase(), n = /^[0-9]+$/.test(w) ? +w : VOLWORDS[w];
+    if (!n) return null;
+    return { set: bare(fold(set)) + '|' + fold(surname((b.authors || [])[0] || '')).replace(/[^\p{L}]+/gu, ''), n: n,
+      word: label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() + ' ' + num : 'number ' + num };
+  }
+  // The volume read before this one, when it's next in the set: "Book 1".
+  function after(b, kin) {
+    var v = kin.vol[b.id], s = v && kin.sets[v.set], best = 0;
+    if (!v || b.status === 'read') return '';
+    for (var n in s) if (+n < v.n && +n > best) best = +n;
+    return best ? s[best].word : '';
   }
   // A book that could match the choices once it has the reading details and page count it hasn't got yet: a choice it
   // has the detail for has to match, one it hasn't is let by. Which chosen details it hasn't got (lacks).
@@ -1001,9 +1100,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   function monthOf(d) { var p = d.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
   // Plain reasons for a suggestion, the one that fits the lean first. span is what dealNext knows of the pool's dates:
   // first, the earliest; oldest, the one book added before all the others, if there is one; same, when they all share
-  // one date (a library catalogued in one go), and then when a book was added tells it from none of the others.
-  function nextWhy(b, c, fans, now, span) {
-    var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0];
+  // one date (a library catalogued in one go), and then when a book was added tells it from none of the others. A volume
+  // of a set says first that it's next, after the one read (kin, from kinOf).
+  function nextWhy(b, c, fans, now, span, kin) {
+    var fan = '', when = '', f = fanOf(b, fans), note = (b.notes || '').split('\n')[0], next = kin ? after(b, kin) : '';
     if (b.status === 'read') fan = 'A reread: you gave it ' + plural(b.rating, 'star');
     else if (f && (c.lean === 'loved' || fondness(f) >= 3)) {
       var who = surname(f.name) || f.name;
@@ -1018,13 +1118,15 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       else if (c.lean === 'oldest' || c.lean === 'newest' || age >= 730) when = 'In your library since ' + monthOf(b.added);
     }
     var why = c.lean === 'oldest' || c.lean === 'newest' ? [when, fan] : [fan, when];
+    if (next) why.unshift('Next in the set: you’ve read ' + next);
     if (note) why.push('Your note: ' + (note.length > 140 ? note.slice(0, 139).trim() + '…' : note));
     return why.filter(Boolean);
   }
   // Up to three suggestions, drawn by weight from the books not yet shown (skip: {id: 1}), then from the rest.
-  // fresh says how many were new; none means every match has been shown.
-  function dealNext(all, c, rnd, skip, now) {
-    var pool = nextPool(all, c), fans = authorFans(all), w = nextWeights(pool, c, fans), left = pool.map(function (_, i) { return i; }), picks = [], fresh = 0;
+  // fresh says how many were new; none means every match has been shown. kin (kinOf(all)) can be passed in.
+  function dealNext(all, c, rnd, skip, now, kin) {
+    kin = kin || kinOf(all);
+    var pool = nextPool(all, c, kin), fans = authorFans(all), w = nextWeights(pool, c, fans), left = pool.map(function (_, i) { return i; }), picks = [], fresh = 0;
     // The pool's dates: the earliest, the one book added before all the others if there is one (a shelf catalogued in one
     // go shares a date), and whether they're all the same.
     var days = pool.map(function (b) { return b.added || ''; }).filter(Boolean).sort();
@@ -1044,18 +1146,19 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // What's left out, for the notes under the pick: books that could match but haven't got a chosen detail yet (bare,
     // and which details: lacking), books without a page count that only come up under Any length (noPages), books you
-    // browse that match what was chosen (browseMatch), and how many the choices themselves rule out (ruled).
-    var hand = onHand(all, c.reread, c.browse), could = hand.filter(function (b) { return couldMatch(b, c); }), lacking = [];
+    // browse that match what was chosen (browseMatch), and how many the choices themselves rule out (ruled). Each of
+    // these counts only books that can be suggested (hand), one copy of each, as the pool does.
+    var hand = nextBooks(all, c, function () { return true; }, kin), could = hand.filter(function (b) { return couldMatch(b, c); }), lacking = [];
     var bare = could.filter(function (b) { var l = lacks(b, c); l.forEach(function (k) { if (lacking.indexOf(k) < 0) lacking.push(k); }); return l.length; });
     return {
       pool: pool.length, fresh: fresh, even: w.every(function (x) { return x === w[0]; }),
       fans: pool.filter(function (b) { return fanOf(b, fans); }).length,
-      noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' })).filter(function (b) { return !b.pages; }).length : 0,
+      noPages: c.len ? nextPool(all, Object.assign({}, c, { len: '' }), kin).filter(function (b) { return !b.pages; }).length : 0,
       bare: bare.length, lacking: ['kind', 'moods', 'genre', 'pace', 'short'].filter(function (k) { return lacking.indexOf(k) >= 0; }), plain: bare.every(function (b) { return !hasDetails(b); }),
-      ruled: hand.length - could.length,
-      browseMatch: c.browse || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { browse: true })).length - pool.length,
-      browsed: c.browse ? 0 : onHand(all, c.reread, true).filter(function (b) { return b.way === 'browse'; }).length,
-      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span) }; })
+      ruled: hand.length - could.length, hand: hand.length,
+      browseMatch: c.browse || !narrowed(c) ? 0 : nextPool(all, Object.assign({}, c, { browse: true }), kin).length - pool.length,
+      browsed: c.browse ? 0 : nextBooks(all, Object.assign({}, c, { browse: true }), function (b) { return b.way === 'browse'; }, kin).length,
+      picks: picks.map(function (b) { return { b: b, why: nextWhy(b, c, fans, now, span, kin) }; })
     };
   }
 
@@ -1081,17 +1184,18 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     return n;
   }
 
-  // What What to read next offers, from the books on hand (rereads and books you browse included): only the choices that
-  // can change something. Length needs page counts; Waiting longest and Newest arrivals need books added on two or more
-  // days; Favorite authors needs an unread book by an author you've read; moods, genres and the rest need reading details.
+  // What What to read next offers, from the books that can be suggested (rereads and books you browse included, one copy
+  // of each, and no volume that waits for another): only the choices that can change something. Length needs page
+  // counts; Waiting longest and Newest arrivals need books added on two or more days; Favorite authors needs an unread
+  // book by an author you've read; moods, genres and the rest need reading details.
   // The moods and genres offered (fit) are those of the books of the kind chosen, with books you browse only when they're
   // in, and keep any already chosen, so it can be taken off; moods and genres are those of every book on hand.
-  function nextOffers(all, c) {
+  function nextOffers(all, c, kin) {
+    c = c || cleanNext({});
     var fans = authorFans(all), o = { tags: Object.create(null), rooms: Object.create(null), moods: Object.create(null), genres: Object.create(null) }, days = Object.create(null);
-    var fit = o.fit = { moods: Object.create(null), genres: Object.create(null) }, base = onHand(all, true, true), kind;
+    var fit = o.fit = { moods: Object.create(null), genres: Object.create(null) }, base = nextBooks(all, { reread: true, browse: true }, function () { return true; }, kin), kind;
     // Each room once, as most of the library's books spell it.
     var rooms = placeNames(placeIndex(all).rooms);
-    c = c || cleanNext({});
     base.forEach(function (b) {
       (b.tags || []).forEach(function (t) { o.tags[t] = 1; }); if (b.room) o.rooms[rooms[placeKey(b.room)]] = 1;
       if (b.kind) o.kind = 1; if (b.pace) o.pace = 1; if (b.pages) o.len = 1; if (b.added) days[b.added] = 1;
@@ -1994,8 +2098,9 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       return '<label class="sr" for="' + id + '">' + name + '</label><select id="' + id + '"><option value="">' + any + '</option>' + vals.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
     }
     // Only the choices the library can answer are offered: moods, genres and the rest once books have reading details.
-    function drawCrit() {
-      var has = nextOffers(live(DOC), c); fitNext(c, has);
+    // all and kin, when given, are the library and its kinOf, worked out once for the choices and the deal together.
+    function drawCrit(all, kin) {
+      var has = nextOffers(all || live(DOC), c, kin); fitNext(c, has);
       var moods = MOODS.filter(function (m) { return has.fit.moods[m[0]]; }), genres = GENRES.filter(function (g) { return has.fit.genres[g[0]]; });
       var tk = Object.keys(has.tags).sort(COLL.compare), rk = Object.keys(has.rooms).sort(COLL.compare), favs = has.reread;
       var html = (has.kind ? seg('kind', 'Fiction or not', KINDS) : '') +
@@ -2028,8 +2133,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
     }
     // Pick again works through every match before repeating one. A deal with nothing new starts a round of repeats
     // (round counts them), and every deal from then on says so, until a choice changes.
-    function dealNow() {
-      deal = dealNext(live(DOC), c, Math.random, seen, Date.now()); top = 0;
+    function dealNow(all, kin) {
+      deal = dealNext(all || live(DOC), c, Math.random, seen, Date.now(), kin); top = 0;
       if (deal.picks.length && !deal.fresh) { round++; seen = {}; }
       deal.picks.forEach(function (p) { seen[p.b.id] = 1; });
       drawOut();
@@ -2040,7 +2145,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       $('nxGo').disabled = !p.length; $('nxAgain').disabled = deal.pool <= p.length;
       $('nxAgain').title = p.length && deal.pool <= p.length ? 'These are all the books that match' : '';
       if (!p.length) {
-        var any = onHand(live(DOC), c.reread, c.browse).length, favs = !c.reread && $('nxRe');
+        var any = deal.hand, favs = !c.reread && $('nxRe');
         o.innerHTML = '<div class="nx-none">' + (any
           ? '<h3>Nothing matches all of these</h3><p>' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p><button class="btn" type="button" id="nxClear">Clear these choices</button>' + ask
           : '<h3>Nothing unread on hand</h3><p>Every book here is read, being read or lent out' + (deal.browsed ? ', or one you browse' : '') + '.' + (favs ? ' Tick <b>Include rereads</b> under More choices for an old favorite.' : '') + '</p>') + '</div>';
@@ -2063,7 +2168,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         }).join('') + '</div>' : '') +
         '<p class="note">' + esc(nextNotes(deal, c, round > 0).join(' ')) + '</p>' + ask;
     }
-    function changed() { PREF.next = c; savePrefs(); seen = {}; round = 0; drawCrit(); dealNow(); }
+    function both() { var all = live(DOC), kin = kinOf(all); drawCrit(all, kin); dealNow(all, kin); }
+    function changed() { PREF.next = c; savePrefs(); seen = {}; round = 0; both(); }
     // After Pick again, a pick drawn where little or none of it shows (More choices open, a small phone, the sheet
     // scrolled past it) is brought up to just under the heading, so the book that changed is in view. A tap on a choice
     // or on one of the others doesn't move the sheet: the person is still choosing there.
@@ -2106,7 +2212,7 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var from = document.activeElement, back = function () { return from !== document.body && isShown(from) ? from : rowOf(b.id); };
       toast('Marked “' + short(b.title) + '” as reading', 'Undo', function () { var cur = DOC.books[b.id]; if (cur && !cur.del) putBook(Object.assign({}, cur, { status: was })); return back(); }, !e.detail, back);
     });
-    drawCrit(); dealNow();
+    both();
   }
 
   // ---------- settings ----------
