@@ -1848,12 +1848,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
   // Undo for books just added: each is taken out the way Remove takes one out ({id, t, del: 1}), so a sync takes it out
   // of Drive and the other devices too, if it got there meanwhile. seen: the batch whose adding is undone, which is
   // forgotten too, so opening its link again doesn't say it was added. was: {id: book} for books on the wishlist that
-  // adding made books in the house, which go back as they were.
+  // adding made books in the house, which go back as they were. moved: {id: {room, shelf, loan}} for books moved here,
+  // which go back to their place, and lent again to whoever had them (unless the book's been lent since).
   function takeBack(ids, seen, was, moved) {
     var n = 0, m = 0;
     ids.forEach(function (id) { var old = DOC.books[id]; if (old && !old.del) { DOC.books[id] = stamp({ id: id, del: 1 }, old); n++; } });
     Object.keys(was || {}).forEach(function (id) { var cur = DOC.books[id]; if (cur && !cur.del) { DOC.books[id] = cleanBook(stamp(Object.assign({}, was[id]), cur)); n++; } });
-    Object.keys(moved || {}).forEach(function (id) { var cur = DOC.books[id]; if (cur && !cur.del) { DOC.books[id] = cleanBook(stamp(Object.assign({}, cur, moved[id]), cur)); m++; } });
+    Object.keys(moved || {}).forEach(function (id) {
+      var cur = DOC.books[id]; if (!cur || cur.del) return;
+      DOC.books[id] = cleanBook(stamp(Object.assign({}, cur, moved[id], cur.loan ? { loan: cur.loan } : null), cur)); m++;
+    });
     if (seen) delete DOC.seen[seen];
     if (!n && !m && !seen) return;
     persist(); render();
@@ -2836,8 +2840,10 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       var d = r.dup || r.near, at = d && where(d) ? esc(where(d)) : '';
       if (r.near) return 'You have “' + esc(d.title + (d.sub && d.title.indexOf(':') < 0 ? ': ' + d.sub : '')) + '”' + (at ? ' in ' + at : '') + ' — another volume?';
       if (!d) return '';
-      var mv = away(r) ? ' <button class="btn sm rv-mv" type="button" aria-pressed="' + r.mv + '">Move it here</button>' : '';
-      if (r.mv) return '<b>Moves here</b> from ' + (at || 'no shelf') + '.' + mv;
+      // A copy here that's lent out says who has it. Moved here, it's on the shelf in the photo, so it's back from them.
+      var mv = away(r) ? ' <button class="btn sm rv-mv" type="button" aria-pressed="' + r.mv + '">Move it here</button>' : '', ln = d.loan;
+      if (r.mv) return '<b>Moves here</b> from ' + (at || 'no shelf') + (ln ? ', back from ' + esc(ln.to) : '') + '.' + mv;
+      at = [at, ln ? 'lent to ' + esc(ln.to) + (ln.since ? ' since ' + esc(fmtDay(ln.since)) : '') : ''].filter(Boolean).join(', ');
       return (otherEdition(d, r.b) ? '<b>Another edition is in your library</b>' : '<b>Already in your library</b>') + (at ? ' — ' + at : '') + '. Tick it to add ' + (r.b.wanted ? 'it to your wishlist anyway.' : otherEdition(d, r.b) ? 'this one too.' : 'another copy.') + mv;
     }
     // A big batch has chips above the list, to show only the books to check, those already here, or those left out.
@@ -2975,14 +2981,16 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
         if (wish) was[wish.id] = wish; else ids.push(b.id);
         DOC.books[b.id] = b; if (b.wanted) w++; else { n++; countPlace(ix, b); } if (b.check) checks++;
       });
-      // A book here moved instead: it goes where this one would have, and keeps everything else.
-      var moved = {}, m = 0, tos = [];
+      // A book here moved instead: it goes where this one would have, and keeps everything else, but for a loan: it's on
+      // the shelf in the photo, so it's back. Undo puts the loan back with the place.
+      var moved = {}, m = 0, tos = [], backs = [];
       moving().forEach(function (r) {
         var d = DOC.books[r.dup.id], t = goes(r); if (!d || d.del || d.wanted) return;
         moved[d.id] = { room: d.room || '', shelf: d.shelf || '' };
-        DOC.books[d.id] = cleanBook(stamp(placed(Object.assign({}, d, { room: t.room, shelf: t.shelf }), ix), d)); m++; tos.push(where(DOC.books[d.id]));
+        if (d.loan) { moved[d.id].loan = d.loan; backs.push(d.loan.to); }
+        DOC.books[d.id] = cleanBook(stamp(placed(Object.assign({}, d, { room: t.room, shelf: t.shelf, loan: null }), ix), d)); m++; tos.push(where(DOC.books[d.id]));
       });
-      var to = tos.every(function (x) { return x === tos[0]; }) ? tos[0] : '';
+      var to = tos.every(function (x) { return x === tos[0]; }) ? tos[0] : '', gave = !backs.length ? '' : backs.length > 1 ? ', ' + backs.length + ' back from loans' : ', ' + (m > 1 ? '1 ' : '') + 'back from ' + clip(backs[0]);
       if (!n && !w && !m) return;
       DOC.seen[batch.id] = got(DOC.seen, batch.id) || now;
       DOC = cleanDoc(DOC); var saved = persist(); added = true; closeSheet();
@@ -2993,8 +3001,8 @@ body.locked .toast{bottom:calc(12px + var(--above,env(safe-area-inset-bottom,0px
       // forgets the link was used if this was its first time.
       var first = ids[0] || Object.keys(was)[0] || Object.keys(moved)[0];
       if (!saved) toast(STORE_TOAST[STORE]);
-      else toast((n || w ? 'Added ' + (n ? plural(n, 'book') + (w ? ' and ' + w + ' to your wishlist' : '') : w + ' to your wishlist') + (m ? ', moved ' + m : '') + (n ? ' — newest first' : '')
-        : 'Moved ' + plural(m, 'book') + (to ? ' to ' + clip(to) : '')) + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
+      else toast((n || w ? 'Added ' + (n ? plural(n, 'book') + (w ? ' and ' + w + ' to your wishlist' : '') : w + ' to your wishlist') + (m ? ', moved ' + m : '') + gave + (n ? ' — newest first' : '')
+        : 'Moved ' + plural(m, 'book') + (to ? ' to ' + clip(to) : '') + gave) + (checks ? ' · ' + checks + ' to check' : ''), 'Undo',
         function () { takeBack(ids, seen, was, moved); return $('importBtn'); }, !e.detail, function () { return rowOf(first); });
     });
     count();

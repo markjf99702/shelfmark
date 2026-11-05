@@ -658,6 +658,52 @@ step('a book on the review screen that\'s here on another shelf can be moved her
   } finally { await ctx.close(); }
 });
 
+step('a lent book on the review screen says who has it, and moving it here marks it back, with Undo lending it again', async () => {
+  const ctx = await context();
+  await ctx.clock.setFixedTime(new Date('2026-11-04T10:00:00'));
+  try {
+    const page = await open(ctx);
+    const sam = { to: 'Sam', since: '2026-10-02' }, ana = { to: 'Ana', since: '2025-03-04' };
+    await seed(page, [{ ...PIRANESI, shelf: 'Console table', loan: sam }, { ...MIDDLEMARCH, shelf: 'Top', loan: { to: 'Priya' } },
+      { id: 'b06', t: 1000, title: 'Emma', authors: ['Jane Austen'], added: '2026-10-01', room: 'Study', shelf: 'Desk', loan: ana }]);
+    const link = linkTo({ name: 'Desk shelf', room: 'Study', shelf: 'Desk', books: [{ title: 'Piranesi', authors: ['Susanna Clarke'] },
+      { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Emma', authors: ['Jane Austen'] }, { title: 'Gilead', authors: ['Marilynne Robinson'] }] });
+    const li = n => page.locator('#rv > li').nth(n);
+    const loans = async () => { const l = (await stored(page)).library.books; return ['b03', 'b04', 'b06'].map(id => [[l[id].room, l[id].shelf].join(' › '), l[id].loan || null]); };
+    const before = [['Hall › Console table', sam], ['Den › Top', { to: 'Priya' }], ['Study › Desk', ana]];
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    // Each copy here that's lent says who has it, on a shelf elsewhere or on this one.
+    assert.deepEqual(await page.$$eval('#rv .rv-have', els => els.slice(0, 3).map(e => e.textContent)), [
+      'Already in your library — Hall › Console table, lent to Sam since Oct 2. Tick it to add another copy. Move it here',
+      'Already in your library — Den › Top, lent to Priya. Tick it to add another copy. Move it here',
+      'Already in your library — Study › Desk, lent to Ana since Mar 4, 2025. Tick it to add another copy.']);
+    // Moved here, it's back from Sam, and Undo puts it back on its shelf, lent to Sam again.
+    await li(0).locator('.rv-mv').click();
+    assert.equal(await li(0).locator('.rv-have').textContent(), 'Moves here from Hall › Console table, back from Sam. Move it here');
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Added 1 book, moved 1, back from Sam — newest first');
+    assert.deepEqual(await loans(), [['Study › Desk', null], before[1], before[2]]);
+    assert.equal((await storedBook(page, 'b03')).notes, 'Sam says start here', 'moving it changed more than its place and loan');
+    await page.click('#toastBtn');
+    assert.equal(await page.textContent('#toastTx'), 'Took it back out, and moved 1 book back');
+    assert.deepEqual(await loans(), before);
+    // Two moved: the toast counts the loans.
+    await wait(450);
+    await page.goto(link);
+    await page.waitForSelector('#rv-add');
+    await li(3).locator('.rv-tick input').uncheck();
+    await li(0).locator('.rv-mv').click(); await li(1).locator('.rv-mv').click();
+    await page.click('#rv-add');
+    assert.equal(await page.textContent('#toastTx'), 'Moved 2 books to Study › Desk, 2 back from loans');
+    assert.deepEqual(await loans(), [['Study › Desk', null], ['Study › Desk', null], before[2]]);
+    await page.click('#toastBtn');
+    assert.equal(await page.textContent('#toastTx'), 'Moved them back');
+    assert.deepEqual(await loans(), before);
+    assert.deepEqual(page.problems, []);
+  } finally { await ctx.close(); }
+});
+
 // A big batch: chips above the list show only the books to check, the ones already here, or the ones left out.
 step('a big batch\'s review screen has chips for the books to check, already here and left out, which only hide the other rows', async () => {
   const ctx = await context();
