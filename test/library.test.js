@@ -23,7 +23,7 @@ function fn(name) {
   }
 }
 const S = new Function('window', [logic, fn('linkText'), fn('parseIncoming'),
-  'return { coverQuery, pickCover, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, searchWords, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, cleanNext, nextPool, dealNext, cleanDetails, matchDetails, withDetails, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES };'
+  'return { restorable, restore, curly, hasTag, tagCounts, tagged, coverQuery, pickCover, monogram, isbn13, cleanBook, cleanDoc, mergeDocs, canon, live, surname, titleKey, dupIndex, findDup, cleanBatch, shelve, place, placeIndex, placed, shelfOrder, finishedOrder, lentOrder, shelfGroups, listText, facetHit, facetName, summaryOf, nextNote, detailsSum, detailsLeft, leftText, loanMonths, loanLine, searchWords, keys, searchHit, toCsv, csvCell, linkText, parseIncoming, authorOrder, lengthOf, short, clip, cleanNext, nextPool, nextBooks, volumeOf, kinOf, dealNext, nextDeal, nextNotes, nextOffers, fitNext, cleanDetails, matchDetails, withDetails, detailChanges, newer, indexKeys, lookupKeys, nearDup, authorsKey, statusOf, DETAILS, STATUSES, SHOWN, FORMATS, CONDITIONS, KINDS, WAYS, PACES, CHAPTERS, MOODS, GENRES, BATCH_MAX };'
 ].join('\n'))(globalThis);
 
 let failed = 0, passed = 0;
@@ -57,7 +57,87 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
   eq(S.cleanBook({ title: '' }), null, 'no title → not a book');
   { const n = S.cleanBook({ id: 'a', title: 'T', rating: '3.5', year: '1999.0', pages: '320.0' }); eq([n.rating, n.year, n.pages], [4, 1999, 320], 'numbers written with a decimal point are rounded, not run together'); }
   eq([S.cleanBook({ id: 'a', title: 'T', pages: '1,024' }).pages, S.cleanBook({ id: 'a', title: 'T', pages: '320 pages', year: ' 2001 ' }).year], [1024, 2001], 'a grouped number or one with words around it keeps its digits');
+  // Numbers as they're printed: a year with a range, a reprint or a copyright line; pages over two volumes.
+  const year = v => S.cleanBook({ id: 'a', title: 'T', year: v }).year, pages = v => S.cleanBook({ id: 'a', title: 'T', pages: v }).pages, stars = v => S.cleanBook({ id: 'a', title: 'T', rating: v }).rating;
+  eq(['1937–40', '1925/1953', '©1951, 1979', '2nd ed. 1999', '1999 (2003 printing)', '1937/1951', 'c. 1937', 1999.5, '1999.0'].map(year), [1937, 1925, 1951, 1999, 1999, 1937, 1937, 2000, 1999],
+    'a year as printed is its first four-digit number');
+  eq(['2 vols, 880', '1,024', '1 024', '1\u2009024', 'xii, 320 p.', '320 pages', 412, '320.0'].map(pages), [880, 1024, 1024, 1024, 320, 320, 412, 320], 'a page count as printed is its largest number, with digit groups joined');
+  eq([4.5, 2.5, '3.5', '4 stars', '4.5 out of 5', 0.4, 9].map(stars), [5, 3, 4, 4, 5, undefined, 5], 'a rating rounds half up and takes the first number');
+  {
+    const yesno = [true, 1, 'true', 'Yes', ' YES ', '1', false, 0, 'false', 'no', '0', 'n', null, {}, 2];
+    const want = [true, true, true, true, true, true, false, false, false, false, false, false, false, false, false];
+    eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', signed: v }).signed), want, 'signed is yes only for true, 1, "true", "yes" or "1"');
+    eq(yesno.map(v => !!S.cleanBook({ id: 'a', title: 'T', first: v }).first), want, 'and so is first edition');
+  }
+  // Cleaning a book again gives the same book: text cut at its limit loses the space before the cut, not a character
+  // the next time; a name loses its empty neighbours before its "Jr." joins it; a long numeric id stays 40.
+  {
+    const twice = (o, what) => { const a = S.cleanBook(o), b = S.cleanBook(a); eq(b, a, 'cleaning twice gives the same book: ' + what); return a; };
+    eq(twice({ id: 'a', title: 'a'.repeat(299) + ' b' }, 'a title cut after a space').title, 'a'.repeat(299), 'and the cut leaves no space at the end');
+    twice({ id: 'a', title: 'T', shelf: 'a'.repeat(59) + ' b', tags: ['a'.repeat(39) + ' b'], publisher: 'p'.repeat(119) + ' q', loan: { to: 'x'.repeat(79) + ' y' }, authors: ['n'.repeat(119) + ' m'] }, 'shelf, tag, publisher, borrower and author cut after a space');
+    eq(twice({ id: 'a', title: 'T', notes: 'a'.repeat(3999) + '\n\nb' }, 'notes cut after a line break').notes, 'a'.repeat(3999), 'and the cut leaves no line break at the end');
+    eq(twice({ id: 'a', title: 'a'.repeat(299) + '😀' }, 'a title cut inside an emoji').title, 'a'.repeat(299), 'and the cut leaves no half an emoji');
+    eq(twice({ id: 'a', title: 'T', authors: ['X', '', 'Jr'] }, 'a "Jr" after an empty name').authors, ['X, Jr'], 'and the "Jr" joins its name the first time');
+    eq(S.cleanBook({ id: 'a', title: 'T', authors: 'Kurt Vonnegut, , Jr.' }).authors, ['Kurt Vonnegut, Jr.'], 'as it does typed with an empty piece');
+    eq(twice({ id: '1'.repeat(40), title: 'T' }, 'a 40-digit id').id, 'b' + '1'.repeat(39), 'and the id stays 40 long');
+  }
+  // Ids and batch ids named like something every object has, and times past the last day a date can be.
+  {
+    const doc = S.cleanDoc({ books: [{ id: 'constructor', t: 1, title: 'A' }, { id: '__proto__', t: 1, title: 'B' }, { id: 'toString', t: 1, title: 'C' }, { id: 'hasOwnProperty', t: 1, del: 1 }],
+      seen: JSON.parse('{"constructor": 5, "__proto__": 6, "c1": 7}') });
+    eq([Object.keys(doc.books), S.live(doc).map(b => b.title).sort()], [['b__proto__', 'bconstructor', 'bhasOwnProperty', 'btoString'], ['A', 'B', 'C']], 'books with ids like "constructor" and "__proto__" are kept, with a letter in front');
+    eq(doc.seen, { b__proto__: 6, bconstructor: 5, c1: 7 }, 'and so are batches seen with such ids');
+    eq(S.live(S.mergeDocs(doc, S.cleanDoc({ books: [{ id: 'toString', t: 2, title: 'C2' }] }))).map(b => b.title).sort(), ['A', 'B', 'C2'], 'and they merge like any other');
+    eq(S.cleanBatch({ batch: { id: 'constructor', books: [{ title: 'A' }] } }).id, 'bconstructor', 'a batch id like "constructor" gets the same letter');
+    const ent = S.cleanDetails({ details: { books: [{ id: 'constructor', title: 'A', kind: 'fiction' }, { id: 'valueOf', title: 'Nothing here', kind: 'fiction' }] } });
+    eq(S.matchDetails(doc, ent).map(r => r.bs.map(b => b.id)), [['bconstructor'], []], 'a details entry with such an id finds its book, and one not here finds nothing');
+    eq(S.cleanBook({ id: 'a', title: 'T', tags: ['constructor', 'toString', '__proto__'] }).tags, ['constructor', 'toString', '__proto__'], 'tags like "constructor" are kept');
+    const added = v => S.cleanBook({ id: 'a', title: 'T', added: v }).added;
+    eq(['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29', '2024-02-29', '1999-12-31', ' 2026-01-01', '20260101', '0000-01-01', '2026-1-1', 2026].map(added),
+      [undefined, undefined, undefined, undefined, '2024-02-29', '1999-12-31', '2026-01-01', undefined, undefined, undefined, undefined], 'a day is kept only as YYYY-MM-DD and on the calendar: not 30 February or a 13th month');
+    eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: '2026-02-31', loan: { to: 'Sam', since: '2026-04-31' } }), { id: 'a', t: 0, title: 'T', status: 'read', loan: { to: 'Sam' } }, 'and so are the day it was finished and the day it was lent');
+    const far = S.cleanBook({ id: 'a', t: 1e17, title: 'T' }), end = Date.UTC(9999, 11, 31);
+    eq([far.t, new Date(far.t).getTime(), S.cleanBook({ id: 'a', t: 8.64e15, title: 'T' }).t], [end, end, end], 'a time past the last day a date can be (or at it, as an older Shelfmark kept one) comes in as the end of 9999');
+    // A later change still wins over a book with such a time: a removal, or an edit that takes a field off, stamped from it.
+    for (const t of [1e17, 8.64e15, 5e15]) {
+      const was = S.cleanDoc({ books: [{ id: 'a', t, title: 'T', authors: ['Ann Lee'], notes: 'x' }] }), at = was.books.a.t;
+      const gone = S.cleanDoc({ books: [{ id: 'a', t: Math.max(Date.now(), at + 1), del: 1 }] }), edit = S.cleanDoc({ books: [{ id: 'a', t: Math.max(Date.now(), at + 1), title: 'T', authors: ['Ann Lee'] }] });
+      eq([S.mergeDocs(was, gone).books.a, S.mergeDocs(gone, was).books.a], [gone.books.a, gone.books.a], 'a removal made after a time of ' + t + ' wins, both ways round');
+      eq([S.mergeDocs(was, edit).books.a, S.mergeDocs(edit, was).books.a], [edit.books.a, edit.books.a], 'and so does an edit that takes a field off');
+    }
+    const pool = S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'constructor', t: 1, title: 'A' }, { id: 'b', t: 1, title: 'B' }] })), S.cleanNext({}), rng(1), JSON.parse('{"bconstructor": 1}'), Date.now());
+    eq(pool.picks.map(p => p.b.id), ['b', 'bconstructor'], 'what to read next skips a book with such an id once it has been shown');
+  }
   eq(S.cleanBook({ id: 'x1', t: 9, del: 1, title: 'gone' }), { id: 'x1', t: 9, del: 1 }, 'a removed book keeps only id and time');
+// A backup can put back what merging alone can't, as the newer change wins: books removed since, and blanks filled in.
+{
+  const backup = S.cleanDoc({ books: [
+    { id: 'e', t: 10, title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', moods: ['funny'], pages: 474, notes: 'Box set', room: 'Den', loan: { to: 'Sam' }, check: 'which edition?' },
+    { id: 'w', t: 10, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Study' },
+    { id: 'm', t: 10, title: 'Middlemarch', room: 'Den', shelf: 'Top', kind: 'fiction' },
+    { id: 'h', t: 10, title: 'Hamlet' }, { id: 'x', t: 10, del: 1 }] });
+  // Since then: Emma lost its reading details (an older tab), its page count and its loan, and its check was settled;
+  // Walden was removed; Middlemarch went on the wishlist; Hamlet is as it was; Ulysses is new.
+  const now = S.cleanDoc({ books: [
+    { id: 'e', t: 20, title: 'Emma', authors: ['Jane Austen'], room: 'Den', notes: 'Box set' }, { id: 'w', t: 30, del: 1 },
+    { id: 'm', t: 20, title: 'Middlemarch', wanted: true }, { id: 'h', t: 10, title: 'Hamlet' }, { id: 'u', t: 5, title: 'Ulysses' }] });
+  const r = S.restorable(now, backup);
+  eq([r.gone, r.fill], [['w'], { e: ['kind', 'moods', 'pages'], m: ['kind'] }], 'a backup can bring back a book removed since, and fill in blanks (not a place on the wishlist, a loan or a check settled)');
+  eq(S.canon(S.restore(now, backup, false, false, 1000)), S.canon(S.mergeDocs(now, backup)), 'with neither chosen it merges as before');
+  const back = S.restore(now, backup, true, true, 1000);
+  eq(back.books.w, { id: 'w', t: 1000, title: 'Walden', authors: ['Henry David Thoreau'], room: 'Study' }, 'a book brought back is the backup’s copy, changed now');
+  eq(back.books.e, { id: 'e', t: 1000, title: 'Emma', authors: ['Jane Austen'], pages: 474, room: 'Den', notes: 'Box set', kind: 'fiction', moods: ['funny'] }, 'a book filled in keeps what it has and gets its blanks from the backup');
+  eq([back.books.m.wanted, back.books.m.room, back.books.m.kind, back.books.h.t, back.books.u.t], [true, undefined, 'fiction', 10, 5], 'and the books with nothing to put back are as merged');
+  // Changed now, they win over the removal and the blanks still on another device, both ways round.
+  eq([S.canon(S.mergeDocs(back, now)), S.canon(S.mergeDocs(now, back))], [S.canon(back), S.canon(back)], 'what was put back wins over the copy from before, both ways round');
+  const late = S.restore(S.cleanDoc({ books: [{ id: 'w', t: 5000, del: 1 }] }), backup, true, false, 1000);
+  eq(late.books.w.t, 5001, 'a book removed with a time later than now (another device\'s clock) comes back just after it');
+  // A place is filled as a whole: a book moved since to a room with no shelf doesn't get the shelf it had in the old room.
+  const moved = S.cleanDoc({ books: [{ id: 'm', t: 20, title: 'Middlemarch', room: 'Bedroom' }, { id: 'n', t: 20, title: 'Nostromo', shelf: 'Top' }, { id: 'o', t: 20, title: 'Orlando' }] });
+  const placedBefore = S.cleanDoc({ books: [{ id: 'm', t: 10, title: 'Middlemarch', room: 'Den', shelf: 'Top' }, { id: 'n', t: 10, title: 'Nostromo', room: 'Den', shelf: 'Top' }, { id: 'o', t: 10, title: 'Orlando', room: 'Den', shelf: 'Top' }] });
+  eq(S.restorable(moved, placedBefore).fill, { o: ['room', 'shelf'] }, 'a room and shelf are filled in only together, for a book with neither');
+  eq(['m', 'n', 'o'].map(id => { const b = S.restore(moved, placedBefore, false, true, 1000).books[id]; return [b.room, b.shelf]; }), [['Bedroom', undefined], [undefined, 'Top'], ['Den', 'Top']], 'so a book in another room keeps no shelf from the old one');
+}
   eq(S.cleanBook({ id: '123', title: 'T' }).id, 'b123', 'numeric ids get a letter so key order stays stable');
   check(/^b[0-9a-z]{9}$/.test(S.cleanBook({ title: 'T' }).id), 'a book with no id gets one');
   eq(S.cleanBook({ id: 'a', title: 'T', loan: { to: 'Sam', since: 'last week' } }).loan, { to: 'Sam' }, 'a loan keeps its borrower even with a bad date');
@@ -73,12 +153,123 @@ eq(S.isbn13('X800442957'), '', 'X only allowed last');
     ['Martin Luther King, Jr.', 'Coretta Scott King', 'Ann Lee, PhD', 'Bo Chen, III'], 'and so do Sr., II, III, IV, PhD and MD, among several authors');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ['Kurt Vonnegut', 'Jr.'] }).authors, ['Kurt Vonnegut, Jr.'], 'a name split from its "Jr." before is put back together');
   eq(S.cleanBook({ id: 'a', title: 'T', authors: ', Jr., Sammy Davis Jr.' }).authors, ['Jr.', 'Sammy Davis Jr.'], 'a "Jr." with no name before it is left alone');
+  // The day a book was finished is kept while it's read, and only as a day.
+  eq(['read', 'reading', '', 'unread'].map(status => S.cleanBook({ id: 'a', title: 'T', status, finished: '2026-03-14' }).finished), ['2026-03-14', undefined, undefined, undefined],
+    'a finished day is kept for a book that’s read, and dropped for one being read again or unread');
+  eq(S.cleanBook({ id: 'a', title: 'T', status: 'read', finished: 'last March' }).finished, undefined, 'and a finished day that isn’t a day is dropped');
+  eq([true, 'yes', false, 'no'].map(wanted => S.cleanBook({ id: 'a', title: 'T', wanted }).wanted), [true, true, undefined, undefined], 'a book wanted is on the wishlist, yes or no');
+  eq(S.cleanBatch({ batch: { wanted: true, books: [{ title: 'A' }, { title: 'B', wanted: false }] } }).books.map(b => b.wanted), [true, true], 'a batch of books wanted puts every one on the wishlist');
+  // A book set aside keeps the status it had, with aside set, and shows as Set aside.
+  eq([true, 'yes', 1, false, 'no', 0].map(aside => S.cleanBook({ id: 'a', title: 'T', status: 'reading', aside })).map(b => [b.status, b.aside || false, S.statusOf(b)]),
+    [['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', true, 'aside'], ['reading', false, 'reading'], ['reading', false, 'reading'], ['reading', false, 'reading']], 'a book set aside keeps its status under it, and shows as Set aside');
+}
+
+// ---------- sorting ----------
+eq(S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', finished: '2025-12-01' }, { id: 'b', t: 1, title: 'Beloved', authors: ['Toni Morrison'] },
+  { id: 'c', t: 1, title: 'Ulysses', authors: ['James Joyce'], status: 'read', finished: '2026-02-03', aside: true }, { id: 'd', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], status: 'read', finished: '2026-02-03' },
+  { id: 'e', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], status: 'read', finished: '2026-03-14' }] })).sort(S.finishedOrder).map(b => b.id), ['e', 'd', 'a', 'c', 'b'],
+  'Recently finished puts read books latest first, then the rest (one set aside too) by author');
+// Longest out first: the earliest loan first, one with no day after those, then the books on the shelf by author.
+eq(S.live(S.cleanDoc({ books: [{ id: 'la', t: 1, title: 'Emma', authors: ['Jane Austen'] }, { id: 'lb', t: 1, title: 'Beloved', authors: ['Toni Morrison'], loan: { to: 'Sam', since: '2026-10-02' } },
+  { id: 'lc', t: 1, title: 'Ulysses', authors: ['James Joyce'], loan: { to: 'Ana' } }, { id: 'ld', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], loan: { to: 'Lou', since: '2025-03-04' } },
+  { id: 'le', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }] })).sort(S.lentOrder).map(b => b.id), ['ld', 'lb', 'lc', 'la', 'le'], 'Longest out first puts the earliest loan first, then the rest by author');
+{
+  // How long a loan has been out: whole months to the day, so a book lent on the 31st is a month out on the 1st after next.
+  const now = new Date(2026, 10, 4);
+  eq(['2026-11-04', '2026-10-05', '2026-10-04', '2026-09-30', '2025-03-04', '2025-03-05', '2024-11-04', '2021-01-31', '', 'soon'].map(d => S.loanMonths(d, now)), [0, 0, 1, 1, 20, 19, 24, 69, 0, 0], 'a loan\'s age is in whole months to the day');
+  eq(S.loanMonths('2026-01-31', new Date(2026, 1, 28)), 0, 'a book lent on 31 January isn\'t a month out on 28 February');
+  eq(S.loanMonths('2026-01-31', new Date(2026, 2, 1)), 1, 'and is on 1 March');
+  eq(S.loanMonths('2027-01-01', now), 0, 'a loan dated after today counts as new');
+  eq([{ to: 'Sam', since: '2025-03-04' }, { to: 'Sam', since: '2026-09-30' }, { to: 'Sam', since: '2024-11-04' }, { to: 'Sam', since: '2021-01-31' }, { to: 'Sam' }].map(l => S.loanLine(l, now)),
+    ['Lent to Sam · 20 months', 'Lent to Sam · 1 month', 'Lent to Sam · 2 years', 'Lent to Sam · 5 years', 'Lent to Sam'], 'a loan of a month or more says how long it\'s been out, from two years in years');
+  check(/^Lent to Sam · \D+ \d+$/.test(S.loanLine({ to: 'Sam', since: '2026-10-20' }, now)), 'a loan under a month old says the day it was lent');
+}
+
+// ---------- the list as text ----------
+{
+  const lib = S.live(S.cleanDoc({ books: [
+    { id: 'ta', t: 1, title: 'The Dispossessed', sub: 'An Ambiguous Utopia', authors: ['Ursula K. Le Guin'], room: 'Study', shelf: 'Desk shelf', loan: { to: 'Sam', since: '2026-10-02' } },
+    { id: 'tb', t: 1, title: 'Middlemarch', authors: ['George Eliot'], room: 'Living room', shelf: 'Tall bookcase' },
+    { id: 'tc', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'], room: 'study', shelf: 'desk shelf' },
+    { id: 'td', t: 1, title: 'Emma' },
+    { id: 'te', t: 1, title: 'The Lathe of Heaven', authors: ['Ursula K. Le Guin'], wanted: true }] }));
+  const house = lib.filter(b => !b.wanted), at = S.placeIndex(house);
+  const groups = S.shelfGroups(lib.slice().sort(S.shelfOrder), at);
+  eq(groups.map(g => [g.name, g.bs.map(b => b.id)]), [['Living room › Tall bookcase', ['tb']], ['Study › Desk shelf', ['ta', 'tc']], ['Not shelved yet', ['td']], ['On your wishlist', ['te']]],
+    'shelf groups put a place\'s spellings under one heading, spelled as most books spell it, and the wishlist last');
+  eq(S.listText({ head: [] }, lib.slice().sort(S.authorOrder)),
+    '5 books\n\nMiddlemarch — George Eliot · Living room › Tall bookcase\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin · Study › Desk shelf\nThe Lathe of Heaven — Ursula K. Le Guin · wanted\nGilead — Marilynne Robinson · study › desk shelf\nEmma\n',
+    'the list as text is a line a book, with its subtitle, authors and place, and "wanted" for a book on the wishlist');
+  eq(S.listText({ head: ['Lent out'], lent: true }, [lib[0]]), 'Lent out · 1 book\n\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin · Study › Desk shelf · lent to Sam\n', 'in the Lent out view a line says who has the book');
+  eq(S.listText({ head: ['Search: le guin'] }, [lib[0], lib[4]], S.shelfGroups([lib[0], lib[4]], at)),
+    'Search: le guin · 2 books\n\nStudy › Desk shelf\nThe Dispossessed: An Ambiguous Utopia — Ursula K. Le Guin\n\nOn your wishlist\nThe Lathe of Heaven — Ursula K. Le Guin\n',
+    'sorted by shelf, the books go under their shelves\' headings, which say the place');
+  eq(S.listText({ head: ['Wishlist'], wish: true }, [lib[4]]), 'Wishlist · 1 book\n\nThe Lathe of Heaven — Ursula K. Le Guin\n', 'the wishlist doesn\'t say each book is wanted');
+}
+
+// ---------- your library, in sum ----------
+{
+  const lib = S.live(S.cleanDoc({ books: [
+    { id: 'ya', t: 1, title: 'Piranesi', authors: ['Susanna Clarke'], room: 'Hall', shelf: 'Console table', kind: 'fiction', genres: ['fantasy'], moods: ['mysterious', 'reflective'], status: 'read' },
+    { id: 'yb', t: 1, title: 'Middlemarch', authors: ['George Eliot'], room: 'Den', kind: 'fiction', genres: ['classics'], moods: ['reflective'], loan: { to: 'Sam' } },
+    { id: 'yc', t: 1, title: 'Cat’s Cradle', authors: ['Kurt Vonnegut'], kind: 'fiction', genres: ['sf', 'humor'], moods: ['funny'], status: 'reading', aside: true },
+    { id: 'yd', t: 1, title: 'A Brief History of Time', authors: ['Stephen Hawking'], room: 'den', shelf: 'Top', kind: 'nonfiction', genres: ['science'], moods: ['informative'] },
+    { id: 'ye', t: 1, title: 'Notebook', room: 'Den', shelf: 'Top', check: 'no title on the spine' }] }));
+  const sum = S.summaryOf(lib, 2);
+  eq(sum.map(x => [x.name, x.rows.map(r => r[0] + ' ' + r[1])]), [
+    ['Rooms', ['Den 3', 'Hall 1', 'No room yet 1']],
+    ['Fiction or not', ['Fiction 3', 'Nonfiction 1']],
+    ['Genres', ['Classics 1', 'Fantasy 1', 'Humor 1', 'Science 1', 'Science fiction 1']],
+    ['Moods', ['Reflective 2', 'Funny 1', 'Informative 1', 'Mysterious 1']],
+    ['Reading', ['Unread 3', 'Read 1', 'Set aside 1', 'Lent out 1', 'On your wishlist 2']],
+    ['To tidy', ['To check 1', 'Without an author 1', 'Without a shelf 2', 'Without reading details 1']]],
+    'the summary counts rooms (one however it\'s spelled), kinds, the genres and moods most books have, reading and what to tidy, leaving out what has none');
+  eq(sum[0].rows.map(r => r[2]), [{ room: 'Den' }, { room: 'Hall' }, { room: ' none' }], 'each room line chooses its room, and No room yet the books with none');
+  eq([sum[1].rows[0][2], sum[4].rows[3][2], sum[5].rows[2][2]], [{ facet: 'kind:fiction' }, { status: 'lent' }, { facet: 'no:shelf' }], 'and every other line its filter');
+  const hits = f => lib.filter(b => S.facetHit(b, f)).map(b => b.id);
+  eq(['kind:fiction', 'genre:sf', 'mood:reflective', 'no:author', 'no:shelf', 'no:details', 'no:what', 'what:ever'].map(hits), [['ya', 'yb', 'yc'], ['yc'], ['ya', 'yb'], ['ye'], ['yb', 'yc'], ['ye'], [], []],
+    'the summary\'s filters find the books with a kind, genre or mood, or without an author, shelf or reading details');
+  eq(['kind:poetry', 'genre:sf', 'mood:funny', 'no:author', 'no:shelf', 'no:details', 'no:what', 'genre:what', 'what:ever', 'constructor', 'no:constructor'].map(S.facetName),
+    ['Poetry', 'Science fiction', 'Mood: funny', 'No author', 'No shelf', 'No reading details', '', '', '', '', ''], 'and each says what it is, or nothing for one it doesn\'t know');
+  const bare = S.summaryOf(S.live(S.cleanDoc({ books: [{ id: 'yf', t: 1, title: 'Emma', authors: ['Jane Austen'], shelf: 'Top', kind: 'fiction' }] })), 0);
+  eq(bare.map(x => [x.name, x.rows.length]), [['Fiction or not', 1], ['Reading', 1], ['To tidy', 0]], 'a section with nothing is left out, but To tidy, which then says there\'s nothing');
 }
 
 // ---------- searching ----------
 eq(S.searchWords('the  978-0-261-10221-7'), ['the', '9780261102217'], 'an ISBN searched as printed on the book becomes the 13 digits kept');
 eq(S.searchWords('0261102214'), ['9780261102217'], 'and so does its ISBN-10');
 eq(S.searchWords('Hobbit 1937 9780261'), ['hobbit', '1937', '9780261'], 'other words and numbers are left as they are');
+eq([S.searchWords('Pilgrim’s Progress'), S.searchWords("pilgrim's"), S.searchWords('Moby-Dick'), S.searchWords('978-0-261'), S.searchWords('  ')],
+  [['pilgrims', 'progress'], ['pilgrims'], ['moby', 'dick'], ['978', '0', '261'], []], 'apostrophes go, and a hyphen or a stop splits a word, but not an ISBN');
+{
+  // Each word searched starts a word of the book's (a number can be anywhere: part of an ISBN, a year), and an
+  // apostrophe reads the same typed straight, curly (as an iPhone types it) or not at all.
+  const finds = (b, q) => S.searchHit(b, S.searchWords(q));
+  const pilgrim = S.cleanBook({ id: 'w1', t: 1, title: 'The Pilgrim\'s Progress', authors: ['John Bunyan'], kind: 'fiction' });
+  const hobbit = S.cleanBook({ id: 'w2', t: 1, title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '0-261-10221-4', year: 1937, kind: 'fiction' });
+  const walden = S.cleanBook({ id: 'w3', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', blurb: 'Two years of cooking beans and thinking, in a cabin by a pond.' });
+  eq([finds(walden, 'fiction'), finds(hobbit, 'fiction'), finds(walden, 'nonfiction')], [false, true, true], '"fiction" doesn’t find a nonfiction book');
+  eq([finds(walden, 'king'), finds(walden, 'cook'), finds(walden, 'ond')], [false, true, false], 'a word inside another one isn’t found ("king" in "cooking")');
+  eq([finds(hobbit, 'tolk'), finds(hobbit, 'TOLKIEN hob'), finds(hobbit, 'r r tolkien')], [true, true, true], 'the start of a word finds it');
+  eq(['0261', '9780261102217', '978-0-261-10221-7', '1937', '937'].map(q => finds(hobbit, q)), [true, true, true, true, true], 'a number is found anywhere: an ISBN’s digits, a year');
+  eq(['pilgrim’s', 'pilgrims', 'pilgrim\'s progress', 'PILGRIM‘S', 'pilgrimʼs progress', 'bunyan’s'].map(q => finds(pilgrim, q)), [true, true, true, true, true, false],
+    'an apostrophe typed straight, curly or not at all finds "The Pilgrim\'s Progress"');
+  eq([finds(S.cleanBook({ id: 'w4', t: 1, title: 'Moby-Dick', authors: ['Herman Melville'] }), 'dick'), finds(S.cleanBook({ id: 'w4', t: 1, title: 'Moby-Dick', authors: ['Herman Melville'] }), 'moby-dick')], [true, true], 'a hyphenated title is two words');
+  // Chinese and Japanese put no spaces between words, and Korean adds endings to them: a word in those is found anywhere.
+  const neko = S.cleanBook({ id: 'w5', t: 1, title: '吾輩は猫である', authors: ['夏目漱石'] }), hong = S.cleanBook({ id: 'w6', t: 1, title: '홍길동전', authors: ['허균'] });
+  eq([finds(neko, '猫'), finds(neko, 'である'), finds(neko, '漱石'), finds(hong, '길동'), finds(neko, '犬')], [true, true, true, true, false], 'a Chinese, Japanese or Korean title is found by a piece from its middle');
+  // A vowel sign belongs to its letter: "दान" isn't the start of a word in "गोदान".
+  const godaan = S.cleanBook({ id: 'w7', t: 1, title: 'गोदान', authors: ['प्रेमचंद'] });
+  eq([finds(godaan, 'गोदान'), finds(godaan, 'गोदा'), finds(godaan, 'दान'), finds(godaan, 'प्रेम')], [true, true, false, true], 'and letters with their vowel signs are one word');
+}
+{
+  // Search looks in every field a person might type for, the edition's details and the reading details included.
+  const finds = (b, q) => S.searchHit(b, S.searchWords(q));
+  const kept = S.cleanBook({ id: 's1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], format: 'hardcover', condition: 'very-good', signed: true, first: true, check: 'glare over the author', pace: 'slow', chapters: 'short', way: 'dip' });
+  const plain = S.cleanBook({ id: 's2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] });
+  eq(['signed', 'first edition', 'hardcover', 'very good', 'glare', 'slow pace', 'short chapters', 'dip'].map(q => finds(kept, q)), Array(8).fill(true), 'search finds a signed first edition, its format, condition, Check note, pace, chapters and how it reads');
+  eq(['signed', 'first edition', 'hardcover'].map(q => finds(plain, q)), [false, false, false], 'and doesn’t find them in a book without them');
+}
 
 // ---------- merging ----------
 function randomDoc(r, n) {
@@ -110,14 +301,43 @@ function randomDoc(r, n) {
   eq(S.canon(wrapped), S.canon(c), 'a library survives a round trip through its file format');
 }
 
+// ---------- older copies of the page ----------
+// A Shelfmark left open in an old tab, or not yet updated on another device, reads the same library: as it was when
+// reading details came (aeff017) and before (149f288). It drops the fields it doesn't know without changing a book's
+// time, so there the book shows as it did before; synced back, the copy with the fields wins (newer()'s field count at
+// the same time) and they come back whole. This needs the repository's history; without it, it says so.
+const NEWER = [{ id: 'f', t: 5, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', rating: 5, finished: '2026-03-14' },
+  { id: 'g', t: 5, title: 'Ulysses', authors: ['James Joyce'], status: 'reading', aside: true }, { id: 'h', t: 5, title: 'Moby-Dick', authors: ['Herman Melville'], aside: true },
+  { id: 'i', t: 5, title: 'Circe', authors: ['Madeline Miller'], wanted: true }];
+for (const [rev, when] of [['149f288', 'before reading details'], ['aeff017', 'when reading details came']]) {
+  let old = '';
+  try { old = execFileSync('git', ['show', rev + ':index.html'], { cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1e8 }); } catch (e) { }
+  if (!old) { console.log('  (git has no ' + rev + ' here; skipped the check against Shelfmark as it was ' + when + ')'); continue; }
+  const O = new Function('window', old.slice(old.indexOf("'use strict';"), old.indexOf('// ---------- state ----------')) + '\nreturn { cleanDoc, mergeDocs, canon, live };')(globalThis);
+  const lib = S.cleanDoc({ books: NEWER });
+  const there = O.cleanDoc(JSON.parse(S.canon(lib)));
+  eq(O.live(there).map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]), NEWER.map(b => [b.id, b.t, b.status || 'unread', b.rating || 0]),
+    'Shelfmark as it was ' + when + ' opens a library with finished days, books set aside and a wishlist, each book as it was, at the same time');
+  // It writes its copy back to Drive, with what it knows; here the two are merged, either way round.
+  const back = S.cleanDoc(JSON.parse(O.canon(O.mergeDocs(there, O.cleanDoc(JSON.parse(S.canon(lib)))))));
+  eq([S.mergeDocs(lib, back), S.mergeDocs(back, lib)], [lib, lib], 'and its copy, synced back, leaves them whole');
+}
+
 // ---------- duplicates ----------
+{
+  // The books in the house and those on the wishlist are looked up apart, so a book wanted isn't one "already here".
+  const d = S.cleanDoc({ books: [{ id: 'h', t: 1, title: 'Emma', authors: ['Jane Austen'] }, { id: 'w', t: 1, title: 'Circe', authors: ['Madeline Miller'], wanted: true }] });
+  const find = (wanted, title, author) => { const b = S.findDup(S.dupIndex(d, wanted), { title, authors: [author] }); return b && b.id; };
+  eq([find(false, 'Circe', 'Madeline Miller'), find(true, 'Circe', 'Madeline Miller'), find(true, 'Emma', 'Jane Austen'), find(undefined, 'Circe', 'Madeline Miller')], [null, 'w', null, 'w'], 'the house and the wishlist are looked up apart, or together');
+  eq(S.nextPool(S.live(d), S.cleanNext({})).map(b => b.id), ['h'], 'a book on the wishlist isn’t suggested');
+}
 {
   eq(S.surname('Ursula K. Le Guin'), 'Le Guin', 'surname keeps particles');
   eq(S.surname('Martin Luther King Jr.'), 'King', 'surname drops Jr.');
   eq([S.surname('Kurt Vonnegut, Jr.'), S.surname('Ann Lee, Ph.D.'), S.surname('Bo Chen III.')], ['Vonnegut', 'Lee', 'Chen'], 'and the other endings a name can have');
   eq(S.surname('Homer'), 'Homer', 'single name');
   eq(S.titleKey('The Hobbit: or There and Back Again'), S.titleKey('The Hobbit'), 'title key drops the article and subtitle');
-  check(S.titleKey('Heartstopper: Volume 2') !== S.titleKey('Heartstopper: Volume 1'), 'numbered volumes of a series have different title keys');
+  check(S.titleKey('Clarissa: Volume 2') !== S.titleKey('Clarissa: Volume 1'), 'numbered volumes of a series have different title keys');
   const lib = S.cleanDoc({ books: [
     { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'], room: 'Den' },
     { id: 'w', t: 1, title: 'War and Peace', authors: ['Leo Tolstoy'], isbn: '0140449132' },
@@ -128,22 +348,69 @@ function randomDoc(r, n) {
   eq((S.findDup(ix, { title: 'Voyna i mir', isbn: '978-0-14-044913-6' }) || {}).id, 'w', 'same ISBN in the other form is a duplicate');
   eq(S.findDup(ix, { title: 'The Hobbit', authors: ['Someone Else'] }), null, 'same title, different author is not');
   eq(S.coverQuery({ title: 'War and Peace', isbn: '0-14-044913-2' }), { key: 'i9780140449136', q: 'isbn=9780140449136', isbn: '9780140449136' }, 'a cover is looked up by ISBN when there is one');
-  eq(S.coverQuery({ title: 'Freakonomics: A Rogue Economist', authors: ['Steven D. Levitt', 'Stephen J. Dubner'] }), { key: 'tfreakonomics|steven d. levitt', q: 'title=Freakonomics&author=Steven%20D.%20Levitt', tk: S.titleKey('Freakonomics') }, 'otherwise by title before the colon and first author');
+  eq(S.coverQuery({ title: 'The Federalist: Written in Favour of the New Constitution', authors: ['Alexander Hamilton', 'James Madison'] }), { key: 'tthe federalist|alexander hamilton', q: 'title=The%20Federalist&author=Alexander%20Hamilton', tk: S.titleKey('The Federalist') }, 'otherwise by title before the colon and first author');
   {
-    const botany = S.coverQuery({ title: 'The Botany of Desire', authors: ['Michael Pollan'] });
-    const eds = [{ title: 'Die Botanik der Begierde', covers: [3232846] }, { title: 'The Botany of Desire', covers: [-1] }, { title: 'The botany of desire', covers: [227571] }];
-    eq(S.pickCover({ title: 'The Botany of Desire', cover_i: 3232846 }, eds, botany), 227571, 'the cover comes from an edition whose title matches, not the German one');
-    eq(S.pickCover({ title: 'Some Other Book', cover_i: 55 }, [{ title: 'Some Other Book', covers: [55] }], botany), 0, 'a search hit with a different title gives no cover rather than a wrong one');
-    eq(S.pickCover({ title: 'The Botany of Desire', cover_i: 77 }, [], botany), 77, 'with no edition covers, a work whose title matches lends its own');
+    const origin = S.coverQuery({ title: 'On the Origin of Species', authors: ['Charles Darwin'] });
+    const eds = [{ title: 'Die Entstehung der Arten', covers: [3232846] }, { title: 'On the Origin of Species', covers: [-1] }, { title: 'On the origin of species', covers: [227571] }];
+    eq(S.pickCover({ title: 'On the Origin of Species', cover_i: 3232846 }, eds, origin), 227571, 'the cover comes from an edition whose title matches, not the German one');
+    eq(S.pickCover({ title: 'Some Other Book', cover_i: 55 }, [{ title: 'Some Other Book', covers: [55] }], origin), 0, 'a search hit with a different title gives no cover rather than a wrong one');
+    eq(S.pickCover({ title: 'On the Origin of Species', cover_i: 77 }, [], origin), 77, 'with no edition covers, a work whose title matches lends its own');
     const byIsbn = S.coverQuery({ title: 'x', isbn: '9780140449136' });
     eq(S.pickCover({ cover_i: 9 }, [{ title: 'War and Peace', isbn_10: ['0140449132'], covers: [42] }, { title: 'War and Peace', covers: [43] }], byIsbn), 42, 'with an ISBN, the edition carrying that ISBN wins');
     eq(S.pickCover({ cover_i: 9 }, [{ title: 'War and Peace', covers: [43] }], byIsbn), 9, 'and otherwise the work cover the ISBN search found');
   }
   eq(S.coverQuery({ title: 'Cien años de soledad' }).q, 'title=Cien%20a%C3%B1os%20de%20soledad', 'a title with no author is looked up alone, safely encoded');
-  const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }] }));
-  eq(S.findDup(series, { title: 'Heartstopper: Volume 2', authors: ['Alice Oseman'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
-  eq((S.findDup(series, { title: 'Heartstopper: Volume 1', authors: ['Alice Oseman'] }) || {}).id, 'v1', 'but volume 1 again is');
+  const series = S.dupIndex(S.cleanDoc({ books: [{ id: 'v1', t: 1, title: 'Clarissa: Volume 1', authors: ['Samuel Richardson'] }] }));
+  eq(S.findDup(series, { title: 'Clarissa: Volume 2', authors: ['Samuel Richardson'] }), null, 'volume 2 of a series is not a duplicate of volume 1');
+  eq((S.findDup(series, { title: 'Clarissa: Volume 1', authors: ['Samuel Richardson'] }) || {}).id, 'v1', 'but volume 1 again is');
+  // The volumes of a set are books of their own, however their titles carry the volume; the same book with or without
+  // its subtitle is still the same book.
+  const set = S.cleanDoc({ books: [
+    { id: 's1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'], room: 'Den', shelf: 'Top' },
+    { id: 's2', t: 1, title: 'Tidewater: Volume One', authors: ['Ben Marsh'] },
+    { id: 's3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I: The Founding', authors: ['Cy Dorn'] },
+    { id: 's4', t: 1, title: 'Gilded Hours', sub: 'A Novel of the Fens', authors: ['Dee Fairweather'] },
+    { id: 's5', t: 1, title: 'Война и мир', authors: ['Лев Толстой'] },
+    { id: 's6', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] },
+    { id: 's7', t: 1, title: 'Commonplace: A Brief History', authors: ['Ann Lee'], isbn: '9780140449136' }
+  ] });
+  const six = S.dupIndex(set), dup = b => (S.findDup(six, b) || {}).id || null, near = b => (S.nearDup(six, b) || {}).id || null;
+  eq([dup({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }), near({ title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] })], [null, 's1'],
+    'another volume named after the colon is no duplicate, but may be another volume');
+  eq(dup({ title: 'Tidewater: Volume Four', authors: ['Ben Marsh'] }), null, 'a volume numbered in words is no duplicate of another');
+  eq(dup({ title: 'Annals of Ostrava', sub: 'Volume II: The Wars', authors: ['Cy Dorn'] }), null, 'nor is a volume given in the subtitle');
+  eq(dup({ title: 'Lantern Cycle', sub: 'Second Dark', authors: ['Ada Quill'] }), null, 'nor one whose set is the title and volume the subtitle');
+  eq(dup({ title: 'Second Dark', sub: 'The Lantern Cycle', authors: ['Ada Quill'] }), null, 'nor one whose volume is the title and set the subtitle');
+  eq([dup({ title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }), dup({ title: 'Lantern Cycle', sub: 'First Light', authors: ['Ada Quill'] }), dup({ title: 'Tidewater: Volume One', authors: ['Ben Marsh'] })],
+    ['s1', 's1', 's2'], 'but the same volume again is, its name after a colon or as the subtitle');
+  eq([dup({ title: 'Gilded Hours', authors: ['Dee Fairweather'] }), dup({ title: 'Gilded Hours: A Novel of the Fens', authors: ['Dee Fairweather'] }), dup({ title: 'Commonplace', authors: ['Ann Lee'] }),
+    dup({ title: 'Commonplace', sub: 'A Brief History', authors: ['Ann Lee'] })], ['s4', 's4', 's7', 's7'], 'and a book is the same with or without its subtitle');
+  eq([dup({ title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'] }), dup({ title: 'Lantern Cycle', authors: ['Ada Quill'] })], ['s6', 's1'], 'as a title without a colon matches one with');
+  eq(dup({ title: 'Something Else', authors: ['Nobody'], isbn: '0-14-044913-2' }), 's7', 'the same ISBN is the same book whatever the title');
+  eq([dup({ title: 'Анна Каренина', authors: ['Лев Толстой'] }), dup({ title: 'Война и мир', authors: ['Л. Толстой'] })], [null, 's5'], 'titles in other scripts are told apart, and matched');
+  eq(near({ title: 'Something Else: Its Name', authors: ['Nobody'] }), null, 'a book unlike any other may be no other volume');
 }
+
+// ---------- titles in a toast ----------
+eq(['Middlemarch', 'Piranesi: A Novel', 'The Interesting Narrative of the Life of Olaudah Equiano, or Gustavus Vassa, the African', 'Dr. No', 'A: Life', 'Ab: the rest',
+  'Supercalifragilisticexpialidocious-Antidisestablishmentarianism', '  Gilead  '].map(S.short),
+  ['Middlemarch', 'Piranesi', 'The Interesting Narrative of the Life of…', 'Dr. No', 'A: Life', 'Ab: the rest', 'Supercalifragilisticexpialidocious-Antid…', 'Gilead'],
+  'a toast quotes a title up to its colon, cut at a word near 40 characters');
+eq(S.short('a'.repeat(39) + '😀😀'), 'a'.repeat(39) + '…', 'a title cut inside an emoji loses the half');
+// Titles and lines about books are shown with curly apostrophes, like Shelfmark's own words.
+eq(["The Pilgrim's Progress", "'Salem's Lot", "Rock 'n' Roll", "'The Raven' and Other Poems", "Songs of the '90s", "Achilles' Heel", "'Tis the Season", "O'Brien's 'Going After Cacciato'", "Jane Eyre", ''].map(S.curly),
+  ['The Pilgrim’s Progress', '’Salem’s Lot', 'Rock ’n’ Roll', '‘The Raven’ and Other Poems', 'Songs of the ’90s', 'Achilles’ Heel', '’Tis the Season', 'O’Brien’s ‘Going After Cacciato’', 'Jane Eyre', ''],
+  'straight apostrophes are shown curly, and a quote of a few words opens with ‘');
+eq(S.short("The Pilgrim's Progress: from This World"), 'The Pilgrim’s Progress', 'and so are they in a toast');
+eq(['Den › Tall bookcase', 'Study › Window bookcase, brass owl bookend shelf', 'Living room › The very tall bookcase › top shelf', 'Hall: by the door, the long low bookcase'].map(S.clip),
+  ['Den › Tall bookcase', 'Study › Window bookcase, brass owl…', 'Living room › The very tall bookcase…', 'Hall: by the door, the long low bookcase'], 'a place in a toast is cut at a word near 40 characters too, colon and all');
+
+// ---------- covers ----------
+eq(['The Adventures of Sherlock Holmes', 'The Count of Monte Cristo', 'The Mill on the Floss', 'A Wizard of Earthsea', 'Of Mice and Men', 'In Cold Blood', 'War and Peace',
+  'Pride & Prejudice', '“Surely You’re Joking, Mr. Feynman!”', 'Middlemarch', 'Cien años de soledad', '吾輩は猫である'].map(S.monogram),
+  ['AS', 'CM', 'MF', 'WE', 'OM', 'IC', 'WP', 'PP', 'SY', 'M', 'CA', '吾'], 'a small cover takes the first letters of the first two words, leaving out small words after the first');
+eq(['1984', '2001: A Space Odyssey', '100 Years of Solitude', 'Fahrenheit 451', 'Hangar-22', '12345 Stories', '11/22/63', '!!!'].map(S.monogram),
+  ['1984', '2001', '100', 'F', 'H', 'S', '1', ''], 'a number of up to four figures that starts a title stands alone, and a number later on isn\'t a letter');
 
 // ---------- what to read next ----------
 {
@@ -163,6 +430,15 @@ function randomDoc(r, n) {
   const base = S.cleanNext({});
   eq(ids(S.nextPool(lib, base)), ['lg2', 'new', 'nop', 'old'], 'suggestions are unread books on hand: not read, being read, lent out or removed');
   eq(ids(S.nextPool(lib, S.cleanNext({ reread: true }))), ['lg1', 'lg2', 'new', 'nop', 'old'], 'rereads add read books rated four stars or more, and only those');
+  {
+    // A book set aside isn't suggested, nor is another copy of it, nor (a reread) one read before; it isn't read, either,
+    // so its author isn't one you've read.
+    const given = S.live(S.cleanDoc({ books: [{ id: 'x1', t: 1, title: 'Ulysses', authors: ['James Joyce'], aside: true }, { id: 'x2', t: 1, title: 'Ulysses', authors: ['James Joyce'] },
+      { id: 'x3', t: 1, title: 'Dubliners', authors: ['James Joyce'] }, { id: 'x4', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 5, aside: true },
+      { id: 'x5', t: 1, title: 'Persuasion', authors: ['Jane Austen'] }] }));
+    eq([ids(S.nextPool(given, base)), ids(S.nextPool(given, S.cleanNext({ reread: true })))], [['x3', 'x5'], ['x3', 'x5']], 'a book set aside, and its other copies, aren’t suggested, rereads or not');
+    eq(S.dealNext(given, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks.map(p => p.why), [[], []], 'and a book set aside isn’t one you’ve read, so its author isn’t a favorite');
+  }
   eq([S.lengthOf(0), S.lengthOf(249), S.lengthOf(250), S.lengthOf(450), S.lengthOf(451)], ['', 'short', 'medium', 'medium', 'long'], 'length bands go by page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ len: 'Short' }))), ['lg2'], 'a length leaves out books with no page count');
   eq(ids(S.nextPool(lib, S.cleanNext({ tag: 'sf', room: 'Den' }))), ['lg2'], 'tag and room narrow it');
@@ -190,12 +466,55 @@ function randomDoc(r, n) {
   const why = (lean, id) => S.dealNext(lib, S.cleanNext({ lean }), rng(1), { old: id !== 'old' ? 1 : 0, new: id !== 'new' ? 1 : 0, lg2: id !== 'lg2' ? 1 : 0, nop: id !== 'nop' ? 1 : 0 }, now).picks[0].why;
   eq(why('', 'lg2'), ['You gave “The Dispossessed” 5 stars', 'In your library since ' + new Date(2024, 5, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })], 'a book by an author you rated highly says so, and one over two years on the shelf says how long');
   check(/^Waiting longest of these: in your library since .*2019$/.test(why('oldest', 'old')[0]), 'the longest-waiting book says so, with the month it was added');
-  eq(why('', 'new'), ['New arrival: added 5 days ago', 'Your note: Sam says start here'], 'a recent arrival says so, and the first line of a note comes along');
+  eq(why('', 'new'), ['New arrival: added 5 days ago'], 'a recent arrival says so, and its note isn\'t one of the reasons');
   eq(why('', 'nop'), [], 'nothing special to say → no reasons');
+  {
+    // A note goes on a line of its own: its first line, cut at 140 characters.
+    const note = id => S.dealNext(lib, S.cleanNext({}), rng(1), { old: id !== 'old' ? 1 : 0, new: id !== 'new' ? 1 : 0, lg2: id !== 'lg2' ? 1 : 0, nop: id !== 'nop' ? 1 : 0 }, now).picks[0].note;
+    eq([note('new'), note('nop')], ['Your note: Sam says start here', ''], 'the pick carries the first line of its note, and nothing without one');
+    eq(S.nextNote({ notes: '  Spine is loose  \nFound on a train' }), 'Your note: Spine is loose', 'only the first line, trimmed');
+    eq(S.nextNote({ notes: 'x'.repeat(200) }), 'Your note: ' + 'x'.repeat(139) + '…', 'a long one is cut at 140 characters');
+    eq([S.nextNote({}), S.nextNote({ notes: '\nSecond line only' })], ['', ''], 'no note, or an empty first line, gives no line');
+  }
+  {
+    // With the day a book was finished, the reason says when: the month this year, the month and year before.
+    const month = (y, m, opts) => new Date(y, m - 1, 1).toLocaleDateString(undefined, opts);
+    const by = (more, read) => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'u', t: 1, title: 'Gilead', authors: ['Marilynne Robinson'] },
+      { id: 'r', t: 1, title: 'Housekeeping', authors: ['Marilynne Robinson'], status: 'read', ...more }].concat(read || []) })), S.cleanNext({ reread: true }), rng(1), { r: 1 }, now).picks[0];
+    eq(by({ rating: 5, finished: '2026-03-14' }).why, ['You finished “Housekeeping” in ' + month(2026, 3, { month: 'long' }) + ' and gave it 5 stars'], 'a favorite finished this year says the month');
+    eq(by({ rating: 3, finished: '2025-07-01' }).why, ['You finished “Housekeeping”, also by Robinson, in ' + month(2025, 7, { month: 'long', year: 'numeric' })], 'one finished before says the year too');
+    eq(by({ rating: 5 }).why, ['You gave “Housekeeping” 5 stars'], 'without a day it says what it did before');
+    const again = S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'r', t: 1, title: 'Housekeeping', status: 'read', rating: 5, finished: '2024-11-30' }] })), S.cleanNext({ reread: true }), rng(1), {}, now).picks[0];
+    eq(again.why, ['A reread: you finished it in ' + month(2024, 11, { month: 'long', year: 'numeric' }) + ' and gave it 5 stars'], 'a reread says when it was finished');
+  }
   for (const hour of ['00:30', '09:00', '15:00', '23:30']) {
     const at = new Date('2026-10-13T' + hour + ':00').getTime();
-    const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }] })), base, rng(1), {}, at).picks[0].why[0];
+    const said = added => S.dealNext(S.live(S.cleanDoc({ books: [{ id: 'x', t: 1, title: 'X', added }, { id: 'o', t: 1, title: 'O', added: '2020-01-01' }] })), base, rng(1), { o: 1 }, at).picks[0].why[0];
     eq([said('2026-10-13'), said('2026-10-12'), said('2026-10-01')], ['New arrival: added today', 'New arrival: added yesterday', 'New arrival: added 12 days ago'], 'new arrivals count calendar days, at ' + hour);
+  }
+  {
+    // A library catalogued in one go: when a book was added tells it from none of the others, so no reason says it.
+    const oneDay = added => S.live(S.cleanDoc({ books: ['A', 'B', 'C'].map(t => ({ id: t, t: 1, title: t, added })) }));
+    const reasons = (lib, lean) => { const out = new Set(); for (let k = 0; k < 20; k++) S.dealNext(lib, S.cleanNext({ lean }), rng(k), {}, now).picks.forEach(p => p.why.forEach(w => out.add(w))); return [...out]; };
+    eq([reasons(oneDay('2024-01-01'), 'newest'), reasons(oneDay('2024-01-01'), ''), reasons(oneDay('2026-10-04'), ''), reasons(oneDay('2026-10-04'), 'oldest')], [[], [], [], []],
+      'books all added the same day get no "In your library since" or "New arrival", under any lean');
+    // Two batches this month: only the later one's books are new arrivals.
+    const twoBatches = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-09-26' }, { id: 'b', t: 1, title: 'B', added: '2026-09-26' }, { id: 'c', t: 1, title: 'C', added: '2026-10-04' }] }));
+    const whyOf = id => S.dealNext(twoBatches, base, rng(1), { a: id !== 'a', b: 1, c: id !== 'c' }, now).picks[0].why;
+    eq([whyOf('a'), whyOf('c')], [[], ['New arrival: added 2 days ago']], 'a book from the first batch isn’t a new arrival, one from a later batch is');
+  }
+  {
+    // Only the choices that can change something are offered.
+    const leans = lib => S.nextOffers(S.live(S.cleanDoc({ books: lib }))).leans.map(l => l[0]);
+    const one = [{ id: 'a', t: 1, title: 'A', authors: ['Ann Lee'], added: '2026-09-26' }, { id: 'b', t: 1, title: 'B', authors: ['Bo Chen'], added: '2026-09-26' }];
+    eq([leans(one), !!S.nextOffers(S.live(S.cleanDoc({ books: one }))).len], [[''], false], 'one batch with no page counts, nothing read: no Length, and only Surprise me to lean on');
+    eq(leans(one.concat({ id: 'c', t: 1, title: 'C', added: '2025-01-01' })), ['', 'oldest', 'newest'], 'books added on two days can lean to the oldest or newest');
+    eq(leans(one.concat({ id: 'r', t: 1, title: 'R', authors: ['Ann Lee'], status: 'read', added: '2026-09-26' })), ['', 'loved'], 'an unread book by an author you’ve read can lean to favorite authors');
+    eq(leans(one.concat({ id: 'r', t: 1, title: 'R', authors: ['Cy Dee'], status: 'read', rating: 5, added: '2026-09-26' })), [''], 'but not when you’ve read none of the authors on hand');
+    eq(leans(one.concat({ id: 'l', t: 1, title: 'L', added: '2020-01-01', loan: { to: 'Sam' } })), [''], 'a book lent out doesn’t count: it isn’t on hand');
+    eq(!!S.nextOffers(S.live(S.cleanDoc({ books: one.concat({ id: 'p', t: 1, title: 'P', pages: 300 }) }))).len, true, 'one book with a page count is enough for Length');
+    const c = S.fitNext(S.cleanNext({ len: 'short', lean: 'oldest', tag: 'gone', room: 'Hall', moods: ['funny'] }), S.nextOffers(S.live(S.cleanDoc({ books: one }))));
+    eq([c.len, c.lean, c.tag, c.room, c.moods], ['', '', '', '', []], 'a saved length, lean, tag, room or mood that isn’t offered goes back to Any');
   }
   const reread = S.dealNext(lib, S.cleanNext({ reread: true, len: 'medium' }), rng(1), {}, now).picks;
   eq(reread.map(p => p.b.id).sort(), ['lg1', 'new'], 'medium length with rereads');
@@ -209,53 +528,443 @@ function randomDoc(r, n) {
     { id: 'b', t: 1, title: 'Breakfast of Champions', authors: ['Kurt Vonnegut, Jr.'], status: 'read', rating: 3 },
     { id: 'c', t: 1, title: 'Cat’s Cradle', authors: ['Kurt Vonnegut, Jr.'] }] }));
   eq(S.dealNext(jr, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks[0].why, ['You’ve read 2 by Vonnegut and gave “Slaughterhouse-Five” 5 stars'], 'an author with a "Jr." is named by surname, not as "Jr."');
+  {
+    // An author you gave one or two stars isn't a favorite: no lift, no reason, and no Favorite authors to lean on.
+    const meh = S.live(S.cleanDoc({ books: [
+      { id: 'r2', t: 1, title: 'So-so', authors: ['Bo Chen'], status: 'read', rating: 2 }, { id: 'r1', t: 1, title: 'Awful', authors: ['Cy Dee'], status: 'read', rating: 1 },
+      { id: 'b', t: 1, title: 'Another Chen', authors: ['Bo Chen'] }, { id: 'c', t: 1, title: 'Another Dee', authors: ['Cy Dee'] }, { id: 'n', t: 1, title: 'Never Read', authors: ['Di Eng'] }] }));
+    const share = {}; for (let k = 0; k < 900; k++) { const id = S.dealNext(meh, S.cleanNext({ lean: 'loved' }), rng(700 + k), {}, now).picks[0].b.id; share[id] = (share[id] || 0) + 1; }
+    check(['b', 'c', 'n'].every(id => share[id] > 220), 'books by authors you gave one or two stars come up as often as one by an author you haven’t read ' + JSON.stringify(share));
+    eq(S.dealNext(meh, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).picks.map(p => p.why), [[], [], []], 'and no reason says you read them');
+    eq(S.nextOffers(meh).leans.map(l => l[0]), [''], 'and Favorite authors isn’t offered for them');
+    // The note says which: authors you've read but not liked, or not read at all; one book, or more.
+    const loved = (books, c) => S.nextNotes(S.dealNext(S.live(S.cleanDoc({ books })), S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false);
+    const austen = [{ id: 'e', t: 1, title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }, { id: 'p', t: 1, title: 'Persuasion', authors: ['Jane Austen'], status: 'read', rating: 1 },
+      { id: 'w', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction' }, { id: 'c', t: 1, title: 'Cape Cod', authors: ['Henry David Thoreau'], status: 'read', rating: 5 }];
+    eq(loved(austen, { kind: 'fiction', lean: 'loved' }), ['From 1 unread book that matches.', 'It isn’t by an author you’ve liked, so this is a random pick.'], 'one book, by an author you read and didn’t like');
+    eq(loved(austen.concat({ id: 'n', t: 1, title: 'Northanger Abbey', authors: ['Jane Austen'], kind: 'fiction' }), { kind: 'fiction', lean: 'loved' }),
+      ['From 2 unread books that match.', 'None of them are by authors you’ve liked, so this is a random pick.'], 'two, by authors read and not liked');
+    eq(loved([{ id: 'i', t: 1, title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction' }, austen[3]], { kind: 'fiction', lean: 'loved' }),
+      ['From 1 unread book that matches.', 'It isn’t by an author you’ve read yet, so this is a random pick.'], 'one, by an author not read yet');
+    eq(loved([{ id: 'i', t: 1, title: 'Ivanhoe', authors: ['Walter Scott'] }, { id: 'm', t: 1, title: 'Middlemarch', authors: ['George Eliot'] }, austen[3]], { lean: 'loved' }),
+      ['From 2 unread books on hand.', 'None of them are by authors you’ve read yet, so this is a random pick.'], 'two, by authors not read yet');
+  }
   const tied = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2019-01-01' }, { id: 'b', t: 1, title: 'B', added: '2019-01-01' }, { id: 'c', t: 1, title: 'C', added: '2026-01-01' }] }));
   check(S.dealNext(tied, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).picks.every(p => !/longest/.test(p.why.join())), 'books tied for the oldest date don’t each claim to be waiting longest');
+  {
+    // Waiting longest and Newest arrivals pull toward a day, not a book: five books added last week stand out from 256
+    // catalogued in one go, and the other way round.
+    const t0 = Date.now(), days = (a, b) => S.live(S.cleanDoc({ books: [...Array.from({ length: a }, (_, i) => ({ id: 'a' + i, t: 1, title: 'Old ' + i, added: '2026-09-26' })),
+      ...Array.from({ length: b }, (_, i) => ({ id: 'b' + i, t: 1, title: 'New ' + i, added: '2026-11-01' }))] }));
+    const share = (lib, lean, day) => { let n = 0; for (let k = 0; k < 1000; k++) if (S.dealNext(lib, S.cleanNext({ lean }), rng(3000 + k), {}, now).picks[0].b.added === day) n++; return n / 1000; };
+    const most = days(256, 5), few = days(5, 256);
+    const got = [share(most, 'newest', '2026-11-01'), share(most, 'oldest', '2026-09-26'), share(few, 'oldest', '2026-09-26'), share(few, 'newest', '2026-11-01')];
+    check(got.every(x => x >= 0.9), 'the first pick comes from the newest day, or the oldest, nine times in ten, however many books each day has ' + JSON.stringify(got) + ' in ' + (Date.now() - t0) + ' ms');
+  }
   const two = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', added: '2026-01-01' }, { id: 'b', t: 1, title: 'B', added: '2026-01-01' }] }));
   check(S.dealNext(two, S.cleanNext({ lean: 'oldest' }), rng(1), {}, now).even, 'books all added the same day weigh the same');
   eq(S.dealNext(two, S.cleanNext({ lean: 'loved' }), rng(1), {}, now).fans, 0, 'and none by authors you have read is reported');
+
+  // Copies of one book, and the volumes of a set: one copy is offered, none of a book you've read or are reading, and
+  // a later volume waits for the one before it.
+  {
+    const lib = books => S.live(S.cleanDoc({ books: books.map((b, i) => Object.assign({ id: 'x' + i, t: 1 }, b)) }));
+    const deals = (l, c = {}, n = 1000) => Array.from({ length: n }, (_, k) => S.dealNext(l, S.cleanNext(c), rng(4000 + k), {}, now).picks.map(p => p.b.title + (p.b.room ? ' @ ' + p.b.room : '')));
+    const twoCopies = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], room: 'Den' }, { title: 'Ivanhoe: A Romance', authors: ['Walter Scott'], room: 'Hall' }, { title: 'Emma', authors: ['Jane Austen'] }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    check(deals(twoCopies).every(d => d.filter(t => /^Ivanhoe/.test(t)).length <= 1), 'two unread copies of a book never come up in one deal');
+    eq(S.dealNext(twoCopies, S.cleanNext({}), rng(1), {}, now).pool, 3, 'and count as one book');
+    eq(S.nextNotes(S.dealNext(twoCopies, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), false), ['From 3 unread books on hand.'], 'so the note counts books, not copies');
+    const oneRead = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read' }, { title: 'Ivanhoe', authors: ['Walter Scott'], isbn: '9780140436587' }, { title: 'Emma', authors: ['Jane Austen'] }]);
+    check(deals(oneRead).every(d => d.every(t => !/^Ivanhoe/.test(t))), 'neither copy of a book you’ve read is offered');
+    eq(S.dealNext(lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'reading' }, { title: 'Emma', authors: ['Jane Austen'] }]), S.cleanNext({}), rng(1), {}, now).pool, 0, 'nor of one you’re reading');
+    // Already read it marks the pick Read, with no stars: it never comes up again, rereads or not.
+    const marked = lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'read' }, { title: 'Walden', authors: ['Henry David Thoreau'] }, { title: 'Ivanhoe', authors: ['Walter Scott'] }, { title: 'Middlemarch', authors: ['George Eliot'] }]);
+    check([deals(marked, {}, 300), deals(marked, { reread: true }, 300)].every(ds => ds.every(d => !d.includes('Emma'))), 'a book marked read without stars never comes up again, rereads or not');
+    const reread = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read', rating: 5, room: 'Den' }, { title: 'Ivanhoe', authors: ['Walter Scott'], room: 'Hall' }]);
+    eq(deals(reread, { reread: true }, 50).map(d => d.join()).filter((x, i, a) => a.indexOf(x) === i), ['Ivanhoe @ Den'], 'with rereads, the five-star copy comes back, and only it');
+    const lent = lib([{ title: 'Emma', authors: ['Jane Austen'], room: 'Den', loan: { to: 'Sam' } }, { title: 'Emma', authors: ['Jane Austen'], room: 'Hall' }]);
+    eq(deals(lent, {}, 50).map(d => d.join()).filter((x, i, a) => a.indexOf(x) === i), ['Emma @ Hall'], 'of a copy lent out and one on hand, the one on hand is offered');
+    const detailed = lib([{ title: 'Emma', authors: ['Jane Austen'], room: 'Den' }, { title: 'Emma', authors: ['Jane Austen'], room: 'Hall', kind: 'fiction', moods: ['funny'] }]);
+    eq(S.nextPool(detailed, S.cleanNext({})).map(b => b.room), ['Hall'], 'and of two on hand, the one with reading details');
+    // The Example Saga, by the numbers: Book 2 waits until Book 1 is read, in any of the ways a title gives its number.
+    const saga = (read1, read2) => lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Ada Quill'], status: read1 ? 'read' : '' },
+      { title: 'The Example Saga: Book Three', authors: ['Ada Quill'], status: read2 ? 'read' : '' }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    eq(S.nextPool(saga(false), S.cleanNext({})).map(b => b.title).sort(), ['The Example Saga, Book 1', 'Walden'], 'a later volume is held back while the first is unread');
+    check(deals(saga(false)).every(d => d.every(t => !/Book (2|Three)/.test(t))), 'and never comes up, over 1,000 deals');
+    eq(S.nextPool(saga(true), S.cleanNext({})).map(b => b.title).sort(), ['The Example Saga, Book 2', 'Walden'], 'once Book 1 is read, Book 2 comes up, and Book 3 still waits');
+    const next = S.dealNext(saga(true), S.cleanNext({}), rng(1), { x3: 1 }, now).picks.find(p => /Book 2/.test(p.b.title));
+    eq(next.why, ['Next in the set: you’ve read Book 1'], 'saying it’s next in the set');
+    eq(S.nextPool(lib([{ title: 'Tidewater: Volume 3', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume II', authors: ['Ben Marsh'], loan: { to: 'Sam' } }]), S.cleanNext({})).length, 0, 'a volume before it that’s lent out and unread holds it back too');
+    eq(S.nextPool(lib([{ title: 'Tidewater: Volume 3', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume II', authors: ['Ben Marsh'], status: 'read' }, { title: 'Tidewater, Vol. 1', authors: ['Ben Marsh'] }]), S.cleanNext({})).map(b => b.title), ['Tidewater, Vol. 1'],
+      'volumes numbered in digits, roman numerals or words count, whatever the earlier ones are');
+    eq(S.nextPool(lib([{ title: 'Annals of Ostrava', sub: 'Volume Two', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava', sub: 'Volume One', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava #3', authors: ['Cy Dorn'] }]), S.cleanNext({})).map(b => b.sub || b.title), ['Volume One'],
+      'and so do a volume in the subtitle and a #3');
+    eq(S.nextPool(lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Bo Chen'] }]), S.cleanNext({})).length, 2, 'a set by another author is another set');
+    // Ordinary titles aren't volumes: a number word inside a title, or "Part" and "Book" as words.
+    const plain = ['The Book of One Thousand Nights', 'Part of the Furniture', 'Book Two of the Gods, Revised', 'Twelve Angry Men', 'The Fourth Part', 'Hangar-22', 'Book 2 Remembered', 'The Notebook, Volume of Poems',
+      'Seven Pillars of Wisdom', 'Agent #7 Returns', 'One Hundred Years: Part of a Life'];
+    eq(S.nextPool(lib(plain.map(title => ({ title, authors: ['Ann Lee'] })).concat({ title: 'Anything, Book 1', authors: ['Ann Lee'] })), S.cleanNext({})).length, plain.length + 1, 'ordinary titles aren’t taken for later volumes');
+    // Digits can follow the word straight on; a numeral or a number word needs a space.
+    const vol = (title, sub) => { const v = S.volumeOf({ title, sub, authors: ['Ada Quill'] }); return v && v.n; };
+    eq([vol('The Example Saga, Book2'), vol('The Example Saga, Vol.3'), vol('The Example Saga, Book II'), vol('Something, Booki'), vol('Something, Bookone'), vol('Annals', 'Volumeiv'), vol('Annals', 'Volume iv')],
+      [2, 3, 2, null, null, null, 4], 'a volume’s number can follow the word straight on in digits, but not as a numeral or a word');
+    eq(S.volumeOf({ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }).set === S.volumeOf({ title: 'The Example Saga, Book 1', authors: ['Bo Chen'] }).set, false, 'a set is known by its author too');
+    // The choices offered come from the books that can be suggested: not a later volume that waits, nor the unread copy
+    // of a book read, so none of them leads to nothing.
+    const sagaMoods = lib([{ title: 'The Example Saga, Book 1', authors: ['Ada Quill'], kind: 'fiction', moods: ['dark'] }, { title: 'The Example Saga, Book 2', authors: ['Ada Quill'], kind: 'fiction', moods: ['funny'] }]);
+    eq(Object.keys(S.nextOffers(sagaMoods, S.cleanNext({})).moods), ['dark'], 'a mood only a later volume has isn’t offered while it waits');
+    const emmaRead = lib([{ title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 3 }, { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', moods: ['lighthearted'] }, { title: 'Walden', authors: ['Henry David Thoreau'] }]);
+    const emmaOffers = S.nextOffers(emmaRead, S.cleanNext({}));
+    eq([Object.keys(emmaOffers.moods), emmaOffers.leans.map(l => l[0])], [[], ['']], 'nor a mood, or Favorite authors, that only the unread copy of a book you’ve read would bring');
+    // The notes count books that can be suggested, one copy of each.
+    const ivanhoe = lib([{ title: 'Ivanhoe', authors: ['Walter Scott'], status: 'read' }, { title: 'Ivanhoe', authors: ['Walter Scott'], kind: 'fiction' }, { title: 'Ivanhoe: A Romance', authors: ['Walter Scott'] },
+      { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }]);
+    eq(S.nextNotes(S.dealNext(ivanhoe, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now), S.cleanNext({ kind: 'fiction' }), false), ['From 1 unread book that matches.'],
+      'a copy of a book you’ve read isn’t counted as left out for want of reading details');
+    eq(S.dealNext(lib([{ title: 'Tidewater: Volume 2', authors: ['Ben Marsh'] }, { title: 'Tidewater: Volume 1', authors: ['Ben Marsh'], kind: 'fiction', loan: { to: 'Sam' } }, { title: 'Emma', authors: ['Jane Austen'], kind: 'fiction' }]),
+      S.cleanNext({ kind: 'fiction' }), rng(1), {}, now).bare, 0, 'nor is a later volume that waits for an earlier one');
+    // A book whose title is changed is looked at afresh.
+    const before = lib([{ title: 'The Example Saga, Book 2', authors: ['Ada Quill'] }, { title: 'The Example Saga, Book 1', authors: ['Ada Quill'] }]);
+    eq(S.nextPool(before, S.cleanNext({})).length, 1, 'the cached volumes start right');
+    eq(S.nextPool(before.map(b => Object.assign({}, b, { title: b.title.replace('Book 2', 'Second Thoughts').replace('Book 1', 'First Light') })), S.cleanNext({})).length, 2, 'and follow a title that changes');
+  }}
+
+// ---------- properties, on thousands of random books ----------
+// Seeded, so a failure comes back the same way each run. Books here have near-limit text, odd white space, emoji,
+// names with a "Jr." and empty pieces, numbers as printed, ids like "constructor", and times past the last date.
+{
+  const t0 = Date.now(), r = rng(2026), any = a => a[Math.floor(r() * a.length)];
+  const BITS = ['é', 'e\u0301', ' ', '  ', '\t', '\n', '\n\n\n', '\r\n', '\u00a0', '\u2009', '\ufeff', '😀', ',', ';', ' & ', 'Jr.', 'III', ':', '1'];
+  const words = n => { let x = ''; while (x.length < n) x += r() < 0.75 ? 'abcdefghijklmnop'[Math.floor(r() * 16)] : any(BITS); return x; };
+  // Near its limit, text is a plain run and then a random tail across the limit, where the cut falls.
+  const long = n => 'abcdefgh'.repeat(Math.ceil(n / 8)).slice(0, n - 9 + Math.floor(r() * 6)) + words(8);
+  const text = n => r() < 0.3 ? long(n) : r() < 0.2 ? '' : words(1 + Math.floor(r() * 14));
+  const names = () => r() < 0.5 ? Array.from({ length: Math.floor(r() * 5) }, () => any([text(120), '', ' ', 'Jr', 'Jr.', 'III', 'Ann Lee', 'Bo Chen, PhD']))
+    : Array.from({ length: 1 + Math.floor(r() * 4) }, () => any(['Ann Lee', 'Jr.', '', text(120), 'Kurt Vonnegut'])).join(any([', ', '; ', ' & ', ' and ', ', , ']));
+  const book = () => ({
+    id: any(['', 'a', '123', '1'.repeat(40), '7'.repeat(45), 'constructor', '__proto__', 'toString', 'b' + Math.floor(r() * 9), 'a b-c_d', 'x'.repeat(39) + ' y']),
+    t: any([0, 5, 1e17, -3, '12', 1.5, 8.64e15, undefined]), del: r() < 0.08 ? 1 : 0,
+    title: r() < 0.05 ? ' ' : text(300), sub: text(300), authors: names(),
+    isbn: any(['', '0-14-044913-2', '9780140449137', '12-34', '0618260307, 9780618260300', text(20)]), publisher: text(120),
+    year: any([1999, '1937–40', '©1951, 1979', '2nd ed. 1999', 1999.5, -5, 'x', 3000, '']), pages: any(['2 vols, 880', '1,024', 412, '320.0', 60000, '', '1\u2009024']),
+    format: any(['Hardcover', 'paperback', 'nope', '']), condition: any(['very good', 'Fine', 'x', '']), room: text(60), shelf: text(60),
+    status: any(['read', 'Reading', 'unread', 'x', '']), rating: any([4.5, '3.5', 9, -1, '4 stars', 0, 2.5]),
+    loan: r() < 0.3 ? { to: text(80), since: any(['2026-01-01', 'x', '']) } : null, tags: r() < 0.5 ? Array.from({ length: Math.floor(r() * 24) }, () => text(40)) : text(200),
+    notes: r() < 0.2 ? long(4000) : text(60), edition: text(120), signed: any([true, 'false', 'yes', 1, 0, 'no', 'TRUE']), first: any([true, 'no', '1', 2, false]),
+    added: any(['2026-09-26', '2019-03-04', 'x', '']), check: text(300), unsure: text(300), blurb: text(300),
+    kind: any(['Fiction', 'poetry', 'x', '']), genres: any([['sf', 'Classics', 'x', 'fantasy', 'horror', 'ya'], 'History; Science', '', ['biography']]),
+    moods: any([['funny', 'Tense', 'bogus'], 'dark, sad; hopeful, tense, reflective', '']), pace: any(['slow', 'Fast', '']), chapters: any(['short', 'huge', '']), way: any(['browse', 'Dip in and out', 'through', '']),
+  });
+
+  // Cleaning a clean book gives it back as it was.
+  let bad = null, n = 0;
+  for (let k = 0; k < 2000; k++) {
+    const x = book(), a = S.cleanBook(x); if (!a) continue; n++;
+    const b = S.cleanBook(a);
+    if (JSON.stringify(a) !== JSON.stringify(b)) { bad = bad || [x, a, b]; }
+  }
+  check(!bad && n > 1500, 'cleaning any of ' + n + ' random books twice gives the same book' + (bad ? '\n    ' + JSON.stringify(bad[1]).slice(0, 300) + '\n    ' + JSON.stringify(bad[2]).slice(0, 300) : ''));
+
+  // Merging rich books is order-free, groupable and repeatable, and of two different copies one is always newer.
+  // (What decides a merge is the time, then how many fields a copy has, then its text, so these books have a few
+  // times between them and any number of fields, but short text.)
+  const lite = () => r() < 0.12 ? { id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), del: 1 } : {
+    id: 'b' + Math.floor(r() * 8), t: 1 + Math.floor(r() * 3), title: any(['Same', 'Other', 'Third']), authors: any([[], ['Ann Lee'], ['Ann Lee', 'Bo Chen']]),
+    notes: any(['', 'x', 'line one\nline two']), rating: any([0, 3, 5]), status: any(['', 'read', 'reading']), kind: any(['', 'fiction']), moods: any([[], ['funny'], ['dark', 'sad']]),
+    tags: any([[], ['sf'], ['sf', 'kids']]), loan: any([null, { to: 'Sam' }, { to: 'Sam', since: '2026-01-02' }]), signed: any([false, true]), pages: any([0, 300]) };
+  const doc = () => S.cleanDoc({ books: Array.from({ length: 6 }, lite), seen: { ['c' + Math.floor(r() * 3)]: 1 + Math.floor(r() * 9) } });
+  let laws = true, total = true;
+  for (let k = 0; k < 300; k++) {
+    const a = doc(), b = doc(), c = doc(), m = (x, y) => S.canon(S.mergeDocs(x, y));
+    if (m(a, b) !== m(b, a) || S.canon(S.mergeDocs(S.mergeDocs(a, b), c)) !== S.canon(S.mergeDocs(a, S.mergeDocs(b, c))) || m(a, a) !== S.canon(a)) laws = false;
+    for (const id of Object.keys(a.books)) {
+      const x = a.books[id], y = b.books[id];
+      if (y && JSON.stringify(x) !== JSON.stringify(y) && S.newer(x, y) === S.newer(y, x)) total = false;
+    }
+  }
+  check(laws, 'merging rich random libraries is order-free, groupable and repeatable');
+  check(total, 'of two different copies of a book, exactly one is newer');
+
+  // Reading details touch only the reading details, and a page count only where there was none.
+  let only = true, kept = true;
+  for (let k = 0; k < 400; k++) {
+    const b = S.cleanBook(Object.assign(book(), { id: 'a', del: 0, title: 'T' })), e = S.cleanDetails({ details: { books: [Object.assign(book(), { id: 'a', title: 'T', del: 0 })] } }).books[0];
+    if (!e) continue;
+    const rep = r() < 0.5, x = S.withDetails(b, e, rep);
+    if (!x) continue;
+    for (const f of new Set([...Object.keys(b), ...Object.keys(x)])) {
+      if (S.DETAILS.includes(f)) { if (!rep && b[f] != null && JSON.stringify(x[f]) !== JSON.stringify(b[f])) kept = false; }
+      else if (f === 'pages') { if (x.pages !== (b.pages || e.pages)) only = false; }
+      else if (JSON.stringify(x[f]) !== JSON.stringify(b[f])) only = false;
+    }
+  }
+  check(only, 'details change nothing but the reading details and a blank page count');
+  check(kept, 'and without Replace leave the details a book has');
+
+  // Details find every copy they're for, and never a removed book. Which copies those are is worked out here from how
+  // each book was made (which of the four it is, and whether it has authors and the ISBN), not with Shelfmark's keys:
+  // the book named by id; or else each copy not named by another entry that has the entry's ISBN, or is the same book
+  // with the same first author (or, like the entry, none); and of those, when there are several and some have all the
+  // entry's authors, just those, plus every copy with the ISBN.
+  const SHELF = [['Middlemarch', 'George Eliot', '9780141439549'], ['The Odyssey', 'Homer', '9780140268867'], ['Moby-Dick', 'Herman Melville', '9780142437247'], ['Walden', 'Henry David Thoreau', '']];
+  const whoOf = () => any([0, 0, 1, 2]), people = (w, who) => [[who], [who, 'S. H. Butcher'], [who, 'Samuel Butler']][w];
+  let never = true, every = true, byIsbn = true;
+  for (let k = 0; k < 400; k++) {
+    const made = {}, books = Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const w = Math.floor(r() * SHELF.length), [title, who, isbn] = SHELF[w];
+      const b = { id: 'k' + i, t: 1, del: r() < 0.15 ? 1 : 0, title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.15 ? [] : people(whoOf(), who), isbn: r() < 0.5 ? isbn : '' };
+      made[b.id] = { w, isbn: b.isbn, authors: b.authors.join('|') }; return b; });
+    const lib = S.cleanDoc({ books }), live = S.live(lib);
+    const raw = Array.from({ length: 1 + Math.floor(r() * 4) }, () => { const w = Math.floor(r() * SHELF.length), [title, who, isbn] = SHELF[w];
+      return { w, id: any(['', 'k' + Math.floor(r() * 10), 'zz']), title: r() < 0.2 ? title + ': A Novel' : title, authors: r() < 0.1 ? [] : people(whoOf(), who), isbn: r() < 0.5 ? isbn : '', kind: 'fiction' }; });
+    const det = S.cleanDetails({ details: { books: raw.map(({ w, ...e }) => e) } });
+    const named = new Set(det.books.map(e => e.id).filter(id => lib.books[id] && !lib.books[id].del));
+    S.matchDetails(lib, det).forEach(({ e, bs }, n) => {
+      const x = raw[n], ids = bs.map(b => b.id).sort().join();
+      if (bs.some(b => b.del)) never = false;
+      if (named.has(e.id)) { if (ids !== e.id) every = false; return; }
+      const free = live.filter(b => !named.has(b.id)), isbn = b => !!x.isbn && made[b.id].isbn === x.isbn;
+      const found = free.filter(b => isbn(b) || made[b.id].w === x.w && !made[b.id].authors === !x.authors.length);
+      const same = found.filter(b => made[b.id].authors === x.authors.join('|'));
+      const want = found.length > 1 && same.length ? found.filter(b => same.includes(b) || isbn(b)) : found;
+      if (want.map(b => b.id).sort().join() !== ids) every = false;
+      if (free.some(b => isbn(b) && !bs.includes(b))) byIsbn = false;
+    });
+  }
+  check(never, 'details never find a removed book');
+  check(every, 'and find every copy they’re for: the book named by id, or each copy with the ISBN or title and author');
+  check(byIsbn, 'and a copy with the entry’s ISBN always gets it');
+
+  // What a details link would change is each book that ends up different, with every entry that finds it put in, in
+  // order: with Replace, one entry saying fiction and the next nonfiction leave a nonfiction book as it was, uncounted.
+  let differ = true, each = true;
+  for (let k = 0; k < 400; k++) {
+    const lib = S.cleanDoc({ books: Array.from({ length: 1 + Math.floor(r() * 3) }, (_, i) => ({ id: 'w' + i, t: 1, title: 'Walden', authors: ['Henry David Thoreau'], kind: any(['', 'fiction', 'nonfiction']), pace: any(['', 'slow', 'fast']) })) });
+    const det = S.cleanDetails({ details: { books: Array.from({ length: 1 + Math.floor(r() * 4) }, () => ({ id: any(['', '', 'w0', 'w1']), title: 'Walden', authors: ['Henry David Thoreau'], kind: any(['fiction', 'nonfiction']), pace: any(['', 'slow', 'fast']) })) } });
+    for (const replace of [false, true]) {
+      const rows = S.matchDetails(lib, det), ch = S.detailChanges(lib, rows, replace), want = {};
+      for (const id of Object.keys(lib.books)) {
+        let b = lib.books[id]; rows.forEach(x => { if (x.bs.some(y => y.id === id)) b = S.withDetails(b, x.e, replace) || b; });
+        if (JSON.stringify(b) !== JSON.stringify(lib.books[id])) want[id] = b;
+      }
+      if (Object.keys(ch).some(id => JSON.stringify(ch[id]) === JSON.stringify(lib.books[id]))) differ = false;
+      if (JSON.stringify(Object.keys(ch).sort().map(id => ch[id])) !== JSON.stringify(Object.keys(want).sort().map(id => want[id]))) each = false;
+    }
+  }
+  check(differ, 'a details link counts only books it changes, with Replace and without');
+  check(each, 'and counts each book it changes, as every entry for it leaves it');
+
+  // What to read next, dealt again and again as its sheet does: no book twice in a deal, books not yet shown first,
+  // and nothing lent out, being read, read (unless rereads are asked for) or browsed (unless asked for).
+  const now = new Date('2026-11-03T12:00:00').getTime();
+  let fair = true, why = '';
+  for (let k = 0; k < 200 && fair; k++) {
+    const lib = S.live(S.cleanDoc({ books: Array.from({ length: Math.floor(r() * 16) }, (_, i) => ({ id: 'n' + i, t: 1, title: 'Book ' + i, authors: [any(['Ann Lee', 'Bo Chen', 'Cy Dee'])],
+      status: any(['', '', 'read', 'reading']), rating: any([0, 3, 5]), loan: r() < 0.15 ? { to: 'Sam' } : null, way: any(['', 'browse', 'dip']), pages: any([0, 120, 300, 600]),
+      added: any(['2019-03-04', '2026-10-30', '']), kind: any(['', 'fiction', 'nonfiction']), moods: any([[], ['funny'], ['dark', 'tense']]), chapters: any(['', 'short']) })) }));
+    const c = S.cleanNext({ reread: r() < 0.3, browse: r() < 0.3, lean: any(['', 'oldest', 'newest', 'loved']), len: any(['', '', 'short', 'long']), kind: any(['', '', 'fiction']), moods: any([[], ['funny']]), short: r() < 0.2 });
+    const pool = S.nextPool(lib, c), rnd = rng(9000 + k);
+    let seen = {};
+    for (let d = 0; d < 6; d++) {
+      const deal = S.dealNext(lib, c, rnd, seen, now), ids = deal.picks.map(p => p.b.id);
+      const unseen = pool.filter(b => !seen[b.id]).length;
+      if (new Set(ids).size !== ids.length) why = 'a book twice in one deal';
+      else if (ids.length !== Math.min(3, pool.length)) why = ids.length + ' picks from ' + pool.length;
+      else if (deal.fresh !== Math.min(ids.length, unseen) || ids.some((id, i) => !!seen[id] === i < deal.fresh)) why = 'books already shown came before new ones';
+      else if (deal.picks.some(({ b }) => b.loan || b.status === 'reading' || b.way === 'browse' && !c.browse || b.status === 'read' && !(c.reread && b.rating >= 4))) why = 'a book that can’t be suggested was';
+      if (why) { fair = false; break; }
+      if (ids.length && !deal.fresh) seen = {};
+      ids.forEach(id => { seen[id] = 1; });
+    }
+  }
+  check(fair, 'what to read next, dealt six times over 200 random libraries, keeps its promises' + (why ? ': ' + why : ''));
+
+  // One copy of each book, and the volumes of a set in order, over libraries full of copies, subtitles, translations
+  // and sets by two authors of the same name, checked against findDup's own idea of the same book.
+  {
+    const T = [['Ivanhoe', ''], ['Ivanhoe', 'A Romance'], ['Ivanhoe: A Romance', ''], ['Emma', ''], ['The Odyssey', ''], ['The Example Saga, Book 1', ''], ['The Example Saga, Book 2', ''],
+      ['The Example Saga: Book Three', ''], ['Tidewater: Volume 1', ''], ['Tidewater: Volume II', ''], ['Tidewater, Vol. 3', ''], ['Annals', 'Volume One'], ['Annals', 'Volume Two'], ['Walden', '']];
+    const W = [['Ada Quill'], ['Bo Chen'], ['Homer', 'Samuel Butler'], ['Homer', 'Alexander Pope']];
+    const same = (a, b) => !!(S.findDup(S.dupIndex(S.cleanDoc({ books: [a] })), b) || S.findDup(S.dupIndex(S.cleanDoc({ books: [b] })), a));
+    const bad = { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 };
+    for (let k = 0; k < 600; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: 2 + Math.floor(r() * 8) }, (_, i) => { const [title, sub] = any(T); return { id: 'v' + i, t: 1, title, sub, authors: any(W), isbn: any(['', '', '9780140436587']),
+        status: any(['', '', '', 'read', 'reading']), rating: any([0, 5]), loan: r() < 0.1 ? { to: 'Sam' } : null, kind: any(['', 'fiction']) }; }) }));
+      const c = S.cleanNext({ reread: r() < 0.3, kind: any(['', 'fiction']) }), pool = S.nextPool(all, c);
+      // Copies of copies are copies: two books with one ISBN, and another with the first one's title, are one book.
+      const kin = all.map(a => all.filter(b => same(a, b)));
+      for (let grew = true; grew;) { grew = false; kin.forEach(g => g.slice().forEach(b => kin[all.indexOf(b)].forEach(x => { if (!g.includes(x)) { g.push(x); grew = true; } }))); }
+      const copy = (a, b) => a !== b && kin[all.indexOf(a)].includes(b);
+      for (const a of pool) for (const b of pool) if (copy(a, b)) bad.copies++;
+      for (const a of pool) if (all.some(b => copy(a, b) && (b.status === 'reading' || b.status === 'read' && a.status !== 'read'))) bad.read++;
+      // A set here is the name before the number and the first author, as written.
+      const vol = b => { const w = S.volumeOf(b); return w && { set: w.set.split('|')[0] + '|' + b.authors[0], n: w.n }; };
+      for (const a of pool) {
+        const v = vol(a); if (!v || a.status === 'read') continue;
+        if (all.some(b => { const w = vol(b); return w && w.set === v.set && w.n < v.n && !all.some(x => vol(x) && vol(x).set === v.set && vol(x).n === w.n && x.status === 'read'); })) bad.later++;
+      }
+      // A volume left out only for another author's set of the same name would be held back wrongly.
+      for (const a of all) {
+        const v = vol(a); if (!v || pool.includes(a) || a.status || a.loan || c.kind && a.kind !== c.kind) continue;
+        if (pool.some(b => copy(a, b)) || all.some(b => copy(a, b) && b.status)) continue;
+        const mine = all.filter(b => { const w = vol(b); return w && w.set === v.set && w.n < v.n && b.status !== 'read'; });
+        if (!mine.length) bad.otherAuthor++;
+      }
+      const ids = S.dealNext(all, c, rng(k), {}, now).picks.map(p => p.b);
+      if (ids.some(a => ids.some(b => copy(a, b)))) bad.deal++;
+    }
+    eq(bad, { copies: 0, read: 0, later: 0, otherAuthor: 0, deal: 0 }, 'over 600 random libraries: no two copies of a book, none of one read or being read but as a reread, and a volume waits only for its own set');
+  }
+  {
+    // Pick again, tapped over and over as the sheet does it: the pick always changes, and each round shows every match
+    // before the next one starts.
+    let same = 0, missed = 0, taps = 0;
+    for (let n = 4; n <= 12; n++) for (let k = 0; k < 40; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, t: 1, title: 'Book ' + i, authors: ['Ann Lee'] })) }));
+      const rnd = rng(n * 100 + k), c = S.cleanNext({});
+      let state = {}, top = null, inRound = new Set(), round = 0;
+      for (let t = 0; t < 25; t++) {
+        const r = S.nextDeal(all, c, rnd, state, now), ids = r.deal.picks.map(p => p.b.id);
+        if (r.state.round !== round) { if (inRound.size !== n) missed++; inRound = new Set(); round = r.state.round; }
+        ids.forEach(id => inRound.add(id));
+        if (t && ids[0] === top) same++;
+        top = ids[0]; state = r.state; taps++;
+      }
+    }
+    eq([same, missed], [0, 0], 'Pick again never brings back the same pick, and every round shows every match (' + taps + ' taps)');
+  }
+  {
+    // Each choice offered, made on its own with each kind offered, brings a pick, or says what would: a detail books
+    // haven't got yet, or a box to tick.
+    const P = ['slow', 'medium', 'fast'], M = ['funny', 'dark', 'tense', 'reflective'], G = ['history', 'fantasy', 'poetry'];
+    let dead = 0, tried = 0, eg = '';
+    for (let k = 0; k < 300; k++) {
+      const all = S.live(S.cleanDoc({ books: Array.from({ length: 1 + Math.floor(r() * 9) }, (_, i) => ({ id: 'o' + i, t: 1, title: 'Book ' + i, authors: [any(['Ann Lee', 'Bo Chen'])],
+        status: any(['', '', '', 'read']), rating: any([0, 5]), loan: r() < 0.1 ? { to: 'Sam' } : null, way: any(['', '', 'dip', 'browse']), kind: any(['', 'fiction', 'nonfiction', 'poetry']),
+        pace: any(['', ...P]), pages: any([0, 120, 300, 600]), chapters: any(['', 'short', 'long']), room: any(['', 'Den', 'Hall']), tags: any([[], ['sf'], ['gift']]),
+        moods: any([undefined, [any(M)]]), genres: any([undefined, [any(G)]]) })) }));
+      const ticks = { reread: r() < 0.3, browse: r() < 0.3 };
+      const kinds = [''].concat(Object.keys(S.nextOffers(all, S.cleanNext(ticks)).fit.kinds));
+      for (const kind of kinds) {
+        const f = S.nextOffers(all, S.cleanNext({ ...ticks, kind })).fit;
+        const each = [...(kind ? [{}] : []), ...Object.keys(f.moods).map(m => ({ moods: [m] })), ...Object.keys(f.genres).map(genre => ({ genre })), ...Object.keys(f.paces).map(pace => ({ pace })),
+          ...Object.keys(f.lens).map(len => ({ len })), ...Object.keys(f.rooms).map(room => ({ room })), ...Object.keys(f.tags).map(tag => ({ tag })), ...(f.short ? [{ short: true }] : [])];
+        for (const x of each) {
+          const c = S.cleanNext({ ...ticks, kind, ...x }), deal = S.dealNext(all, c, rng(k), {}, now);
+          tried++;
+          if (!deal.pool && !/left out|tick Include/.test(S.nextNotes(deal, c, false).join(' '))) { dead++; eg = eg || JSON.stringify({ kind, x, ticks }); }
+        }
+      }
+    }
+    check(tried > 1000 && !dead, 'every choice offered, on its own with each kind, brings a pick or says what would (' + dead + ' of ' + tried + ' don’t' + (eg ? ', e.g. ' + eg : '') + ')');
+  }
+  {
+    // Offers and a deal, as the sheet works them out after each choice tapped, are quick in a big library.
+    const all = S.live(S.cleanDoc({ books: Array.from({ length: 3000 }, (_, i) => ({ id: 'q' + i, t: 1, title: any(['The Book of ', 'Notes on ', '']) + 'Thing ' + Math.floor(i / 2) + any(['', ', Book 2', ': A Tale', ', Volume III']),
+      authors: [any(['Ann Lee', 'Bo Chen', 'Cy Dee'])], status: any(['', '', 'read', 'reading']), rating: any([0, 5]), kind: any(['', 'fiction', 'nonfiction']), moods: any([undefined, ['funny'], ['dark', 'tense']]),
+      pages: any([0, 120, 600]), room: any(['Den', 'Hall']), added: any(['2026-09-26', '2026-10-01']) })) }));
+    const c = S.cleanNext({ kind: 'fiction', moods: ['dark'] }), ms = [];
+    for (let k = 0; k < 25; k++) { const t = process.hrtime.bigint(), kin = S.kinOf(all); S.nextOffers(all, c, kin); S.dealNext(all, c, rng(k), {}, now, kin); ms.push(Number(process.hrtime.bigint() - t) / 1e6); }
+    const mid = ms.slice(10).sort((a, b) => a - b)[7];
+    check(mid < 20, 'choices and a deal on 3,000 books take under 20 ms (' + mid.toFixed(1) + ' ms)');
+  }
+  check(Date.now() - t0 < 5000, 'the random checks run quickly (' + (Date.now() - t0) + ' ms)');
 }
 
 // ---------- batches and links ----------
 (async () => {
   // ---------- reading details ----------
   {
-    const b = S.cleanBook({ id: 'r', t: 1, title: 'Dune', kind: 'Fiction', genres: ['Science fiction', 'sf', 'nonsense', 'Classics', 'adventure', 'Fantasy', 'Horror', 'Thriller'],
-      moods: 'adventurous, Tense, bogus', pace: 'Medium', chapters: 'huge', way: 'Cover to cover', blurb: '  A desert   planet. ' });
-    eq([b.kind, b.genres, b.moods, b.pace, b.chapters, b.way, b.blurb], ['fiction', ['sf', 'classics', 'fantasy', 'horror'], ['adventurous', 'tense'], 'medium', undefined, 'through', 'A desert planet.'],
+    const b = S.cleanBook({ id: 'r', t: 1, title: 'The War of the Worlds', kind: 'Fiction', genres: ['Science fiction', 'sf', 'nonsense', 'Classics', 'adventure', 'Fantasy', 'Horror', 'Thriller'],
+      moods: 'adventurous, Tense, bogus', pace: 'Medium', chapters: 'huge', way: 'Cover to cover', blurb: '  Martians   land in Surrey. ' });
+    eq([b.kind, b.genres, b.moods, b.pace, b.chapters, b.way, b.blurb], ['fiction', ['sf', 'classics', 'fantasy', 'horror'], ['adventurous', 'tense'], 'medium', undefined, 'through', 'Martians land in Surrey.'],
       'reading details take a value or its label, drop unknown ones, and keep up to four genres');
     const lib = S.cleanDoc({ books: [
-      { id: 'a1', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Den' },
-      { id: 'a2', t: 5, title: 'Becoming', authors: ['Michelle Obama'], room: 'Sunroom' },
-      { id: 'c1', t: 5, title: 'Dune', authors: ['Frank Herbert'], isbn: '9780441013593', pages: 412, kind: 'fiction', moods: ['tense'] },
+      { id: 'a1', t: 5, title: 'Up from Slavery', authors: ['Booker T. Washington'], room: 'Den' },
+      { id: 'a2', t: 5, title: 'Up from Slavery', authors: ['Booker T. Washington'], room: 'Hall' },
+      { id: 'c1', t: 5, title: 'The War of the Worlds', authors: ['H. G. Wells'], isbn: '9780141441030', pages: 412, kind: 'fiction', moods: ['tense'] },
       { id: 'gone', t: 6, del: 1 }
     ] });
     const det = S.cleanDetails({ shelfmark: 1, details: { id: 'd1', name: 'Reading details', books: [
-      { id: 'a1', title: 'Becoming', authors: ['Michelle Obama'], kind: 'nonfiction', genres: ['biography'], moods: ['inspiring'], pace: 'medium', pages: 448, blurb: 'A former First Lady on growing up and the White House.' },
-      { id: 'zzz', title: 'Dune', authors: ['Frank Herbert'], isbn: '0441013597', kind: 'fiction', genres: ['sf'], moods: ['adventurous'], pages: 600 },
-      { title: 'Becoming', authors: ['Michelle Obama'], way: 'through' },
+      { id: 'a1', title: 'Up from Slavery', authors: ['Booker T. Washington'], kind: 'nonfiction', genres: ['biography'], moods: ['inspiring'], pace: 'medium', pages: 448, blurb: 'A life from slavery in Virginia to the founding of a school in Alabama.' },
+      { id: 'zzz', title: 'The War of the Worlds', authors: ['H. G. Wells'], isbn: '0141441038', kind: 'fiction', genres: ['sf'], moods: ['adventurous'], pages: 600 },
+      { title: 'Up from Slavery', authors: ['Booker T. Washington'], way: 'through' },
       { id: 'gone', title: 'Removed one', kind: 'fiction' },
       { id: 'x', title: 'Unknown Book', authors: ['Nobody'], kind: 'poetry' },
       { id: 'y', title: 'No details at all' }, 'junk'
     ] } });
     eq([det.id, det.name, det.books.length], ['d1', 'Reading details', 5], 'details keep entries that say something and name a book');
     const m = S.matchDetails(lib, det);
-    eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a1', 'a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy), and a removed or unknown book by nothing');
+    eq(m.map(r => r.bs.map(b => b.id)), [['a1'], ['c1'], ['a2'], [], []], 'an entry finds its book by id, else by ISBN or title and author (every copy another entry doesn’t name by id), and a removed or unknown book by nothing');
     const a1 = S.withDetails(lib.books.a1, m[0].e, false);
     eq([a1.kind, a1.genres, a1.pages, a1.room], ['nonfiction', ['biography'], 448, 'Den'], 'details fill in a book, page count included, and leave the rest alone');
-    const dune = S.withDetails(lib.books.c1, m[1].e, false);
-    eq([dune.kind, dune.moods, dune.genres, dune.pages], ['fiction', ['tense'], ['sf'], 412], 'only blanks are filled: details already there and the page count stay');
-    const dune2 = S.withDetails(lib.books.c1, m[1].e, true);
-    eq([dune2.moods, dune2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
+    const wells = S.withDetails(lib.books.c1, m[1].e, false);
+    eq([wells.kind, wells.moods, wells.genres, wells.pages], ['fiction', ['tense'], ['sf'], 412], 'only blanks are filled: details already there and the page count stay');
+    const wells2 = S.withDetails(lib.books.c1, m[1].e, true);
+    eq([wells2.moods, wells2.pages], [['adventurous'], 412], 'replacing swaps in the details, but never the book’s own page count');
     eq(S.withDetails(Object.assign({}, lib.books.c1, { genres: ['sf'] }), m[1].e, false), null, 'nothing new → no change');
+    // Entries whose ids aren't in this library (made from another copy of it, or from an older backup) find books by
+    // ISBN and by title and author both, and so every copy.
+    const matched = (books, entries) => S.matchDetails(S.cleanDoc({ books }), S.cleanDetails({ details: { books: entries } })).map(r => r.bs.map(b => b.id));
+    const eliots = [{ id: 'd1', t: 1, title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549' }, { id: 'd2', t: 1, title: 'Middlemarch', authors: ['George Eliot'] }];
+    eq(matched(eliots, [{ id: 'old', title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', kind: 'fiction' }]), [['d1', 'd2']], 'an entry with an ISBN finds the copy without one too');
+    eq(matched(eliots, [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }]), [['d1', 'd2']], 'as an entry without one does');
+    // Two translations: the same title and first author, but each entry is for one of them.
+    const odysseys = [{ id: 'r1', t: 1, title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], room: 'Den' }, { id: 'r2', t: 1, title: 'The Odyssey', authors: ['Homer', 'Samuel Butler'], room: 'Study' }];
+    const tr = S.cleanDetails({ details: { books: [
+      { id: 'x1', title: 'The Odyssey', authors: ['Homer', 'S.H. Butcher'], blurb: 'Odysseus’s long voyage home, in Butcher and Lang’s prose.', pages: 360 },
+      { id: 'x2', title: 'The Odyssey', authors: ['Homer', 'Samuel Butler'], blurb: 'Odysseus’s long voyage home, in Butler’s plain prose.', pages: 490 }] } });
+    const lib2 = S.cleanDoc({ books: odysseys }), tm = S.matchDetails(lib2, tr);
+    eq(tm.map(r => r.bs.map(b => b.id)), [['r1'], ['r2']], 'two translations each get the entry with their own translator');
+    const filled = S.detailChanges(lib2, tm, true);
+    eq([Object.keys(filled).length, filled.r1.pages, filled.r2.pages, /Butler/.test(filled.r2.blurb)], [2, 360, 490, true], 'and their own page count and line, even with Replace');
+    eq(matched(odysseys, [{ title: 'The Odyssey', authors: ['Homer'], kind: 'fiction' }]), [['r1', 'r2']], 'an entry naming neither translator is for both');
+    // A copy with the entry's ISBN is that edition, though another copy matches the entry's authors and it has none.
+    const homer = [{ id: 'k0', t: 1, title: 'The Odyssey', authors: ['Homer'] }, { id: 'k1', t: 1, title: 'The Odyssey', isbn: '9780140268867' }];
+    eq(matched(homer, [{ title: 'The Odyssey', authors: ['Homer'], isbn: '9780140268867', kind: 'fiction' }]), [['k1', 'k0']], 'an entry with an ISBN fills the copy with that ISBN, and the copy with its title and author');
+    // The volumes of a set: an entry for one fills only that one, and one naming the set alone fills every volume.
+    const cycle = [{ id: 'l1', t: 1, title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { id: 'l2', t: 1, title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
+      { id: 'l3', t: 1, title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { id: 'l4', t: 1, title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }];
+    eq(matched(cycle, [{ id: 'old', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'], kind: 'fiction' }, { title: 'Annals of Ostrava: Volume I', authors: ['Cy Dorn'], kind: 'nonfiction' },
+      { title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' }, { id: 'old2', title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'], kind: 'nonfiction' }]), [['l2'], ['l3'], ['l1', 'l2'], ['l4']],
+      'details for one volume of a set fill only that volume, its name in the title or the subtitle, and details for the set fill each');
+    eq(matched(odysseys, [{ id: 'r1', title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], kind: 'fiction' }, { title: 'The Odyssey', authors: ['Homer', 'S. H. Butcher'], kind: 'fiction' }]), [['r1'], ['r2']],
+      'a copy one entry names by id is left out of another entry’s title match');
+    // Two copies, two entries without ids: each entry finds both, and each book counts once.
+    const waldens = S.cleanDoc({ books: [{ id: 'a1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }, { id: 'a2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }] });
+    const twice = S.matchDetails(waldens, S.cleanDetails({ details: { books: [{ title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pace: 'medium' }, { title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pace: 'fast' }] } }));
+    eq(twice.map(r => r.bs.map(b => b.id)), [['a1', 'a2'], ['a1', 'a2']], 'two entries for a book with two copies find both');
+    eq([Object.keys(S.detailChanges(waldens, twice, false)).length, Object.keys(S.detailChanges(waldens, twice, true)).length], [2, 2], 'and change two books, not four');
+    eq(S.detailChanges(waldens, twice, false).a1.pace, 'medium', 'filling in, the first entry’s details stay');
+    const middlemarch = S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] });
+    const back = S.matchDetails(middlemarch, S.cleanDetails({ details: { books: [{ title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction' }, { title: 'Middlemarch', authors: ['George Eliot'], kind: 'nonfiction' }] } }));
+    eq([S.detailChanges(middlemarch, back, true), Object.keys(S.detailChanges(middlemarch, back, false))], [{}, []], 'two entries that change a book and change it back, with Replace, change nothing');
+    {
+      // The review's summary of a file, and the books it leaves without details.
+      const lib3 = S.cleanDoc({ books: [{ id: 'p', t: 1, title: 'Piranesi', authors: ['Susanna Clarke'] }, { id: 's', t: 1, title: 'The Weekday Pantry', authors: ['Ida Marsh'], pages: 480 },
+        { id: 'w1', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] }, { id: 'w2', t: 1, title: 'Walden', authors: ['Henry David Thoreau'] },
+        { id: 'e', t: 1, title: 'emma', sub: 'A Novel', authors: ['Jane Austen'] }, { id: 'c', t: 1, title: 'Cat’s Cradle', kind: 'fiction' }, { id: 'u', t: 1, title: 'Ulysses', wanted: true },
+        { id: 'g', t: 1, title: 'Gone', del: 1 }, { id: 'a', t: 1, title: 'Aesop’s Fables' }] });
+      const rows3 = S.matchDetails(lib3, S.cleanDetails({ details: { books: [
+        { id: 'p', title: 'Piranesi', authors: ['Susanna Clarke'], kind: 'fiction', pages: 272 }, { title: 'The Weekday Pantry', authors: ['Ida Marsh'], kind: 'nonfiction', way: 'browse', pages: 500 },
+        { title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', pages: 352 }, { title: 'Not Here', authors: ['Nobody'], kind: 'poetry', pages: 90 }, { id: 'a', title: 'Aesop’s Fables', pages: 200 }] } }));
+      eq(S.detailsSum(rows3), ['1 fiction', '2 nonfiction', '1 you browse', '3 page counts'],
+        'the summary counts each entry for a book here once, a page count only where the book has none, and leaves out what has none');
+      eq(S.detailsSum([]), [], 'an empty file sums to nothing');
+      const left = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3);
+      eq(left.map(b => b.id), ['e'], 'left without details: a book no entry finds and that has none, not one with details, a wishlist book, a removed one, or one an entry finds (even for a page count only)');
+      const more = S.detailsLeft(S.live(lib3).filter(b => !b.wanted), rows3.slice(0, 1));
+      eq(more.map(b => b.title), ['Aesop’s Fables', 'emma', 'Walden', 'Walden', 'The Weekday Pantry'], 'in title order as By title sorts the list, whatever the capitals and without “The”, every copy');
+      eq(S.leftText(more.slice(0, 2)), 'Please add reading details for Shelfmark to these 2 books in my library:\n\nAesop’s Fables\nemma: A Novel by Jane Austen\n', 'the list to copy for Claude: a line a book, with its subtitle and author');
+      eq(S.leftText(left).split('\n')[0], 'Please add reading details for Shelfmark to this book in my library:', 'one book is this book');
+    }
     const r = await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'a1', kind: 'fiction' }] } }));
     eq([r.kind, r.details.books[0]], ['details', { id: 'a1', kind: 'fiction' }], 'a details file opens as details, an id alone being enough');
     let threw = false; try { await S.parseIncoming(JSON.stringify({ shelfmark: 1, details: { books: [{ title: 'x' }] } })); } catch (e) { threw = true; } check(threw, 'details with nothing to add are refused');
 
     // An older Shelfmark that doesn't know the reading details drops them without changing the time. Its copy mustn't win.
-  const full = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune', kind: 'fiction', moods: ['tense'] }] }), bare = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'Dune' }] });
+  const full = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'The Time Machine', kind: 'fiction', moods: ['tense'] }] }), bare = S.cleanDoc({ books: [{ id: 'o', t: 9, title: 'The Time Machine' }] });
   eq([S.mergeDocs(full, bare).books.o.kind, S.mergeDocs(bare, full).books.o.kind], ['fiction', 'fiction'], 'at the same time, the copy with the reading details wins, whichever way round');
-  eq(S.mergeDocs(full, S.cleanDoc({ books: [{ id: 'o', t: 10, title: 'Dune' }] })).books.o.kind, undefined, 'but a later edit still wins');
+  eq(S.mergeDocs(full, S.cleanDoc({ books: [{ id: 'o', t: 10, title: 'The Time Machine' }] })).books.o.kind, undefined, 'but a later edit still wins');
 
   // What to read next, by reading details.
     const now = new Date('2026-11-02T12:00:00').getTime();
@@ -275,12 +984,83 @@ function randomDoc(r, n) {
     eq(ids({ moods: ['funny', 'sad'] }), ['f1', 'f2'], 'moods match any of those picked');
     eq(ids({ short: true }), ['f1', 'p1'], 'short chapters, or a book to dip into');
     eq(ids({ genre: 'history', pace: 'slow' }), ['n1'], 'genre and pace narrow it too');
+    // Moods and genres offered follow the kind chosen, and whether books you browse are in, keeping one already chosen.
+    const offered = c => { const o = S.nextOffers(shelf, S.cleanNext(c)); return [Object.keys(o.fit.moods).sort(), Object.keys(o.fit.genres).sort()]; };
+    eq(offered({ kind: 'poetry' }), [['reflective'], []], 'with poetry chosen, only the moods and genres of poems on hand');
+    eq(offered({ kind: 'nonfiction' }), [['informative', 'reflective'], ['history']], 'a cookbook’s genre waits until books you browse are in');
+    eq(offered({ kind: 'nonfiction', browse: true }), [['informative', 'reflective'], ['food', 'history']], 'and then it’s offered');
+    eq(offered({ kind: 'poetry', moods: ['funny'], genre: 'humor' }), [['funny', 'reflective'], ['humor']], 'a mood or genre already chosen stays, to be taken off');
+    {
+      // Every other choice follows the kind too: a pace, length, room or tag only books of another kind have would give nothing.
+      const two = S.live(S.cleanDoc({ books: [{ id: 'l', t: 1, title: 'Leaves of Grass', authors: ['Walt Whitman'], kind: 'poetry', room: 'Den', way: 'dip' },
+        { id: 'd', t: 1, title: 'Dracula', authors: ['Bram Stoker'], kind: 'fiction', pace: 'fast', pages: 400, room: 'Hall', tags: ['gothic'], chapters: 'long' }] }));
+      const fit = c => { const f = S.nextOffers(two, S.cleanNext(c)).fit; return [f.kinds, f.paces, f.lens, f.rooms, f.tags, f.short].map(x => typeof x === 'object' ? Object.keys(x).sort() : x); };
+      eq(fit({}), [['fiction', 'poetry'], ['fast'], ['medium'], ['Den', 'Hall'], ['gothic'], true], 'with any kind, everything the books have is offered');
+      eq(fit({ kind: 'poetry' }), [['fiction', 'poetry'], [], [], ['Den'], [], false], 'with poetry chosen, no pace, length, tag or Short chapters the poems haven’t got, and only their room');
+      eq(fit({ kind: 'fiction' }), [['fiction', 'poetry'], ['fast'], ['medium'], ['Hall'], ['gothic'], false], 'and the same for fiction');
+      eq(fit({ kind: 'poetry', pace: 'fast', len: 'medium', room: 'hall', tag: 'gothic', short: true }), [['fiction', 'poetry'], ['fast'], ['medium'], ['Den', 'Hall'], ['gothic'], true], 'a choice already made stays, to be taken off');
+      const onlyFiction = S.live(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'A', kind: 'fiction', pace: 'slow', pages: 100 }, { id: 'b', t: 1, title: 'B', kind: 'nonfiction', pages: 900, loan: { to: 'Sam' } }] }));
+      const saved = S.cleanNext({ kind: 'nonfiction', pace: 'fast', len: 'long' }), o = S.nextOffers(onlyFiction, saved);
+      eq([Object.keys(o.fit.kinds), Object.keys(o.fit.paces), Object.keys(o.fit.lens), S.fitNext(saved, o)].map(x => x.kind == null ? x : [x.kind, x.pace, x.len]), [['fiction'], ['slow'], ['short'], ['', '', '']],
+        'but a kind, pace or length saved before that no book on hand has goes back to Any');
+    }
+    {
+      // A choice only a four- or five-star read has is offered once rereads are in, and the notes say how to bring it.
+      const fav = S.live(S.cleanDoc({ books: [{ id: 'm', t: 1, title: 'Middlemarch', authors: ['George Eliot'] },
+        { id: 'p', t: 1, title: 'Pride and Prejudice', authors: ['Jane Austen'], status: 'read', rating: 5, moods: ['funny'] },
+        { id: 'e', t: 1, title: 'Emma', authors: ['Jane Austen'], status: 'read', rating: 4, moods: ['funny', 'lighthearted'] },
+        { id: 'w', t: 1, title: 'Walden', authors: ['Henry David Thoreau'], moods: ['reflective', 'funny'] }] }));
+      const moodsOf = c => Object.keys(S.nextOffers(fav, S.cleanNext(c)).fit.moods).sort();
+      eq([moodsOf({}), moodsOf({ reread: true })], [['funny', 'reflective'], ['funny', 'lighthearted', 'reflective']], 'a mood only rereads have waits until rereads are in');
+      const say = (c, lib = fav) => S.nextNotes(S.dealNext(lib, S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false).join(' ');
+      eq(say({ moods: ['funny'] }), 'From 1 unread book that matches. 1 book without reading details is left out. 2 of your 4- and 5-star reads match too: tick Include rereads under More choices.',
+        'books you’d reread that match are counted, with how to include them');
+      eq(say({ moods: ['funny'], reread: true }), 'From 3 books that match. 1 book without reading details is left out.', 'and aren’t once they’re in');
+      eq(say({ moods: ['lighthearted'] }), '1 book without reading details is left out. 1 of your 4- and 5-star reads matches: tick Include rereads under More choices.', 'one, when nothing else matches');
+      const lent = S.live(S.cleanDoc({ books: [{ id: 'm', t: 1, title: 'Middlemarch' }, { id: 'p', t: 1, title: 'Persuasion', status: 'read', rating: 5, loan: { to: 'Sam' } }] }));
+      eq([S.nextOffers(lent).reread, S.nextOffers(fav).reread], [false, true], 'Include rereads isn’t offered when the only favorite is lent out');
+    }
     const reflective = {}; for (let k = 0; k < 400; k++) { const id = S.dealNext(shelf, S.cleanNext({ moods: ['reflective', 'sad'] }), rng(500 + k), {}, now).picks[0].b.id; reflective[id] = (reflective[id] || 0) + 1; }
     check(reflective.f2 > reflective.n1 && reflective.f2 > reflective.p1, 'a book with more of the moods picked comes up more ' + JSON.stringify(reflective));
     const picky = S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now);
     eq([picky.bare, picky.browsed], [1, 1], 'it counts books without details that a choice leaves out, and books you browse');
     eq(S.dealNext(shelf, S.cleanNext({}), rng(1), {}, now).bare, 0, 'with no details chosen, books without them still come up');
     check(S.KINDS.length === 3 && S.MOODS.length === 14, 'the lists are there for the script to match');
+
+    // The notes under a pick say what was left out and why: books without a chosen detail, without a page count, and
+    // books you browse that would match.
+    const honest = S.live(S.cleanDoc({ books: [
+      { id: 'f1', t: 1, title: 'F1', kind: 'fiction', moods: ['funny'], pace: 'fast', chapters: 'short', genres: ['humor'], pages: 200 },
+      { id: 'f2', t: 1, title: 'F2', kind: 'fiction', moods: ['sad'], pace: 'slow', chapters: 'long', genres: ['literary'], pages: 500 },
+      { id: 'f3', t: 1, title: 'F3', kind: 'fiction', moods: ['tense'], pace: 'fast', genres: ['thriller'] },
+      { id: 'f4', t: 1, title: 'F4', kind: 'fiction', moods: ['reflective'], genres: ['literary'], pages: 300 },
+      { id: 'f5', t: 1, title: 'F5', kind: 'fiction', moods: ['dark'] },
+      { id: 'n1', t: 1, title: 'N1', kind: 'nonfiction', genres: ['food'], moods: ['informative'], pace: 'slow', pages: 240 },
+      { id: 'u1', t: 1, title: 'U1', pages: 150 }, { id: 'u2', t: 1, title: 'U2' },
+      ...['k1', 'k2', 'k3'].map(id => ({ id, t: 1, title: id, kind: 'nonfiction', genres: ['food'], way: 'browse' }))
+    ] }));
+    const notes = (c, lib = honest) => S.nextNotes(S.dealNext(lib, S.cleanNext(c), rng(1), {}, now), S.cleanNext(c), false).join(' ');
+    eq(notes({ pace: 'fast' }), 'From 2 unread books that match. 4 books with no pace yet are left out.', 'a pace chosen counts the books with no pace, not only those with no details at all');
+    eq(notes({ kind: 'fiction' }), 'From 5 unread books that match. 2 books without reading details are left out.', 'books with no details at all are called that');
+    eq(notes({ genre: 'food' }), 'From 1 unread book that matches. 3 books with no genre yet are left out. 3 books you browse match too: tick Include books you browse under More choices.',
+      'books you browse that would match are counted, with how to include them');
+    eq(notes({ genre: 'food', browse: true }), 'From 4 unread books that match. 3 books with no genre yet are left out.', 'and aren’t once they’re included');
+    eq(notes({ len: 'short' }), 'From 3 unread books that match. 3 books have no page count, so they only come up under Any length.', 'a length chosen says how many books have no page count, though some match');
+    eq(notes({ kind: 'fiction', short: true }), 'From 1 unread book that matches. 5 books not yet marked fiction, nonfiction or poetry, or with no chapter length yet, are left out.', 'two details missing are both named');
+    eq(notes({ kind: 'poetry' }), '2 books without reading details are left out.', 'one choice that rules out every book with the details doesn’t say to try fewer: Clear these choices says what to do');
+    eq(notes({ pace: 'fast' }, honest.filter(b => ['f5', 'u1', 'u2'].includes(b.id))), '3 books with no pace yet are left out.', 'but not when only missing details leave nothing');
+    eq(notes({ len: 'long', room: 'Nowhere' }), '', 'nor do two, when putting one back to Any brings a pick');
+    eq(S.dealNext(honest, S.cleanNext({ len: 'long', room: 'Nowhere' }), rng(1), {}, now).easings, [{ k: 'room', n: 1 }], 'and that one is named, with how many it brings');
+    eq(notes({ kind: 'poetry', genre: 'history' }), '2 books without reading details are left out. Try fewer choices.', 'two that no one change helps say to try fewer');
+    {
+      // Short and lighthearted fiction: nothing. Any mood brings 3, Any length 2, Any kind 1: the two that bring the most.
+      const shelf = S.live(S.cleanDoc({ books: [['A', 'fiction', 'lighthearted', 400], ['B', 'fiction', 'lighthearted', 500], ['C', 'fiction', 'dark', 100], ['D', 'nonfiction', 'lighthearted', 100],
+        ['E', 'fiction', 'dark', 120], ['F', 'fiction', 'dark', 150]].map(([title, kind, mood, pages]) => ({ id: title, t: 1, title, kind, moods: [mood], pages })) }));
+      const c = S.cleanNext({ kind: 'fiction', moods: ['lighthearted'], len: 'short' }), deal = S.dealNext(shelf, c, rng(1), {}, now);
+      eq([deal.pool, deal.easings], [0, [{ k: 'moods', n: 3 }, { k: 'len', n: 2 }]], 'when nothing matches, the choices to put back to Any are those that bring the most books, the most first');
+      eq(S.dealNext(shelf, S.cleanNext({ kind: 'fiction' }), rng(1), {}, now).easings, [], 'and there are none when something matches');
+    }
+    eq(S.nextNotes(S.dealNext(honest, S.cleanNext({}), rng(1), {}, now), S.cleanNext({}), true), ['From 8 unread books on hand.', 'Going round again: you’ve seen all 8.'], 'a repeat round says so');
   }
 
   const batch = S.cleanBatch({ shelfmark: 1, batch: { id: 'c20260926-abc', name: 'Hall', room: 'Hall', books: [
@@ -318,6 +1098,44 @@ function randomDoc(r, n) {
   eq(where(tall, { room: '', shelf: 'Tall bookcase' }, living), [' > Tall bookcase, top', ' > Tall bookcase', 'Hall > '], 'emptying the room gives no book the batch\'s room');
   eq(where(tall, { room: 'Living room', shelf: '' }, living), ['Living room > Tall bookcase, top', 'Living room > ', 'Hall > '], 'emptying the shelf gives no book the batch\'s shelf');
 
+  // A room or shelf is saved as the library already spells it, whatever the capitals or apostrophes it was typed with
+  // (each new chat with Claude starts afresh, and a room typed by hand can differ from Claude's), the most used
+  // spelling if there are several; a new place is kept as typed, with its spaces tidied.
+  eq(S.place(' Living  Room ', { 'Living room': 3 }), 'Living room', 'a room typed with other capitals is saved as the library spells it');
+  eq(S.place('living room', { 'Living room': 1, 'Living Room': 4, Den: 9 }), 'Living Room', 'the spelling most books use wins');
+  eq([S.place('LIVING ROOM', { 'Living room': 2, 'Living Room': 2 }), S.place('LIVING ROOM', { 'Living Room': 2, 'Living room': 2 })], ['Living Room', 'Living Room'], 'a tie goes the same way whatever the order');
+  eq([S.place('cafe', { 'Café': 2 }), S.place('Kid’s room', { "Kid's room": 2 }), S.place('Den', { 'Living room': 3 }), S.place('  Sun   room ', {}), S.place('', { Den: 1 })],
+    ['Café', "Kid's room", 'Den', 'Sun room', ''], 'accents and apostrophes don\'t make a new place either, and a new one is kept as typed');
+  {
+    const ix = S.placeIndex([{ room: 'Bedroom', shelf: 'Top shelf' }, { room: 'Hall', shelf: 'Top Shelf' }, { room: 'Hall', shelf: 'Top Shelf' }, { room: 'hall', shelf: 'top shelf' }, { shelf: 'Loose' }]);
+    const at = b => { const x = S.placed(Object.assign({}, b), ix); return [x.room || '', x.shelf || ''].join(' > '); };
+    eq([at({ room: 'HALL', shelf: 'top shelf' }), at({ room: 'Bedroom', shelf: 'TOP SHELF' }), at({ room: 'Attic', shelf: 'top shelf' }), at({ shelf: 'loose' }), at({ room: 'hall' })],
+      ['Hall > Top Shelf', 'Bedroom > Top shelf', 'Attic > top shelf', ' > Loose', 'Hall > '], 'a shelf takes the spelling of a shelf in the same room only');
+  }
+  // A tag is one tag however it's capitalised, like a place: it filters, is offered and is saved as most books spell it.
+  {
+    const lib = S.live(S.cleanDoc({ books: [{ id: 'p', t: 1, title: 'Persuasion', tags: ['Signed', 'gift'] }, { id: 'm', t: 1, title: 'Middlemarch', tags: ['signed'] },
+      { id: 'w', t: 1, title: 'Walden', tags: ['signed', 'Gift'] }, { id: 'e', t: 1, title: 'Emma', tags: ['gift'] }, { id: 'h', t: 1, title: 'Hamlet' }] }));
+    eq(lib.filter(b => S.hasTag(b, 'SIGNED')).map(b => b.id), ['m', 'p', 'w'], 'a tag finds every book with it, whatever its capitals');
+    eq(S.tagCounts(lib), { gift: 2, signed: 2, Signed: 1, Gift: 1 }, 'tags are counted by spelling');
+    eq(S.tagged({ tags: ['SIGNED', 'gift', 'Kids'] }, S.tagCounts(lib)).tags, ['signed', 'gift', 'Kids'], 'a tag typed with other capitals is saved as most books spell it, and a new one as typed');
+    const o = S.nextOffers(lib, S.cleanNext({}));
+    eq(Object.keys(o.tags).sort(), ['gift', 'signed'], 'What to read next offers each tag once, as most books spell it');
+    eq(S.nextPool(lib, S.cleanNext({ tag: 'Signed' })).map(b => b.id).sort(), ['m', 'p', 'w'], 'and a tag chosen there finds every book with it');
+    eq(S.fitNext(S.cleanNext({ tag: 'GIFT' }), o).tag, 'gift', 'a tag chosen before with other capitals stays chosen');
+  }
+  // Books saved before with another spelling sort together, so the list shows them as one shelf.
+  {
+    const b = (id, room, shelf, a) => S.cleanBook({ id, t: 1, title: 'T' + id, authors: [a], room, shelf });
+    const lib = [b('o1', 'Living room', 'Left bookcase', 'Zola'), b('o2', 'Living Room', 'Left Bookcase', 'Austen'), b('o3', 'Living room', 'Left bookcase', 'Eliot'),
+      b('o4', 'living room', 'Desk', 'Woolf'), b('o5', 'Kid’s room', 'Low', 'Dahl'), b('o6', "Kid's room", 'low', 'Alcott'), b('o7', 'Den', '', 'Hardy')];
+    eq(lib.slice().sort(S.shelfOrder).map(x => x.id), ['o7', 'o6', 'o5', 'o4', 'o2', 'o3', 'o1'], 'shelf order puts a place\'s spellings together, by author within it');
+    const shelf = lib.map(x => Object.assign({}, x, { id: x.id }));
+    eq(S.nextPool(shelf, S.cleanNext({ room: 'LIVING ROOM' })).map(x => x.id).sort(), ['o1', 'o2', 'o3', 'o4'], 'What to read next\'s room takes in every spelling of it');
+    eq(Object.keys(S.nextOffers(shelf).rooms).sort(), ['Den', "Kid's room", 'Living room'], 'and offers each room once, as most books spell it');
+    eq(S.fitNext(S.cleanNext({ room: 'living ROOM' }), S.nextOffers(shelf)).room, 'Living room', 'a room chosen before in other capitals stays chosen');
+  }
+
   const json = JSON.stringify({ shelfmark: 1, batch: { id: 'c1', books: [{ title: 'Cien años de soledad', authors: ['Gabriel García Márquez'] }] } });
   const z = zlib.deflateRawSync(Buffer.from(json)).toString('base64url');
   const j = Buffer.from(json).toString('base64url');
@@ -343,6 +1161,71 @@ function randomDoc(r, n) {
     eq(got, 'Cien años de soledad', 'a pasted link opens ' + what);
   }
   eq((await S.parseIncoming(JSON.stringify({ books: [{ title: 'T', notes: 'from https://x/#s1zAAAA' }] }))).batch.books[0].notes, 'from https://x/#s1zAAAA', 'JSON that mentions a link is still read as JSON');
+  // Quoted in a reply, a "> " at the start of each line, the link is put back together without them.
+  {
+    const third = Math.floor(link.length / 3), q = '> Here are your books:\n> ' + link.slice(0, third) + '\n> ' + link.slice(third, 2 * third) + '\n>' + link.slice(2 * third) + '\n>\n> > Thanks!';
+    let got = null; try { got = (await S.parseIncoming(q)).batch.books[0].title; } catch (e) { got = 'refused'; }
+    eq(got, 'Cien años de soledad', 'a link quoted in a reply, "> " before each line, opens');
+  }
+  // A link that didn't come through whole says so, with what to do; a link that came through but holds no books doesn't.
+  {
+    const whole = 'This link from Claude didn’t come through whole, so nothing was added. Copy Claude’s whole message and paste it here, or open the file Claude gave you.';
+    const why = async t => { try { await S.parseIncoming(t); return 'opened'; } catch (e) { return e.say ? e.message : 'refused'; } };
+    const changed = z.slice(0, 20) + (z[20] === 'A' ? 'B' : 'A') + z.slice(21);
+    eq([await why(link.slice(0, link.length - 9)), await why('Link: ' + link.slice(0, half) + '\n'), await why('#s1z' + changed), await why('#s1j' + j.slice(0, j.length - 5)), await why('#s1j' + j.slice(0, 7) + j.slice(8))],
+      [whole, whole, whole, whole, whole], 'a link cut short, or with a character changed or lost, says it didn’t come through whole');
+    const none = zlib.deflateRawSync(Buffer.from(JSON.stringify({ shelfmark: 1, batch: { books: [] } }))).toString('base64url');
+    eq(await why('#s1z' + none), 'refused', 'a whole link with no books in it is refused like other bad input');
+  }
+  // Claude's whole reply pasted, as a phone copies a message: the JSON in a code block, with words around it.
+  const said = async t => { try { const r = await S.parseIncoming(t); return r.kind === 'details' ? 'details: ' + r.details.books.map(b => b.title).join(', ') : r.batch.books.map(b => b.title).join(', '); } catch (e) { return 'refused'; } };
+  const det = JSON.stringify({ shelfmark: 1, details: { books: [{ id: 'b1', title: 'Walden', kind: 'nonfiction' }] } }, null, 1);
+  const pretty = JSON.stringify(JSON.parse(json), null, 2);
+  for (const [text, want, what] of [
+    ['```json\n' + pretty + '\n```', 'Cien años de soledad', 'JSON in a ```json code block'],
+    ['```\n' + pretty + '\n```', 'Cien años de soledad', 'JSON in a plain code block'],
+    ['Here are the 3 books from your hall shelf:\n\n```json\r\n' + pretty + '\r\n```\n\nPaste this into Shelfmark (Import › paste box).', 'Cien años de soledad', 'a line before the code block and one after'],
+    ['Here you go: ' + json, 'Cien años de soledad', '"Here you go:" and the JSON'],
+    ['Here you go: ' + json + ' Let me know if any are wrong.', 'Cien años de soledad', 'and with words after it too'],
+    ['The books: [{"title": "Walden"}, {"title": "Emma"}]', 'Walden, Emma', 'a bare list of books after a line of text'],
+    ['Reading details for your library:\n```json\n' + det + '\n```', 'details: Walden', 'reading details in a code block'],
+    ['Sorry, I can’t read {the spine} on the left, or [the one] beside it.', 'refused', 'words with braces in them, and no books'],
+    ['```json\n{"books": [{"title": "Unfinished"\n```', 'refused', 'a code block cut short'],
+  ]) eq(await said(text), want, 'a pasted reply opens: ' + what);
+  // A plain list from any Claude chat, without the skill: a title and author a line, opened in the review screen.
+  {
+    const reply = 'Here are the books I can see on your shelf, left to right:\n\n' +
+      '1. **Middlemarch** by George Eliot\n' +
+      '2. *Jane Eyre* by Charlotte Brontë (check: glare over the author)\n' +
+      '3. Stand by Your Lighthouse by Mira Example\n' +
+      '4. Walden — Henry David Thoreau\n' +
+      '5. The Odyssey by Homer (translated by Samuel Butler)\n' +
+      '6. “The Twin Lamps” by Ada Example and Ben Sample (1871)\n' +
+      '7. The Quiet Garden by Ada and Ben Example\n' +
+      '8. **Moby-Dick** by Herman Melville — a whaling voyage told by Ishmael\n' +
+      '9. The Lost Almanac by Unknown\n\n' +
+      'I couldn’t read the thin black spine third from the right, sorry by the way.\nLet me know if you’d like them sorted by author.';
+    const r = await S.parseIncoming(reply);
+    eq([r.kind, r.batch.name], ['batch', 'A pasted list'], 'a pasted list of books opens as a batch');
+    eq(r.batch.books.map(b => [b.title, b.authors || []]), [['Middlemarch', ['George Eliot']], ['Jane Eyre', ['Charlotte Brontë']], ['Stand by Your Lighthouse', ['Mira Example']], ['Walden', ['Henry David Thoreau']],
+      ['The Odyssey', ['Homer', 'Samuel Butler']], ['The Twin Lamps', ['Ada Example', 'Ben Sample']], ['The Quiet Garden', ['Ada and Ben Example']], ['Moby-Dick', ['Herman Melville']], ['The Lost Almanac', []]],
+      'a pasted list: only the numbered lines, markdown and quotes off, the last " by " before a dash, words after the author left out, two authors joined by "and"');
+    eq([r.batch.books[1].check, r.batch.books[4].notes, r.batch.books[5].year], ['glare over the author', 'Translated by Samuel Butler', undefined], 'and (check: …) is what to check, a translator goes in the notes, and a year in brackets is left out');
+    eq((await S.parseIncoming(reply)).batch.id, r.batch.id, 'the same list pasted twice is the same batch, so the second time says so');
+    const titlesOf = async t => { try { return (await S.parseIncoming(t)).batch.books.map(b => b.title + ' / ' + (b.authors || []).join(' & ')).join('; '); } catch (e) { return 'refused'; } };
+    for (const [text, want, what] of [
+      ['Middlemarch by George Eliot\nWalden – Henry David Thoreau\r\n', 'Middlemarch / George Eliot; Walden / Henry David Thoreau', 'two lines with no numbers'],
+      ['- Middlemarch by George Eliot\n• Emma by Jane Austen\n', 'Middlemarch / George Eliot; Emma / Jane Austen', 'bulleted lines'],
+      ['Middlemarch by George Eliot', 'refused', 'one book is not a list'],
+      ['I can see these on the shelf, sorted by colour.\nLet me know if you want them listed by author.', 'refused', 'sentences with "by" in them'],
+      ['Top shelf:\n1. Middlemarch — George Eliot\n2. Emma — Jane Austen\nBottom shelf: lots by Dickens\n', 'Middlemarch / George Eliot; Emma / Jane Austen', 'a heading with "by" in it, beside a numbered list'],
+      ['1. Middlemarch by George Eliot\n2. Emma by Jane Austen\n```json\n{"books": [{"title": "Walden"}]}\n```', 'Walden / ', 'Claude\'s JSON in the same reply wins over its list'],
+      ['1. Emma by Jane Austen, 1815\n2. Walden by Henry David Thoreau, 1st edition', 'Emma / Jane Austen; Walden / Henry David Thoreau', 'a year or an edition after a comma isn\'t an author'],
+      // JSON from Claude with a slip in it doesn't read, and is refused as before, not opened as books named "title".
+      ['Here they are:\n{\n  "shelfmark": 1,\n  "batch": {\n    "books": [\n      {"title": "Death by Black Hole", "authors": ["Neil deGrasse Tyson"]},\n      {"title": "Emma", "authors": ["Jane Austen"]},\n    ]\n  }\n}', 'refused', 'JSON with a comma too many'],
+      ['```json\n{\n  "books": [\n    {\n      "title": "Middlemarch",\n      "authors": ["George Eliot"],\n      "publisher": "Penguin",\n      "year": 1871,\n    },\n  ]\n}\n```', 'refused', 'JSON a key a line, with a comma too many'],
+    ]) eq(await titlesOf(text), want, 'a pasted list: ' + what);
+  }
   let threw = false; try { await S.parseIncoming('{"books": []}'); } catch (e) { threw = true; } check(threw, 'an empty batch is refused');
   threw = false; try { await S.parseIncoming('hello'); } catch (e) { threw = true; } check(threw, 'plain text is refused');
   // A spreadsheet export can't be read here; it's refused with a word on what to do instead.
@@ -352,7 +1235,7 @@ function randomDoc(r, n) {
   eq(await sheetSaid('"Book Id","Title","Primary Author"\n"101","The Hobbit","Tolkien, J. R. R."'), hint, 'and so does a LibraryThing one');
   eq(await sheetSaid('��B\u0000o\u0000o\u0000k\u0000 \u0000I\u0000d\u0000\t\u0000T\u0000i\u0000t\u0000l\u0000e\u0000\r\u0000\n\u0000'), hint, 'and LibraryThing\'s UTF-16 one, read as UTF-8');
   eq(await sheetSaid(S.toCsv(S.cleanDoc({ books: [{ id: 'a', t: 1, title: 'T' }] }))), hint, 'and Shelfmark\'s own spreadsheet');
-  eq(await sheetSaid('Title\tAuthor\nDune\tFrank Herbert'), hint, 'and cells copied from a spreadsheet');
+  eq(await sheetSaid('Title\tAuthor\nThe Time Machine\tH. G. Wells'), hint, 'and cells copied from a spreadsheet');
   eq(await sheetSaid('The title of my favourite book, I forget'), 'refused', 'plain text that mentions a title is refused as before');
 
   // The skill's script and the page must agree on the link format.
@@ -376,6 +1259,14 @@ function randomDoc(r, n) {
       eq(got.books.map(b => b.title), ['Middlemarch', 'Beloved', 'The Hobbit', 'A Kindle book'], 'the script’s link opens with every usable book, in order');
       eq(got.books[0], { title: 'Middlemarch', authors: ['George Eliot'], isbn: '9780141439549', year: 1994, format: 'paperback', status: 'read', condition: 'very-good' }, 'the script maps words onto Shelfmark’s fields');
       check(!got.books[1].isbn && /glare on the spine; ISBN read as 9780140449137 fails its check digit/.test(got.books[1].check), 'a misread ISBN is dropped and flagged, not guessed');
+      // A long note of Claude's is shortened to leave room for that line: Shelfmark keeps 300 characters (in UTF-16).
+      const noteIn = path.join(tmp, 'note.json'), noteDir = fs.mkdtempSync(path.join(tmp, 'note-')), isbnSaid = 'ISBN read as 9780140449137 fails its check digit, so it was left off';
+      const notes = ['😀'.repeat(150), 'The spine is faded and the lower half is hidden by a bookend, so the title could be any of three. '.repeat(3), 'Short note.'];
+      fs.writeFileSync(noteIn, JSON.stringify({ books: notes.map(n => ({ title: 'T', isbn: '9780140449137', unsure: n })) }));
+      execFileSync('python3', [py, noteIn, '--out', noteDir, '--no-link'], { encoding: 'utf8' });
+      const noted = (await S.parseIncoming(fs.readFileSync(path.join(noteDir, fs.readdirSync(noteDir)[0]), 'utf8'))).batch.books.map(b => b.check);
+      check(noted.every(c => c.endsWith('; ' + isbnSaid) && c.length <= 300), 'a long note to check keeps the line saying the ISBN was left off' + '\n    got ' + JSON.stringify(noted.map(c => c.slice(-80))));
+      eq([noted[0].startsWith('😀😀') && noted[0].includes('😀…; ISBN'), noted[1].startsWith('The spine is faded') && /\w…; ISBN/.test(noted[1]), noted[2]], [true, true, 'Short note.; ' + isbnSaid], 'and keeps the start of the note, cut at a whole character, with an ellipsis');
       eq(got.books[2].loan, { to: 'Sam', since: '2026-09-01' }, 'loans come through');
       eq([got.books[2].isbn, got.books[2].check], ['9780618260300', undefined], 'the script keeps the first valid ISBN from a list, as LibraryThing gives them');
       eq([got.books[3].isbn, got.books[3].check], [undefined, undefined], 'and takes an empty Goodreads cell for no ISBN, without a flag');
@@ -384,6 +1275,91 @@ function randomDoc(r, n) {
       const file = fs.readdirSync(tmp).find(f => f.endsWith('.shelfmark.json'));
       eq((await S.parseIncoming(fs.readFileSync(path.join(tmp, file), 'utf8'))).batch.id, got.id, 'the script’s file opens as the same batch');
       check(/warning: #4: no title/.test(out), 'the script says what it left out');
+      // A finished day: kept for a book that's read, a day with no status says it was read, and a book being read again drops it.
+      const finIn = path.join(tmp, 'fin.json'), finDir = fs.mkdtempSync(path.join(tmp, 'fin-'));
+      fs.writeFileSync(finIn, JSON.stringify({ books: [{ title: 'Emma', status: 'read', finished: '2026-03-14' }, { title: 'Persuasion', finished: '2026-04-01' }, { title: 'Sanditon', status: 'reading', finished: '2025-01-01', aside: 'yes' }] }));
+      execFileSync('python3', [py, finIn, '--out', finDir, '--no-link'], { encoding: 'utf8' });
+      const fins = (await S.parseIncoming(fs.readFileSync(path.join(finDir, fs.readdirSync(finDir)[0]), 'utf8'))).batch.books.map(b => [b.status, b.finished, b.aside]);
+      eq(fins, [['read', '2026-03-14', undefined], ['read', '2026-04-01', undefined], ['reading', undefined, true]], 'the script keeps the day a book was finished, as Shelfmark does, and a book set aside');
+      const wantIn = path.join(tmp, 'want.json'), wantDir = fs.mkdtempSync(path.join(tmp, 'want-'));
+      fs.writeFileSync(wantIn, JSON.stringify({ name: 'Bookshop table', wanted: 'yes', books: [{ title: 'Circe' }, { title: 'Hamnet' }] }));
+      execFileSync('python3', [py, wantIn, '--out', wantDir, '--no-link'], { encoding: 'utf8' });
+      eq((await S.parseIncoming(fs.readFileSync(path.join(wantDir, fs.readdirSync(wantDir)[0]), 'utf8'))).batch.books.map(b => b.wanted), [true, true], 'a batch of books wanted, from the script, puts every one on the wishlist');
+      // Text longer than Shelfmark keeps, and authors or tags past its limits, are cut or dropped with a warning, so the
+      // end of a long review isn't lost unseen.
+      const longIn = path.join(tmp, 'long.json'), longDir = fs.mkdtempSync(path.join(tmp, 'long-'));
+      fs.writeFileSync(longIn, JSON.stringify({ books: [
+        { title: 'Middlemarch', authors: ['George Eliot'], notes: 'A study of provincial life. '.repeat(225), blurb: 'A town, a marriage. '.repeat(17) },
+        { title: 'Collected ' + 'Tales '.repeat(60), authors: Array.from({ length: 15 }, (_, i) => 'Writer ' + (i + 1)), tags: Array.from({ length: 24 }, (_, i) => 'tag ' + (i + 1)) },
+        { title: 'Emma', authors: ['Jane Austen'], notes: 'n'.repeat(4000), blurb: 'b'.repeat(300), tags: Array.from({ length: 20 }, (_, i) => 'tag ' + i) }] }));
+      const longSaid = execFileSync('python3', [py, longIn, '--out', longDir, '--no-link'], { encoding: 'utf8' });
+      const longWarn = longSaid.split('\n').filter(l => l.startsWith('warning: ')).map(l => l.slice(9));
+      eq(longWarn, ['“Middlemarch”: notes are 6,299 characters; Shelfmark keeps 4,000', '“Middlemarch”: the blurb is 339 characters; Shelfmark keeps 300',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: the title is 369 characters; Shelfmark keeps 300',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: 15 authors; Shelfmark keeps the first 12',
+        '“Collected Tales Tales Tales Tales Tales Tales Tales Tales…”: 24 tags; Shelfmark keeps the first 20'], 'the script says what it cut or dropped, and nothing at the limits');
+
+      // The script reads numbers, yes/no and lists the way the page does: each book it writes is the page's own reading
+      // of the same input.
+      const odd = [
+        { title: 'Two Authors', authors: 'Neil Gaiman, Terry Pratchett', pages: '1,024', rating: 4.5, tags: 'classics; fantasy', signed: 'yes', first: 'no' },
+        { title: 'Reprint', authors: 'Ann Lee and Bo Chen', year: '2nd ed. 1999', pages: '2 vols, 880', rating: 2.5, signed: 'false', first: 1, moods: 'funny; tense', genres: 'History; Science' },
+        { title: 'Copyright Line', authors: 'Kurt Vonnegut, Jr. & Ann Lee', year: '©1951, 1979', rating: '3.5', signed: 1, first: 'TRUE', tags: ['a'.repeat(45), 'Arts & crafts'], pages: 312.5 },
+        { title: 'Range', authors: ['Leo Tolstoy'], year: '1865–69', pages: '1 225', rating: '4 stars', signed: 0, first: 'No', tags: 'war, Russia; War' },
+      ];
+      const sorted = o => Object.fromEntries(Object.keys(o).sort().map(k => [k, o[k]]));
+      const oddIn = path.join(tmp, 'odd.json'), oddDir = fs.mkdtempSync(path.join(tmp, 'odd-'));
+      fs.writeFileSync(oddIn, JSON.stringify({ books: odd }));
+      const oddSaid = execFileSync('python3', [py, oddIn, '--out', oddDir, '--no-link'], { encoding: 'utf8' });
+      const oddOut = JSON.parse(fs.readFileSync(path.join(oddDir, fs.readdirSync(oddDir)[0]), 'utf8')).batch.books;
+      odd.forEach((x, i) => { const c = S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 })); delete c.id; delete c.t; eq(sorted(oddOut[i]), sorted(c), 'the script reads “' + x.title + '” as the page does'); });
+      check(!/isn’t one Shelfmark knows/.test(oddSaid), 'moods and genres split on semicolons are known words to the script');
+      // And cuts text at the same place: in UTF-16 units, as the page counts, never inside an emoji, and with no space left.
+      const edge = [{ title: 'a'.repeat(299) + ' b', authors: ['X', '', 'Jr'], notes: 'n'.repeat(3999) + '\n\nb', tags: ['constructor', 'b'.repeat(39) + ' c'] },
+        { title: 'a'.repeat(298) + '😀😀', authors: 'Kurt Vonnegut, , Jr.', notes: 42, shelf: '\ufeffTop\ufeff' }, { title: '\ufeff' }, { title: 'T', authors: ['é'.repeat(119) + '😀'] }];
+      const edgeIn = path.join(tmp, 'edge.json'), edgeDir = fs.mkdtempSync(path.join(tmp, 'edge-'));
+      fs.writeFileSync(edgeIn, JSON.stringify({ books: edge }));
+      execFileSync('python3', [py, edgeIn, '--out', edgeDir, '--no-link'], { encoding: 'utf8' });
+      const edgeOut = JSON.parse(fs.readFileSync(path.join(edgeDir, fs.readdirSync(edgeDir)[0]), 'utf8')).batch.books;
+      const edgePage = edge.map(x => S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 }))).filter(Boolean).map(c => { delete c.id; delete c.t; return sorted(c); });
+      eq(edgeOut.map(sorted), edgePage, 'the script cuts and splits text where the page does');
+      // And reads days where the page does: as YYYY-MM-DD, trimmed, and only a day that's on the calendar.
+      const days = ['2026-02-30', '2026-13-45', '20260101', ' 2026-01-01 ', '2024-02-29', '2025-02-29', '0000-01-01', '2026-01-01T10:00', '2026-W01-1', '٢٠٢٦-٠١-٠١'];
+      const dateIn = path.join(tmp, 'dates.json'), dateDir = fs.mkdtempSync(path.join(tmp, 'dates-'));
+      const dated = days.map((d, i) => ({ title: 'Day ' + i, added: d, status: 'read', finished: d, loan: { to: 'Sam', since: d } }));
+      fs.writeFileSync(dateIn, JSON.stringify({ books: dated }));
+      const dateSaid = execFileSync('python3', [py, dateIn, '--out', dateDir, '--no-link'], { encoding: 'utf8' });
+      const dateOut = JSON.parse(fs.readFileSync(path.join(dateDir, fs.readdirSync(dateDir)[0]), 'utf8')).batch.books;
+      eq(dateOut.map(b => [b.added, b.finished, b.loan.since]), dated.map(x => { const c = S.cleanBook(Object.assign({}, x, { id: 'n', t: 0 })); return [c.added, c.finished, c.loan.since]; }), 'the script reads days as the page does');
+      eq(dateOut.map(b => b.added), [undefined, undefined, undefined, '2026-01-01', '2024-02-29', undefined, undefined, undefined, undefined, undefined], 'and keeps only days on the calendar, as YYYY-MM-DD');
+      eq((dateSaid.match(/^warning: “Day 0”: .*$/gm) || []), ['warning: “Day 0”: finished “2026-02-30” isn’t a day as YYYY-MM-DD; left off', 'warning: “Day 0”: lent since “2026-02-30” isn’t a day as YYYY-MM-DD; left off', 'warning: “Day 0”: added “2026-02-30” isn’t a day as YYYY-MM-DD; left off'], 'and says which days it left off');
+      const oddDet = path.join(tmp, 'odd-details.json');
+      fs.writeFileSync(oddDet, JSON.stringify({ books: [{ id: 'b1', title: 'Reprint', sub: ' Volume  II ', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] }));
+      const oddDetOut = JSON.parse(fs.readFileSync(/File: (\S+)/.exec(execFileSync('python3', [py, oddDet, '--details', '--out', oddDir, '--no-link'], { encoding: 'utf8' }))[1], 'utf8')).details.books;
+      // The script finds the same book twice where the page does: it files and looks for each book under the same keys.
+      const pairs = [
+        { title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle', sub: 'Second Dark', authors: ['Ada Quill'] },
+        { title: 'Tidewater: Volume Four', authors: ['Ben Marsh'] }, { title: 'Annals of Ostrava', sub: 'Volume II: The Wars', authors: ['Cy Dorn'] },
+        { title: 'The Hobbit: or There and Back Again', authors: ['J. R. R. Tolkien'], isbn: '0-261-10221-4' }, { title: 'A Hobbit', authors: 'J.R.R. Tolkien' },
+        { title: 'A Made-Up Novel', authors: ['Otto Pell, Jr.'] }, { title: 'An Invented Shore', authors: ['Nina van der Berg'] },
+        { title: 'Les Misérables: Fantine', authors: ['Victor Hugo'] }, { title: 'Les Miserables', sub: 'Cosette', authors: ['Victor Hugo'] },
+        { title: 'Война и мир', authors: ['Лев Толстой'] }, { title: 'Анна Каренина: Часть 1', authors: ['Лев Толстой'] }, { title: '红楼梦', authors: ['曹雪芹'] },
+        { title: '  An   Odd: Title, 2nd ed. ', sub: 'Ignored', authors: ['Ann Lee, PhD'] }, { title: 'Ivanhoe', authors: ['Sir Walter Scott, III'] },
+        { title: 'Smørrebrød & Co.: 1001 Recipes', authors: ['Kari Ødegård'], isbn: '9780140449137' }, { title: 'De Profundis', authors: ['Hal de Vries'] }, { title: 'Untitled' }
+      ];
+      const pairsIn = path.join(tmp, 'pairs.json');
+      fs.writeFileSync(pairsIn, JSON.stringify(pairs));
+      const pyKeys = JSON.parse(execFileSync('python3', ['-c', 'import json, sys, importlib.util as u\ns = u.spec_from_file_location("m", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n' +
+        'print(json.dumps([m.keys(m.clean(b, i, [])) for i, b in enumerate(json.load(open(sys.argv[2], encoding="utf-8")))]))', py, pairsIn], { encoding: 'utf8' }));
+      eq(pyKeys, pairs.map(b => { const c = S.cleanBook(Object.assign({ id: 'n' }, b)); return [S.indexKeys(c), S.lookupKeys(c)]; }), 'the script files and looks for each book under the keys the page does');
+      // So it no longer warns of doubles for the volumes of a set, and still does for a book read twice.
+      const volsIn = path.join(tmp, 'vols.json'), volsDir = fs.mkdtempSync(path.join(tmp, 'vols-'));
+      fs.writeFileSync(volsIn, JSON.stringify({ books: [{ title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] }, { title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] },
+        { title: 'Annals of Ostrava', sub: 'Volume I', authors: ['Cy Dorn'] }, { title: 'Annals of Ostrava', sub: 'Volume II', authors: ['Cy Dorn'] }, { title: 'Tidewater: Volume One', authors: ['Ben Marsh'] },
+        { title: 'Tidewater: Volume Two', authors: ['Ben Marsh'] }, { title: 'Middlemarch', authors: ['George Eliot'] }, { title: 'Middlemarch: A Study of Provincial Life', authors: ['George Eliot'] }] }));
+      const volsSaid = execFileSync('python3', [py, volsIn, '--out', volsDir, '--no-link'], { encoding: 'utf8' });
+      eq(volsSaid.match(/“[^”]*” appears twice/g), ['“Middlemarch: A Study of Provincial Life” appears twice'], 'the script warns of a book read twice, and not of the volumes of a set');
+      eq(oddDetOut.map(sorted), S.cleanDetails({ details: { books: [{ id: 'b1', title: 'Reprint', sub: ' Volume  II ', authors: 'Ann Lee, Bo Chen', moods: 'funny; tense', genres: 'History; Science', pages: '1,024' }] } }).books.map(sorted), 'and its reading details as the page does');
 
       // More books than Shelfmark takes at once: numbered files of up to 3,000, each a batch of its own.
       const bigIn = path.join(tmp, 'big.json'), bigOut = path.join(tmp, 'big');
@@ -398,6 +1374,51 @@ function randomDoc(r, n) {
       eq([parts[1].books[0].title, parts[2].books[0].title], ['Book 3001', 'Book 6001'], 'the parts keep the list in order');
       check(/Shelfmark takes 3,000 books at a time, so these are in 3 numbered files/.test(said) && /File 3 of 3 \(1 book\): /.test(said) && !/Link:/.test(said), 'the script says so, and hands over the files without a link');
 
+      // A link too long to copy safely (over 8,000 characters, RFC 9110 §4.1) comes as numbered links of up to 50 books,
+      // each a batch of its own that opens its own review; the file stays whole. Notes of random letters keep the links
+      // from compressing to nothing.
+      {
+        const r = rng(11), words = n => Array.from({ length: n }, () => 'abcdefghijklmnopqrstuvwxyz '[Math.floor(r() * 27)]).join('');
+        const longIn = path.join(tmp, 'longlink.json'), longOut = fs.mkdtempSync(path.join(tmp, 'longlink-'));
+        fs.writeFileSync(longIn, JSON.stringify({ name: 'Tall bookcase', room: 'Den', shelf: 'Top', books: Array.from({ length: 120 }, (_, i) => ({ title: 'Book ' + (i + 1), authors: ['Ann Lee'], notes: words(100) })) }));
+        const said = execFileSync('python3', [py, longIn, '--out', longOut], { encoding: 'utf8' });
+        const links = [...said.matchAll(/^Link (\d+) of (\d+) \(([\d,]+) books?, ([\d,]+) characters\): (\S+)$/gm)];
+        check(!/^Link: /m.test(said) && /too long to copy safely, so here it is as 3 links of up to 50 books each/.test(said), 'a link too long to copy safely says so, and comes as numbered links: ' + said.slice(-300));
+        eq(links.map(m => [+m[1], +m[2], +m[3]]), [[1, 3, 50], [2, 3, 50], [3, 3, 20]], 'of up to 50 books each, numbered');
+        check(links.every(m => m[5].length <= 8000 && +m[4].replace(/,/g, '') === m[5].length), 'each link is 8,000 characters or fewer, and says how long it is');
+        const parts = [];
+        for (const m of links) parts.push((await S.parseIncoming(m[5])).batch);
+        eq(parts.map(p => [p.name, p.room, p.shelf, p.books.length]), [['Tall bookcase (1 of 3)', 'Den', 'Top', 50], ['Tall bookcase (2 of 3)', 'Den', 'Top', 50], ['Tall bookcase (3 of 3)', 'Den', 'Top', 20]], 'each link opens as a batch of its own, named for its part, with the batch\'s room and shelf');
+        eq(parts.flatMap(p => p.books.map(b => b.title)), Array.from({ length: 120 }, (_, i) => 'Book ' + (i + 1)), 'and together they hold every book once, in order');
+        eq(new Set(parts.map(p => p.id)).size, 3, 'each with an id of its own, so opening one twice says so');
+        const whole = (await S.parseIncoming(fs.readFileSync(path.join(longOut, fs.readdirSync(longOut)[0]), 'utf8'))).batch;
+        eq([fs.readdirSync(longOut).length, whole.books.length], [1, 120], 'the file stays whole');
+        // Reading details the same way, and over 3,000 entries as numbered files instead of stopping.
+        const detLong = path.join(tmp, 'detlong.json'), detOut = fs.mkdtempSync(path.join(tmp, 'detlong-'));
+        fs.writeFileSync(detLong, JSON.stringify({ name: 'Reading details', books: Array.from({ length: 130 }, (_, i) => ({ id: 'b' + i, title: 'Book ' + i, kind: 'fiction', blurb: words(120) })) }));
+        const detSaid2 = execFileSync('python3', [py, detLong, '--details', '--out', detOut], { encoding: 'utf8' });
+        const dl = [...detSaid2.matchAll(/^Link (\d+) of (\d+) \(([\d,]+) books?, [\d,]+ characters\): (\S+)$/gm)];
+        const dparts = [];
+        for (const m of dl) dparts.push((await S.parseIncoming(m[4])).details);
+        eq(dparts.map(d => [d.name, d.books.length]), [['Reading details (1 of 3)', 50], ['Reading details (2 of 3)', 50], ['Reading details (3 of 3)', 30]], 'reading details too long for one link come as numbered links of their own');
+        const detBig = path.join(tmp, 'detbig.json'), detBigOut = fs.mkdtempSync(path.join(tmp, 'detbig-'));
+        fs.writeFileSync(detBig, JSON.stringify({ name: 'Reading details', books: Array.from({ length: 3001 }, (_, i) => ({ id: 'b' + i, title: 'Book ' + i, kind: 'fiction' })) }));
+        const bigSaid = execFileSync('python3', [py, detBig, '--details', '--out', detBigOut], { encoding: 'utf8' });
+        const dfiles = fs.readdirSync(detBigOut).sort(), dbig = [];
+        for (const f of dfiles) dbig.push((await S.parseIncoming(fs.readFileSync(path.join(detBigOut, f), 'utf8'))).details);
+        eq(dbig.map(d => [d.name, d.books.length, d.more]), [['Reading details (1 of 2)', 3000, 0], ['Reading details (2 of 2)', 1, 0]], 'reading details for over 3,000 books come as numbered files, not an error');
+        check(/File 2 of 2 \(1 entry\): /.test(bigSaid) && !/Link/.test(bigSaid) && new Set(dbig.map(d => d.id)).size === 2, 'each with an id of its own, and no link: ' + bigSaid.slice(-200));
+        // Past 20 links it's the file only, and so it is when one book alone makes a link too long.
+        const manyIn = path.join(tmp, 'many.json'), manyOut = fs.mkdtempSync(path.join(tmp, 'many-'));
+        fs.writeFileSync(manyIn, JSON.stringify({ books: Array.from({ length: 1001 }, (_, i) => ({ title: 'Book ' + (i + 1), notes: words(60) })) }));
+        check(/21 links would be too many to tap one by one\. Hand over the file instead\./.test(execFileSync('python3', [py, manyIn, '--out', manyOut], { encoding: 'utf8' })), 'more than 20 links: the file instead');
+        const han = () => String.fromCodePoint(0x4e00 + Math.floor(r() * 20000));
+        const oneIn = path.join(tmp, 'one.json'), oneOut = fs.mkdtempSync(path.join(tmp, 'one-'));
+        fs.writeFileSync(oneIn, JSON.stringify({ books: [{ title: 'Short' }, { title: 'Long notes', notes: Array.from({ length: 4000 }, han).join('') }] }));
+        const oneSaid = execFileSync('python3', [py, oneIn, '--out', oneOut], { encoding: 'utf8' });
+        check(/one book alone makes a link of [\d,]+ characters\. Hand over the file instead\./.test(oneSaid) && !/^Link/m.test(oneSaid), 'a book that alone makes a link too long: the file instead: ' + oneSaid.slice(-200));
+      }
+
       // Exports from Goodreads and LibraryThing, read by the script itself, the way they come: a byte-order mark,
       // CRLF line ends, quoted line breaks and a short row; LibraryThing's tab-separated file in UTF-16.
       const cellq = v => /[",\r\n\t]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
@@ -405,22 +1426,29 @@ function randomDoc(r, n) {
       const GR = ['Book Id', 'Title', 'Author', 'Author l-f', 'Additional Authors', 'ISBN', 'ISBN13', 'My Rating', 'Average Rating', 'Publisher', 'Binding', 'Number of Pages', 'Year Published',
         'Original Publication Year', 'Date Read', 'Date Added', 'Bookshelves', 'Bookshelves with positions', 'Exclusive Shelf', 'My Review', 'Spoiler', 'Private Notes', 'Read Count', 'Owned Copies'];
       const LT = ['Book Id', 'Title', 'Sort Character', 'Primary Author', 'Primary Author Role', 'Secondary Author', 'Secondary Author Roles', 'Publication', 'Date', 'Review', 'Rating',
-        'Comment', 'Private Comment', 'Summary', 'Media', 'Physical Description', 'Page Count', 'Tags', 'Collections', 'ISBN', 'ISBNs'];
+        'Comment', 'Private Comment', 'Summary', 'Media', 'Physical Description', 'Page Count', 'Acquired', 'Date Started', 'Date Read', 'Tags', 'Collections', 'ISBN', 'ISBNs', 'Entry Date',
+        'Lending Patron', 'Lending Status', 'Lending Start', 'Lending End'];
       const row = (cols, o) => cols.map(h => o[h] == null ? '' : String(o[h]));
       const grIn = path.join(tmp, 'goodreads_library_export.csv'), ltIn = path.join(tmp, 'librarything_export.tsv');
       fs.writeFileSync(grIn, '﻿' + table([GR,
-        row(GR, { Title: 'The Name of the Wind (The Kingkiller Chronicle, #1)', Author: 'Patrick Rothfuss', ISBN: '="075640407X"', ISBN13: '="9780756404079"', 'My Rating': 5, 'Exclusive Shelf': 'read',
-          Bookshelves: 'fantasy, read', 'My Review': 'Wow.<br/><br/>Kvothe, "the" Arcane.\nSecond line', 'Private Notes': 'Lent to Sam once', 'Owned Copies': 1 }),
-        row(GR, { Title: 'Mort (Discworld, #4; Death, #1)', Author: 'Terry Pratchett', ISBN: '=""', ISBN13: '=""', 'My Rating': 0, 'Exclusive Shelf': 'currently-reading', Bookshelves: 'currently-reading, humor', 'Owned Copies': 0 }),
-        row(GR, { Title: 'Wishful Thinking (Some Series, #2)', Author: 'Ann Wish', ISBN: '=""', ISBN13: '=""', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read', 'Owned Copies': 0 }),
-        row(GR, { Title: 'Bought, Not Read Yet', Author: 'Bo Owner', 'Additional Authors': 'Kurt Vonnegut, Jr., Neil Gaiman', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read, classics', 'Owned Copies': 1 }),
+        row(GR, { Title: 'The Name of the Wind (The Kingkiller Chronicle, #1)', Author: 'Patrick Rothfuss', ISBN: '="075640407X"', ISBN13: '="9780756404079"', 'My Rating': 5, 'Exclusive Shelf': 'read', 'Date Read': '2023/04/15',
+          Bookshelves: 'fantasy, read', 'My Review': 'Wow.<br/><br/>Kvothe, "the" Arcane.\nSecond line', 'Private Notes': 'Lent to Sam once', 'Owned Copies': 1, Binding: 'Hardcover', 'Date Added': '2019/06/02' }),
+        row(GR, { Title: 'Mort (Discworld, #4; Death, #1)', Author: 'Terry Pratchett', ISBN: '=""', ISBN13: '=""', 'My Rating': 0, 'Exclusive Shelf': 'currently-reading', Bookshelves: 'currently-reading, humor', 'Owned Copies': 0, Binding: 'Mass Market Paperback' }),
+        row(GR, { Title: 'Wishful Thinking (Some Series, #2)', Author: 'Ann Wish', ISBN: '=""', ISBN13: '=""', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read', 'Owned Copies': 0, Binding: 'Kindle Edition' }),
+        row(GR, { Title: 'Bought, Not Read Yet', Author: 'Bo Owner', 'Additional Authors': 'Kurt Vonnegut, Jr., Neil Gaiman', 'Exclusive Shelf': 'to-read', Bookshelves: 'to-read, classics', 'Owned Copies': 1, Binding: 'Unknown Binding' }),
+        row(GR, { Title: 'A Screen Read', Author: 'Ed Reader', 'Exclusive Shelf': 'read', Binding: 'Kindle Edition', 'Date Added': '2020-01-05' }),
+        row(GR, { Title: 'Heard on a Train', Author: 'Al Listener', 'Exclusive Shelf': 'read', Binding: 'Audible Audio' }),
         ['99', 'A Short Row'],
       ], ','));
       fs.writeFileSync(ltIn, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(table([LT,
-        row(LT, { Title: 'The Hobbit', 'Primary Author': 'Tolkien, J. R. R.', Publication: 'Houghton Mifflin (2002), Paperback, 366 pages', Date: '1937', Rating: '4.5', Comment: 'Read aloud<br>twice',
-          Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300' }),
-        row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading' }),
+        row(LT, { Title: 'The Hobbit', 'Primary Author': 'Tolkien, J. R. R.', Publication: 'Houghton Mifflin (2002), Paperback, 366 pages', Date: '1937', Rating: '4.5', Comment: 'Read aloud<br>twice', 'Date Read': '2024-12-01',
+          Tags: 'fantasy, kids', Collections: 'Your library, Favorites', ISBN: '[0618260307]', ISBNs: '0618260307, 9780618260300', Media: 'Paperback', Acquired: '2015-03-01', 'Entry Date': '2018-07-07',
+          'Lending Patron': 'Sam', 'Lending Status': 'On loan', 'Lending Start': '2026-08-01' }),
+        row(LT, { Title: 'Slaughterhouse-Five', 'Primary Author': 'Vonnegut, Kurt, Jr.', Publication: 'New York : Delacorte, 1969.', Collections: 'Currently reading', Media: 'Hardcover', 'Entry Date': '2016-01-02',
+          'Lending Patron': 'Jo', 'Lending Start': '2025-12-01', 'Lending End': '2026-02-01' }),
+        row(LT, { Title: 'On My Tablet', 'Primary Author': 'Pixel, Ada', Collections: 'Your library', Media: 'Ebook' }),
         row(LT, { Title: 'Le Petit Prince', 'Primary Author': 'Saint-Exupéry, Antoine de', Collections: 'Wishlist' }),
+        row(LT, { Title: 'Walden', 'Primary Author': 'Thoreau, Henry David', Collections: 'Read but unowned', 'Date Read': '2021-05-05' }),
       ], '\t'), 'utf16le')]));
       const imported = async (file, kind, ...more) => {
         const dir = fs.mkdtempSync(path.join(tmp, 'import-'));
@@ -431,20 +1459,46 @@ function randomDoc(r, n) {
       const grOut = await imported(grIn, 'goodreads');
       const byTitle = Object.fromEntries(grOut.batch.books.map(b => [b.title, b]));
       eq(grOut.batch.books.map(b => b.title), ['The Name of the Wind', 'Mort', 'Bought, Not Read Yet', 'A Short Row'], 'a Goodreads import leaves out the to-read shelf with no copy owned, and takes the series off titles');
-      eq(byTitle['The Name of the Wind'], { title: 'The Name of the Wind', authors: ['Patrick Rothfuss'], isbn: '9780756404079', status: 'read', rating: 5, tags: ['fantasy'],
-        notes: 'Wow.\n\nKvothe, "the" Arcane.\nSecond line\n\nLent to Sam once' }, 'its <br/> become line breaks, the review and private notes both kept, and the read shelf is a status, not a tag');
+      eq(byTitle['The Name of the Wind'], { title: 'The Name of the Wind', authors: ['Patrick Rothfuss'], isbn: '9780756404079', format: 'hardcover', status: 'read', rating: 5, finished: '2023-04-15', tags: ['fantasy'],
+        notes: 'Wow.\n\nKvothe, "the" Arcane.\nSecond line\n\nLent to Sam once', added: '2019-06-02' }, 'its <br/> become line breaks, the review and private notes both kept, the read shelf is a status, not a tag, its Date Read is the day it was finished, its Binding its format and its Date Added the day it was added');
+      eq([byTitle.Mort.format, byTitle['Bought, Not Read Yet'].format, byTitle['Bought, Not Read Yet'].added], ['mass-market', undefined, undefined], 'a Goodreads binding Shelfmark doesn\'t know ("Unknown Binding") is no format, and no Date Added is no day');
+      check(!/warning: .*format/.test(grOut.said), 'and says nothing of it');
       eq([byTitle.Mort.status, byTitle.Mort.tags, byTitle.Mort.isbn, byTitle.Mort.check], ['reading', ['humor'], undefined, undefined], 'currently-reading is a status, and empty ="" cells are no ISBN');
       eq([byTitle['Bought, Not Read Yet'].status, byTitle['Bought, Not Read Yet'].tags, byTitle['Bought, Not Read Yet'].authors], [undefined, ['classics'], ['Bo Owner', 'Kurt Vonnegut, Jr.', 'Neil Gaiman']],
         'a to-read book with a copy owned comes in unread, its additional authors whole');
-      check(/Left out: 1 on the to-read shelf with no copy owned\. To add them too, run again with --keep-unowned\./.test(grOut.said), 'the script says how many it left out, and how to add them');
+      check(/Left out: 1 on the to-read shelf with no copy owned, and 2 e-books and audiobooks \(Kindle Edition, Audible Audio and the like\)\. To put the 1 on the to-read shelf on the wishlist, run again with --keep-unowned\. To bring in the e-books and audiobooks, run again with --keep-ebooks\./.test(grOut.said),
+        'the script says how many it left out, the to-read shelf and the e-books and audiobooks, and how to add them: ' + grOut.said);
       const grAll = await imported(grIn, 'goodreads', '--keep-unowned');
-      eq([grAll.batch.books.length, grAll.batch.books[2].title, /Left out/.test(grAll.said)], [5, 'Wishful Thinking', false], 'with --keep-unowned they come in too');
+      eq([grAll.batch.books.length, grAll.batch.books[2].title, grAll.batch.books.map(b => !!b.wanted), /Left out: .*to-read/.test(grAll.said), /On the wishlist: 1 on the to-read shelf/.test(grAll.said)],
+        [5, 'Wishful Thinking', [false, false, true, false, false], false, true], 'with --keep-unowned they come in on the wishlist, and only they do (a Kindle book wanted is wanted)');
+      check(/Left out: 2 e-books and audiobooks \(Kindle Edition, Audible Audio and the like\)\. To bring in the e-books and audiobooks, run again with --keep-ebooks\.$/m.test(grAll.said), 'and the e-books and audiobooks are still left out: ' + grAll.said);
+      const grDig = await imported(grIn, 'goodreads', '--keep-ebooks');
+      eq(grDig.batch.books.filter(b => b.format === 'other').map(b => [b.title, b.edition, b.added]), [['A Screen Read', 'Kindle Edition', '2020-01-05'], ['Heard on a Train', 'Audible Audio', undefined]], 'with --keep-ebooks they come in, the binding as their edition');
+      check(/Left out: 1 on the to-read shelf with no copy owned\. To put them on the wishlist, run again with --keep-unowned\./.test(grDig.said), 'and only the to-read shelf is left out: ' + grDig.said);
+      // "ebook" as a word of its own: a Notebook or a Picturebook binding is on a shelf, an E-book isn't.
+      const grWords = path.join(tmp, 'goodreads_words.csv');
+      fs.writeFileSync(grWords, table([GR, row(GR, { Title: 'A Picture Book', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'Picturebook' }),
+        row(GR, { Title: 'A Blank Book', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'Notebook' }), row(GR, { Title: 'On a Screen', Author: 'Ann Lee', 'Exclusive Shelf': 'read', Binding: 'E-book' })], ','));
+      eq((await imported(grWords, 'goodreads')).batch.books.map(b => b.title), ['A Picture Book', 'A Blank Book'], 'a Notebook or Picturebook binding isn\'t taken for an e-book, and an E-book is');
       const ltOut = await imported(ltIn, 'librarything');
       eq(ltOut.batch.books, [
-        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, rating: 5, tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice' },
-        { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', status: 'reading' },
-      ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist and keeps its own collections out of tags');
-      check(/Left out: 1 in Wishlist or Read but unowned and not in Your library/.test(ltOut.said), 'and says what it left out');
+        { title: 'The Hobbit', authors: ['J. R. R. Tolkien'], isbn: '9780618260300', publisher: 'Houghton Mifflin', year: 1937, format: 'paperback', status: 'read', rating: 5, finished: '2024-12-01', loan: { to: 'Sam', since: '2026-08-01' },
+          tags: ['fantasy', 'kids', 'Favorites'], notes: 'Read aloud\ntwice', added: '2015-03-01' },
+        { title: 'Slaughterhouse-Five', authors: ['Kurt Vonnegut, Jr.'], publisher: 'Delacorte', format: 'hardcover', status: 'reading', added: '2016-01-02' },
+      ], 'a LibraryThing import turns "Last, First" round, leaves out the Wishlist and e-books, keeps its own collections out of tags, a Date Read makes a book read on that day, Media is the format, Acquired (or else Entry Date) the day it was added, and a Lending Patron a loan unless it has come back');
+      check(/Left out: 2 in Wishlist or Read but unowned and not in Your library, and 1 e-book or audiobook \(Ebook, Audiobook and the like\)\. To put the 1 in Wishlist on the wishlist, run again with --keep-unowned\. To bring in the e-books and audiobooks, run again with --keep-ebooks\./.test(ltOut.said), 'and says what it left out, and what --keep-unowned and --keep-ebooks would do: ' + ltOut.said);
+      eq((await imported(ltIn, 'librarything', '--keep-ebooks')).batch.books.filter(b => b.format === 'other').map(b => [b.title, b.edition]), [['On My Tablet', 'Ebook']], 'with --keep-ebooks a LibraryThing e-book comes in');
+      // LibraryThing doesn't document its column names, so others it may use are read too.
+      const ltAlt = path.join(tmp, 'librarything_other.csv'), ALT = ['Title', 'Primary Author', 'Media', 'Date Finished', 'Date Acquired', 'Lent To', 'Lent On', 'Lending Status', 'Collections'];
+      fs.writeFileSync(ltAlt, table([ALT, row(ALT, { Title: 'Alias Book', 'Primary Author': 'Lane, Kim', Media: 'Book > Paper Book > Paperback', 'Date Finished': '2022-02-02', 'Date Acquired': '2020-01-01', 'Lent To': 'Kim', 'Lent On': '2026-07-07', Collections: 'Your library' }),
+        row(ALT, { Title: 'Back Again', 'Primary Author': 'Lee, Ann', Media: 'Paper Book', 'Lent To': 'Lee', 'Lending Status': 'Returned', Collections: 'Your library' })], ','));
+      eq((await imported(ltAlt, 'librarything')).batch.books, [
+        { title: 'Alias Book', authors: ['Kim Lane'], format: 'paperback', status: 'read', finished: '2022-02-02', loan: { to: 'Kim', since: '2026-07-07' }, added: '2020-01-01' },
+        { title: 'Back Again', authors: ['Ann Lee'] }], 'and other names for its columns: Date Finished, Date Acquired, Lent To and Lent On, a lending status that says it came back, and Media as a path');
+      // A book read but never owned (Read but unowned) isn't one to buy: it stays out of the wishlist too.
+      const ltAll = await imported(ltIn, 'librarything', '--keep-unowned');
+      eq(ltAll.batch.books.map(b => [b.title, !!b.wanted]), [['The Hobbit', false], ['Slaughterhouse-Five', false], ['Le Petit Prince', true]], 'and with --keep-unowned, its Wishlist is the wishlist, and Read but unowned stays out');
+      check(/On the wishlist: 1 in Wishlist and not in Your library\./.test(ltAll.said) && /Left out: 1 in Read but unowned/.test(ltAll.said) && !/--keep-unowned/.test(ltAll.said), 'and it says which went where: ' + ltAll.said);
       // The point of it all: imported books are found as books already on the shelves.
       const shelves = S.dupIndex(S.cleanDoc({ books: [{ id: 'w', t: 1, title: 'The Name of the Wind', authors: ['Patrick Rothfuss'] }, { id: 'h', t: 1, title: 'The Hobbit', authors: ['J.R.R. Tolkien'] }] }));
       eq([S.findDup(shelves, byTitle['The Name of the Wind']), S.findDup(shelves, ltOut.batch.books[0])].map(b => b && b.id), ['w', 'h'], 'so imported books match the same books read from the shelves');
@@ -457,38 +1511,180 @@ function randomDoc(r, n) {
         eq(pyList(n), list.map(x => x[0]), 'the script’s ' + n + ' match the page’s');
       const detIn = path.join(tmp, 'details.json');
       fs.writeFileSync(detIn, JSON.stringify({ name: 'Reading details', books: [
-        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Spice, sand and a prophecy.', pages: 612 },
-        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: 'cooking', way: 'browse' },
+        { id: 'b1', title: 'The War of the Worlds', authors: ['H. G. Wells'], kind: 'Fiction', genres: ['science fiction', 'classics'], moods: ['adventurous', 'bogus'], pace: 'medium', chapters: 'medium', way: 'cover to cover', blurb: 'Martians land in Surrey, and nothing stops them.', pages: 612 },
+        { id: 'b2', title: 'The Boston Cooking-School Cook Book', kind: 'nonfiction', genres: 'cooking', way: 'browse', chapters: 'short' },
         { title: 'Nothing to say' }
       ] }));
       const detSaid = execFileSync('python3', [py, detIn, '--details', '--out', tmp], { encoding: 'utf8' });
       const detGot = await S.parseIncoming(/Link: (\S+)/.exec(detSaid)[1]);
       eq(detGot.kind, 'details', 'the script’s details link opens as reading details');
       eq(detGot.details.books, [
-        { id: 'b1', title: 'Dune', authors: ['Frank Herbert'], pages: 612, kind: 'fiction', genres: ['sf', 'classics'], moods: ['adventurous'], pace: 'medium', chapters: 'medium', way: 'through', blurb: 'Spice, sand and a prophecy.' },
-        { id: 'b2', title: 'Salt Fat Acid Heat', kind: 'nonfiction', genres: ['food'], way: 'browse' }
+        { id: 'b1', title: 'The War of the Worlds', authors: ['H. G. Wells'], pages: 612, kind: 'fiction', genres: ['sf', 'classics'], moods: ['adventurous'], pace: 'medium', chapters: 'medium', way: 'through', blurb: 'Martians land in Surrey, and nothing stops them.' },
+        { id: 'b2', title: 'The Boston Cooking-School Cook Book', kind: 'nonfiction', genres: ['food'], way: 'browse' }
       ], 'every detail comes through, with words mapped onto Shelfmark’s');
       check(/mood “bogus” isn’t one Shelfmark knows/.test(detSaid) && /“Nothing to say”: no reading details, left out/.test(detSaid), 'and the script says what it left off');
+      check(/“The Boston Cooking-School Cook Book”: chapters left off, since it’s a book to browse/.test(detSaid), 'including chapters for a book to browse, which SKILL.md says to leave out');
       const withDet = execFileSync('python3', [py, detIn, '--out', tmp, '--no-link'], { encoding: 'utf8' });
       const newBooks = (await S.parseIncoming(fs.readFileSync(path.join(tmp, fs.readdirSync(tmp).find(f => /^reading-details-\d{4}-\d\d-\d\d\.shelfmark\.json$/.test(f))), 'utf8'))).batch.books;
       eq([newBooks[0].genres, newBooks[1].way], [['sf', 'classics'], 'browse'], 'a batch of new books carries reading details too');
       check(/Reading details: 3 books/.test(withDet), 'as an ordinary batch');
+      {
+        // With the library file, the script checks the details against it, as Shelfmark will match them.
+        const libFile = path.join(tmp, 'library.json'), chkIn = path.join(tmp, 'check.json'), chkDir = fs.mkdtempSync(path.join(tmp, 'check-'));
+        const all = { kind: 'fiction', genres: ['classics'], moods: ['funny'], pace: 'medium', chapters: 'short', way: 'through', blurb: 'A matchmaker misreads everyone.' };
+        const libBooks = [{ id: 'l1', title: 'Middlemarch', authors: ['George Eliot'] }, { id: 'l2', title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', genres: ['nature'] },
+          { id: 'l3', title: 'Emma', authors: ['Jane Austen'], pages: 400, ...all }, { id: 'l4', title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'] },
+          { id: 'l5', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'] }, { id: 'l6', title: 'Dracula', authors: ['Bram Stoker'] },
+          { id: 'l7', title: 'Ulysses', authors: ['James Joyce'], wanted: true }, { id: 'l8', del: 1 }, { id: 'l9', title: 'Persuasion', authors: ['Jane Austen'], room: 'Den' },
+          { id: 'l10', title: 'Persuasion', authors: ['Jane Austen'], room: 'Hall' }, { id: 'l11', title: 'Beowulf' }, { id: 'l12', title: 'Frankenstein', authors: ['Mary Shelley'] }].map(b => ({ t: 1, ...b }));
+        const libDoc = { shelfmark: 1, library: { books: Object.fromEntries(libBooks.map(b => [b.id, b])), seen: {} } };
+        fs.writeFileSync(libFile, JSON.stringify(libDoc));
+        fs.writeFileSync(chkIn, JSON.stringify({ name: 'Reading details', books: [
+          { id: 'l2', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'] },
+          { id: 'nope', title: 'Walden', authors: ['Henry David Thoreau'], kind: 'nonfiction', genres: ['nature'], moods: ['reflective'], pages: 352 },
+          { id: 'l3', title: 'Emma', authors: ['Jane Austen'], kind: 'fiction', pages: 474 },
+          { title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' },
+          { title: 'Gilead', authors: ['Marilynne Robinson'], kind: 'fiction' },
+          { title: 'Persuasion', authors: ['Jane Austen'], kind: 'fiction' },
+          { id: 'l6', title: 'Count Dracula', authors: ['Bram Stoker'], moods: ['dark'] },
+        ] }));
+        const chkSaid = execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const chk = (await S.parseIncoming(/Link: (\S+)/.exec(chkSaid)[1])).details;
+        eq(chk.books, [
+          { id: 'l1', title: 'Middlemarch', authors: ['George Eliot'], kind: 'fiction', genres: ['classics'] },
+          { id: 'l2', title: 'Walden', authors: ['Henry David Thoreau'], pages: 352, moods: ['reflective'] },
+          { id: '', title: 'The Lantern Cycle', authors: ['Ada Quill'], pace: 'slow' },
+          { id: '', title: 'Gilead', authors: ['Marilynne Robinson'], kind: 'fiction' },
+          { id: '', title: 'Persuasion', authors: ['Jane Austen'], kind: 'fiction' },
+          { id: 'l6', title: 'Dracula', authors: ['Bram Stoker'], moods: ['dark'] },
+        ], 'ids put right from the title, details the book has taken off, an entry with nothing new left out, one that finds no book kept for Shelfmark to say so, and the library\'s own title and authors');
+        eq(S.matchDetails(S.cleanDoc(libDoc), chk).map(r => r.bs.map(b => b.id).sort()), [['l1'], ['l2'], ['l4', 'l5'], [], ['l10', 'l9'], ['l6']], 'and Shelfmark finds each entry\'s books as the script did');
+        const lines = [
+          'Checked against the library (11 books): 6 of 7 entries found their book.',
+          '  Fixed the id of “Middlemarch”: l2 is “Walden” by Henry David Thoreau; it’s l1',
+          '  Fixed the id of “Walden”: nope isn’t in the library; it’s l2',
+          '  Left out 1 entry whose book already has every detail given (--redo keeps them).',
+          '  Took off the details 1 book already has, from its entry (--redo keeps them).',
+          '2 books in the library have no reading details yet, and aren’t in these details:', '  - Beowulf (id l11)', '  - Frankenstein — Mary Shelley (id l12)',
+          'warning: “Count Dracula”: its id l6 is “Dracula” by Bram Stoker, and no book has its title; kept for that book, so check it’s the right one',
+          'warning: “Gilead” matches no book in the library. If it’s there under another title, give that one’s id and run again; if it hasn’t been added yet, Shelfmark leaves it out until it is, and the link is opened again',
+          'warning: “The Lantern Cycle” matches 2 books: “The Lantern Cycle: First Light” by Ada Quill, “The Lantern Cycle: Second Dark” by Ada Quill. Each gets these details; if they’re for one, give that one’s id and run again'];
+        const missing = lines.filter(l => !chkSaid.split('\n').includes(l));
+        eq(missing, [], 'the script says what it put right, left out and took off, and which books still have no details:\n' + chkSaid);
+        check(!/Persuasion” matches/.test(chkSaid), 'two copies of one book aren’t several books');
+        // Two volumes of a set share the head of their title: a slip between their ids is put right too, and an entry
+        // with the head alone stays with the volume its id names.
+        const volIn = path.join(tmp, 'volumes.json'), headIn = path.join(tmp, 'head.json');
+        fs.writeFileSync(volIn, JSON.stringify({ books: [{ id: 'l5', title: 'The Lantern Cycle: First Light', authors: ['Ada Quill'], pace: 'slow' },
+          { id: 'l4', title: 'The Lantern Cycle: Second Dark', authors: ['Ada Quill'], pace: 'fast' }] }));
+        fs.writeFileSync(headIn, JSON.stringify({ books: [{ id: 'l5', title: 'The Lantern Cycle', authors: ['Ada Quill'], kind: 'fiction' }] }));
+        const volSaid = execFileSync('python3', [py, volIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const headSaid = execFileSync('python3', [py, headIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        eq((await S.parseIncoming(/Link: (\S+)/.exec(volSaid)[1])).details.books.map(e => [e.id, e.title, e.pace]),
+          [['l4', 'The Lantern Cycle: First Light', 'slow'], ['l5', 'The Lantern Cycle: Second Dark', 'fast']], 'a slip between two volumes\' ids is put right: ' + volSaid);
+        check(volSaid.includes('  Fixed the id of “The Lantern Cycle: First Light”: l5 is “The Lantern Cycle: Second Dark” by Ada Quill; it’s l4\n'), 'and it says so: ' + volSaid);
+        eq((await S.parseIncoming(/Link: (\S+)/.exec(headSaid)[1])).details.books.map(e => [e.id, e.title]), [['l5', 'The Lantern Cycle: Second Dark']], 'the head of the title alone stays with its id: ' + headSaid);
+        check(!/Fixed|warning/.test(headSaid), 'and says nothing of it: ' + headSaid);
+        // An id the library file doesn't have, on a title it doesn't have either: kept, for a book added since the file
+        // was saved, with the warning that it matches no book.
+        const newIn = path.join(tmp, 'new.json');
+        fs.writeFileSync(newIn, JSON.stringify({ books: [{ id: 'n1', title: 'Housekeeping', authors: ['Marilynne Robinson'], kind: 'fiction' }] }));
+        const newSaid = execFileSync('python3', [py, newIn, '--details', '--library', libFile, '--out', chkDir], { encoding: 'utf8' });
+        const newDet = (await S.parseIncoming(/Link: (\S+)/.exec(newSaid)[1])).details;
+        eq(newDet.books.map(e => e.id), ['n1'], 'an id no book in the file has is kept when no title replaces it: ' + newSaid);
+        check(/warning: “Housekeeping” matches no book in the library/.test(newSaid), 'and it says so: ' + newSaid);
+        eq(S.matchDetails(S.cleanDoc({ books: { ...libDoc.library.books, n1: { id: 'n1', t: 2, title: 'Housekeeping: A Novel', authors: ['Marilynne Robinson'] } } }), newDet).map(r => r.bs.map(b => b.id)), [['n1']],
+          'so a device that has the book since finds it by that id');
+        // --redo keeps what the books have, for Replace.
+        const redo = (await S.parseIncoming(/Link: (\S+)/.exec(execFileSync('python3', [py, chkIn, '--details', '--library', libFile, '--redo', '--out', chkDir], { encoding: 'utf8' }))[1])).details.books;
+        eq([redo.length, redo[1].kind, redo[2].id], [7, 'nonfiction', 'l3'], 'with --redo, every detail stays');
+        // The library alone: the books with no details yet, and no file.
+        const onlyDir = fs.mkdtempSync(path.join(tmp, 'only-'));
+        const onlySaid = execFileSync('python3', [py, '--details', '--library', libFile, '--out', onlyDir], { encoding: 'utf8' });
+        check(onlySaid.includes('8 books in the library have no reading details yet:\n  - Beowulf (id l11)\n  - Dracula — Bram Stoker (id l6)\n') && !/Ulysses|Emma|Walden/.test(onlySaid) && !fs.readdirSync(onlyDir).length,
+          'the library alone lists the books in the house with no details, in title order, and writes nothing: ' + onlySaid);
+        // Every entry already done: nothing to hand over, and no file.
+        const doneIn = path.join(tmp, 'done.json'), doneDir = fs.mkdtempSync(path.join(tmp, 'done-'));
+        fs.writeFileSync(doneIn, JSON.stringify({ books: [{ id: 'l3', title: 'Emma', kind: 'fiction' }] }));
+        const doneSaid = execFileSync('python3', [py, doneIn, '--details', '--library', libFile, '--out', doneDir], { encoding: 'utf8' });
+        check(/Nothing to hand over/.test(doneSaid) && !/Link/.test(doneSaid) && !fs.readdirSync(doneDir).length, 'when every entry is done already, it says so and makes no link: ' + doneSaid);
+        let why = ''; try { execFileSync('python3', [py, chkIn, '--details', '--library', chkIn, '--out', doneDir], { encoding: 'utf8', stdio: 'pipe' }); } catch (e) { why = String(e.stderr); }
+        check(/isn’t a Shelfmark library file/.test(why), 'a file that isn’t a library is refused: ' + why);
+      }
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     check(!fs.existsSync(tmp), 'the script round trip leaves nothing behind in ' + require('os').tmpdir());
   } else console.log('  (python3 not found; skipped the script round trip)');
 
+  // ---------- the format reference ----------
+  // What Claude reads to write a batch or reading details by hand (the skill's references/shelfmark-format.md) names the
+  // words Shelfmark knows and the limits it keeps, row by row, as cleanBook, cleanBatch and cleanDetails keep them.
+  {
+    const where = 'skill/shelfmark-cataloger/references/shelfmark-format.md', ref = fs.readFileSync(path.join(__dirname, '..', where), 'utf8');
+    const rows = ref.split('\n').filter(l => l.startsWith('| `'));
+    // A table row's words after its first cell, by that cell ('`room`, `shelf`' is in both tables: which says which).
+    const row = (first, which = 0) => { const l = rows.filter(x => x.split('|')[1].trim() === first)[which]; check(!!l, where + ' has a row for ' + first); return l ? l.split('|').slice(2).join('|') : ''; };
+    for (const [field, list] of [['`status`', S.STATUSES], ['`format`', S.FORMATS], ['`condition`', S.CONDITIONS], ['`kind`', S.KINDS], ['`way`', S.WAYS],
+      ['`pace`', S.PACES], ['`chapters`', S.CHAPTERS], ['`moods`', S.MOODS], ['`genres`', S.GENRES]]) {
+      const said = (row(field).match(/`[^`]+`/g) || []).map(x => x.slice(1, -1)), keys = list.map(x => x[0]);
+      const add = keys.filter(k => !said.includes(k)), drop = [...new Set(said.filter(k => !keys.includes(k)))];
+      check(!add.length && !drop.length, where + ', the ' + field + ' row: ' + [add.length ? 'add ' + add.join(', ') : '', drop.length ? 'take out ' + drop.join(', ') + ', which Shelfmark doesn’t know' : ''].filter(Boolean).join('; '));
+    }
+    // What Shelfmark keeps of text, lists and numbers past every limit.
+    const a = n => 'a'.repeat(n), many = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+    const b = S.cleanBook({ id: 'a', title: a(5000), sub: a(5000), authors: many(50, i => 'Author ' + i + a(5000)), publisher: a(5000), edition: a(5000), room: a(5000), shelf: a(5000),
+      loan: { to: a(5000) }, tags: many(50, i => i + a(5000)), notes: a(9000), blurb: a(5000), genres: S.GENRES.map(x => x[0]), moods: S.MOODS.map(x => x[0]), year: 99999, pages: 999999, rating: 99 });
+    const batch = S.cleanBatch({ name: a(500), books: many(S.BATCH_MAX + 5, i => ({ title: 'Book ' + i, unsure: a(5000) })) });
+    const det = S.cleanDetails({ details: { name: a(500), books: many(S.BATCH_MAX + 5, i => ({ id: 'x' + i, title: 'Book ' + i, blurb: a(5000) })) } });
+    const longest = xs => Math.max(...xs.map(x => x.length));
+    const num = s => +s.replace(/,/g, '');
+    // [row, which, what the row says (a pattern for each number), what Shelfmark keeps]
+    for (const [field, which, says, keeps] of [
+      ['`name`', 0, [/Up to ([\d,]+) characters/], [batch.name.length]],
+      ['`books[]`', 0, [/Up to ([\d,]+)/, /takes the first ([\d,]+)/], [batch.books.length, batch.books.length]],
+      ['`title`', 0, [/Up to ([\d,]+) characters/], [b.title.length]],
+      ['`sub`', 0, [/up to ([\d,]+) characters/], [b.sub.length]],
+      ['`authors`', 0, [/up to ([\d,]+), each/, /each up to ([\d,]+) characters/], [b.authors.length, longest(b.authors)]],
+      ['`publisher`, `year`, `pages`', 0, [/publisher up to ([\d,]+) characters/, /year 0–([\d,]+)/, /pages 0–([\d,]+)/], [b.publisher.length, b.year, b.pages]],
+      ['`edition`', 0, [/up to ([\d,]+) characters/], [b.edition.length]],
+      ['`room`, `shelf`', 1, [/up to ([\d,]+) characters each/, /up to ([\d,]+) characters each/], [b.room.length, b.shelf.length]],
+      ['`rating`', 0, [/1–(\d+)/], [b.rating]],
+      ['`loan`', 0, [/borrower up to ([\d,]+) characters/], [b.loan.to.length]],
+      ['`tags`', 0, [/up to ([\d,]+), each/, /each up to ([\d,]+) characters/], [b.tags.length, longest(b.tags)]],
+      ['`notes`', 0, [/up to ([\d,]+) characters/], [b.notes.length]],
+      ['`unsure`', 0, [/up to ([\d,]+) characters/], [batch.books[0].check.length]],
+      ['`genres`', 0, [/Up to ([\d,]+)/], [b.genres.length]],
+      ['`moods`', 0, [/Up to ([\d,]+)/], [b.moods.length]],
+      ['`blurb`', 0, [/Up to ([\d,]+) characters/, /Up to ([\d,]+) characters/], [b.blurb.length, det.books[0].blurb.length]],
+    ]) {
+      const text = row(field, which), said = says.map(re => { const m = re.exec(text); return m ? num(m[1]) : null; });
+      check(JSON.stringify(said) === JSON.stringify(keeps), where + ', the ' + field + ' row says ' + said.join(' and ') + ' where Shelfmark keeps ' + keeps.join(' and '));
+    }
+    // The reading details' entries are counted in their paragraph, not a table.
+    const entries = /Up to ([\d,]+) entries/.exec(ref);
+    check(!!entries && num(entries[1]) === det.books.length && det.more === 5, where + ', the reading details paragraph says up to ' + (entries && entries[1]) + ' entries where Shelfmark takes ' + det.books.length);
+    check(batch.more === 5 && det.name.length === batch.name.length, 'a batch too big says how many more it had, and details names are kept like batch names');
+  }
+
   // ---------- spreadsheet ----------
   const csv = S.toCsv(S.cleanDoc({ books: [
     { id: 'a', t: 1, title: 'Zed, "the" book', authors: ['Amy Zane'], tags: ['x', 'y'], notes: 'line one\nline two', loan: { to: 'Sam', since: '2026-02-03' } },
-    { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true },
-    { id: 'c', t: 1, del: 1 }
+    { id: 'b', t: 1, title: '=HYPERLINK("x")', authors: ['Al Able'], status: 'read', signed: true, finished: '2026-03-14' },
+    { id: 'c', t: 1, del: 1 },
+    { id: 'd', t: 1, title: 'Ulysses', authors: ['Zoe Zed'], status: 'reading', aside: true, wanted: true }
   ] }));
   const lines = csv.replace(/^﻿/, '').split('\r\n');
   check(lines[0].startsWith('title,subtitle,authors,isbn'), 'the spreadsheet has a header row');
   check(lines[1].startsWith('"\'=HYPERLINK(""x"")"'), 'cells that would run as formulas are defused, and books sort by author');
   check(csv.includes('"Zed, ""the"" book"') && csv.includes('"line one\nline two"'), 'commas, quotes and line breaks are quoted');
   check(!csv.includes(',c,'), 'removed books are left out');
+  { const head = lines[0].split(','), cells = lines[1].split(','); eq([cells[head.indexOf('status')], cells[head.indexOf('finished')]], ['Read', '2026-03-14'], 'a read book’s finished day has a column of its own');
+    eq(lines[3].split(',')[head.indexOf('status')], 'Set aside', 'and a book set aside says so');
+    eq([cells[head.indexOf('wanted')], lines[3].split(',')[head.indexOf('wanted')]], ['', 'yes'], 'and so does a book on the wishlist'); }
   eq(S.csvCell('-5'), '-5', 'plain negative numbers are left alone');
+  // OWASP's CSV Injection page (community.owasp.org/attacks/CSV_Injection) lists = + - @, tab, carriage return and line
+  // feed, and their full-width forms, as the starts of a cell to defuse.
+  eq(['- signed on the title page', '-2+3', '-5.5', '＝1+1', '＋1', '－1', '＠SUM(A1)', '\nx', '\tx', '@x'].map(S.csvCell),
+    ["'- signed on the title page", "'-2+3", '-5.5', "'＝1+1", "'＋1", "'－1", "'＠SUM(A1)", '"\'\nx"', "'\tx", "'@x"], 'a cell starting with a dash, a line break or a full-width = + - @ is defused too, a plain number isn’t');
 
   console.log(failed ? `\n${failed} failed, ${passed} passed` : `All ${passed} checks passed`);
   process.exit(failed ? 1 : 0);

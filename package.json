@@ -2,7 +2,7 @@
   "name": "shelfmark",
   "private": true,
   "license": "MIT",
-  "description": "A home library catalog that keeps your books in your browser and your own Google Drive",
+  "description": "A home library catalog that keeps your books in your browser and, if you turn on sync, your own Google Drive",
   "scripts": {
     "test": "node test/library.test.js && node test/e2e.mjs"
   }

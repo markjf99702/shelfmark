@@ -36,14 +36,14 @@ const SAMPLE = [
   ['Gilead', 'Marilynne Robinson', 'Study', 'Desk shelf', { pages: 247, notes: 'Mum says read this one slowly.' }],
   ['The Hobbit', 'J. R. R. Tolkien', 'Bedroom', 'Nightstand', { pages: 310, tags: ['fantasy'] }],
   ['The Count of Monte Cristo', 'Alexandre Dumas', 'Living room', 'By the window', { pages: 1276 }],
-  ['Dune', 'Frank Herbert', 'Study', 'Desk shelf', { pages: 617, tags: ['sf'] }],
+  ['The War of the Worlds', 'H. G. Wells', 'Study', 'Desk shelf', { pages: 287, tags: ['sf'] }],
   ['Moby-Dick', 'Herman Melville', 'Living room', 'By the window', { pages: 635 }],
-  ['Beloved', 'Toni Morrison', 'Living room', 'Tall bookcase', { status: 'read', rating: 5, pages: 324 }],
-  ['Piranesi', 'Susanna Clarke', 'Hall', 'Console table', { status: 'read', rating: 5, pages: 272 }],
-  ['Housekeeping', 'Marilynne Robinson', 'Study', 'Desk shelf', { status: 'read', rating: 5, pages: 219 }],
+  ['Beloved', 'Toni Morrison', 'Living room', 'Tall bookcase', { status: 'read', rating: 5, pages: 324, finished: '2025-11-20' }],
+  ['Piranesi', 'Susanna Clarke', 'Hall', 'Console table', { status: 'read', rating: 5, pages: 272, finished: '2026-09-28' }],
+  ['Housekeeping', 'Marilynne Robinson', 'Study', 'Desk shelf', { status: 'read', rating: 5, pages: 219, finished: '2026-03-08' }],
   ['The Dispossessed', 'Ursula K. Le Guin', 'Study', 'Desk shelf', { pages: 387, tags: ['sf'], loan: { to: 'Sam', since: '2026-10-02' } }],
   ['Cien años de soledad', 'Gabriel García Márquez', 'Living room', 'By the window', { status: 'read', rating: 4, pages: 417 }],
-  ['Pride and Prejudice', 'Jane Austen', 'Bedroom', 'Nightstand', { status: 'read', rating: 4, pages: 279 }],
+  ['Pride and Prejudice', 'Jane Austen', 'Bedroom', 'Nightstand', { status: 'read', rating: 4, pages: 279, finished: '2026-06-02' }],
   ['Never Let Me Go', 'Kazuo Ishiguro', 'Living room', 'Tall bookcase', { status: 'read', rating: 4, pages: 288 }],
   ['The Left Hand of Darkness', 'Ursula K. Le Guin', 'Study', 'Desk shelf', { pages: 304, tags: ['sf'] }],
   ['Matilda', 'Roald Dahl', 'Kids room', 'Low shelf', { pages: 240, tags: ['kids'] }],
@@ -63,7 +63,7 @@ const DETAILS = {
   'Gilead': ['fiction', 'literary', 'reflective hopeful', 'slow', 'short', 'An old preacher in 1950s Iowa writes a long letter to his young son.'],
   'The Hobbit': ['fiction', 'fantasy', 'adventurous lighthearted', 'medium', 'medium', 'A comfortable hobbit is swept off on a quest to win back a dragon’s hoard.'],
   'The Count of Monte Cristo': ['fiction', 'classics', 'adventurous tense', 'medium', 'medium', 'A wronged sailor escapes prison, finds a fortune and takes his revenge.'],
-  'Dune': ['fiction', 'sf classics', 'adventurous challenging', 'medium', 'medium', 'A desert planet, the spice everyone wants, and a young duke who may be its messiah.'],
+  'The War of the Worlds': ['fiction', 'sf classics', 'adventurous tense', 'fast', 'short', 'Martians land in Surrey, and a man makes his way through the ruins of their invasion.'],
   'Moby-Dick': ['fiction', 'classics', 'adventurous challenging', 'slow', 'short', 'Captain Ahab hunts the white whale that took his leg.'],
   'Beloved': ['fiction', 'literary', 'dark emotional', 'slow', 'medium', 'A woman who escaped slavery is haunted by the daughter she lost.'],
   'Piranesi': ['fiction', 'fantasy', 'mysterious reflective', 'medium', 'short', 'A man keeps a journal in an endless house of statues and tides.'],
@@ -76,7 +76,7 @@ const DETAILS = {
   'Matilda': ['fiction', 'children', 'funny lighthearted', 'fast', 'short', 'A brilliant girl with awful parents finds she can move things with her mind.'],
   'Charlotte’s Web': ['fiction', 'children', 'emotional hopeful', 'fast', 'short', 'A spider writes words in her web to save a pig.'],
   'The Name of the Wind': ['fiction', 'fantasy', 'adventurous', 'medium', 'medium', 'A legendary hero tells the true story of his life, beginning with a troupe of travelling players.'],
-  'War and Peace': ['fiction', 'classics historical-fiction', 'reflective challenging', 'slow', 'short', 'Russian families in love and war through Napoleon’s invasion of 1812.'],
+  'War and Peace': ['fiction', 'classics historical-fiction', 'reflective challenging', 'slow', 'short', 'Russian families in love and war through the French invasion of 1812.'],
 };
 const ADDED = ['2026-10-11', '2026-08-30', '2026-06-14', '2025-12-02', '2025-04-19', '2024-09-07']; // four books each
 const books = {};
@@ -100,8 +100,11 @@ const BATCH = { shelfmark: 1, batch: { id: 'c20261013-sample', name: 'Hall, cons
 const browser = await pw.chromium.launch();
 await mkdir(join(root, 'docs'), { recursive: true });
 
+// A phone (deviceScaleFactor 2) has a touch screen; the link preview is the page as a laptop with a mouse shows it, whose
+// menus and chips are drawn smaller than a touch screen's.
 async function open(viewport, deviceScaleFactor, prefs) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor, hasTouch: true, isMobile: deviceScaleFactor > 1, serviceWorkers: 'block' });
+  const phone = deviceScaleFactor > 1;
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor, hasTouch: phone, isMobile: phone, serviceWorkers: 'block' });
   await ctx.route(url => !url.href.startsWith(base), r => r.abort());
   const page = await ctx.newPage();
   await page.clock.setFixedTime(NOW);
